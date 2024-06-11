@@ -20,7 +20,11 @@ register = template.Library()
 
 @register.filter
 def has_gw_permissions(user):
-    gw_group = Group.objects.get(name='GWO4')
+    try:
+        gw_group = Group.objects.get(name='GWO4')
+    except Group.DoesNotExist:
+        # Added to get a new SNEX installation to load
+        return False
 
     if user in gw_group.user_set.all():
         return True

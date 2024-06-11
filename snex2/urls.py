@@ -13,7 +13,6 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.contrib import admin
 from django.urls import path
 from django.conf import settings
 
@@ -30,6 +29,7 @@ custom_router.register(r'submit-observation', CustomObservationRecordViewSet, 's
 
 
 urlpatterns = [
+    path('', include('tom_common.urls')),
     path('targets/', TargetListView.as_view(), name='list'),
     path('redirect/', target_redirect_view, name='redirect'),
     path('add_tag/', add_tag_view, name='add_tag'),
@@ -70,10 +70,10 @@ urlpatterns = [
     path('nonlocalizedevents/sequence/<int:id>/obs/', EventSequenceGalaxiesTripletView.as_view(), name='nonlocalizedevents-sequence-triplets'),
     path('nonlocalizedevents/galaxies/<int:id>/obs/', GWFollowupGalaxyTripletView.as_view(), name='nonlocalizedevents-galaxies-triplets'),
     path('', include('tom_registration.registration_flows.approval_required.urls', namespace='registration')),
-    path('', include('tom_common.urls')),
     path('snex2/', include('custom_code.urls')),
     path('nonlocalizedevents/', include('tom_nonlocalizedevents.urls', namespace='nonlocalizedevents')),
     path('django_plotly_dash/', include('django_plotly_dash.urls')),
+    path('tns/', include('tom_tns.urls', namespace='tns')),
 ]
 
 if settings.DEBUG:

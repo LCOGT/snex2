@@ -1,22 +1,14 @@
-import requests
 from django.conf import settings
 from django import forms
-from dateutil.parser import parse
 from crispy_forms.layout import Layout, Div, HTML, Column, Row, ButtonHolder, Submit
-from crispy_forms.bootstrap import PrependedAppendedText, PrependedText, AppendedText
-from django.core.cache import cache
+from crispy_forms.bootstrap import PrependedText, AppendedText
 from astropy import units as u
 import datetime
 
-from tom_observations.facility import BaseObservationForm
-from tom_common.exceptions import ImproperCredentialsException
-from tom_observations.facility import BaseRoboticObservationFacility, get_service_class
-from tom_targets.models import Target
-
-from tom_observations.facilities.lco import LCOBaseObservationForm, LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOFacility, LCOMuscatImagingObservationForm, make_request
+from tom_observations.facilities.ocs import make_request
+from tom_observations.facilities.lco import LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOFacility, LCOMuscatImagingObservationForm
 from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
-from crispy_forms.helper import FormHelper
 
 # Determine settings for this module.
 try:
@@ -255,14 +247,14 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
     # Add the Muscat methods
     def mode_choices(self, mode_type):
         return sorted(set([
-            (f['code'], f['name']) for ins in LCOMuscatImagingObservationForm._get_muscat_instrument().values() for f in
+            (f['code'], f['name']) for ins in LCOMuscatImagingObservationForm().get_instruments().values() for f in
             ins['modes'].get(mode_type, {}).get('modes', [])
             ]), key=lambda filter_tuple: filter_tuple[1])
 
     def diffuser_position_choices(self, channel):
         diffuser_key = f'diffuser_{channel}_positions'
         return sorted(set([
-            (f['code'], f['name']) for ins in LCOMuscatImagingObservationForm._get_muscat_instrument().values() for f in
+            (f['code'], f['name']) for ins in LCOMuscatImagingObservationForm().get_instruments().values() for f in
             ins['optical_elements'].get(diffuser_key, []) if f.get('schedulable', False)
         ]), key=lambda filter_tuple: filter_tuple[1])
     
@@ -274,7 +266,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         return sorted([(k, v['name'])
                        for k, v in self._get_instruments().items()
                        if k in self.valid_instruments],
-                      key=lambda inst: inst[1]) + LCOMuscatImagingObservationForm.instrument_choices()
+                      key=lambda inst: inst[1]) + LCOMuscatImagingObservationForm().instrument_choices()
 
     # Modify the instrument config to include Muscat
     def _build_instrument_config(self):
@@ -350,7 +342,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         super().__init__(*args, **kwargs)
 
         # Massage cadence form to be SNEx-styled
-        self.fields['filter'] = forms.ChoiceField(choices=self.filter_choices(), 
+        self.fields['filter'] = forms.ChoiceField(choices=self.all_optical_element_choices(),
                                                   label='Slit',
                                                   initial=('slit_2.0as', '2.0 arcsec slit'))
         self.fields['name'].label = ''

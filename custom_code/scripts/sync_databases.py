@@ -78,6 +78,7 @@ Classifications = load_table('classifications', db_address=settings.SNEX1_DB_URL
 Groups = load_table('groups', db_address=settings.SNEX1_DB_URL)
 
 ### And our SNex2 tables
+DataProduct = load_table('tom_dataproducts_dataproduct', db_address=_SNEX2_DB)
 Datum = load_table('tom_dataproducts_reduceddatum', db_address=_SNEX2_DB)
 Target = load_table('tom_targets_target', db_address=_SNEX2_DB)
 Target_Extra = load_table('tom_targets_targetextra', db_address=_SNEX2_DB)
@@ -350,8 +351,9 @@ def update_spec(action, db_address=_SNEX2_DB):
                     continue
 
                 targetid = spec_row.targetid
-                time = '{} {}'.format(spec_row.dateobs, spec_row.ut) 
-                spec = read_spec(spec_row.filepath.replace('/supernova/', '/snex2/') + spec_row.filename.replace('.fits', '.ascii'))
+                time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
+                spec_filename = spec_row.filepath.replace('/supernova/', '/snex2/') + spec_row.filename.replace('.fits', '.ascii')
+                spec = read_spec(spec_filename)
                 spec_groupid = spec_row.groupidcode
     
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
@@ -377,6 +379,17 @@ def update_spec(action, db_address=_SNEX2_DB):
                                     break
 
                         elif action=='insert':
+                            # First create the dataproduct for this spectra linking to the ascii file
+                            # TODO: Test this and work it out so the data product is saved in snex2 - you may need to open
+                            #       the file first before saving in the DataProduct, or you may need to create the data product
+                            #       and then just replace where the file path is to the path of the existing dataproduct - that
+                            #       can be done in the Django model, not sure about the sqlalchemy model for files...
+                            # newdp = DataProduct(target_id=targetid, product_id=spec_filename, data=spec_filename)
+                            # db_session.add(newspec)
+                            # db_session.flush()
+
+                            # Then create the reduced datum referencing the data product
+                            # newspec = Datum(target_id=targetid, data_product=newdp, timestamp=time, value=spec, data_type='spectroscopy', source_name='', source_location='')
                             newspec = Datum(target_id=targetid, timestamp=time, value=spec, data_type='spectroscopy', source_name='', source_location='')
                             db_session.add(newspec)
                             db_session.flush()

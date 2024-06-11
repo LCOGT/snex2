@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'django_comments',
     'bootstrap4',
     'crispy_forms',
+    'crispy_bootstrap4',
     'django_filters',
     'django_gravatar',
     'tom_targets',
@@ -66,7 +67,10 @@ INSTALLED_APPS = [
     'tom_nonlocalizedevents',
     'tom_alertstreams',
     'webpack_loader',
+    'tom_tns'
 ]
+
+TOM_NAME = 'SNEX2'
 
 if DEBUG:
     INSTALLED_APPS.append('debug_toolbar')
@@ -115,10 +119,23 @@ DATA_SHARING = {
     'hermes': {
         'DISPLAY_NAME': os.getenv('HERMES_DISPLAY_NAME', 'Hermes'),
         'BASE_URL': os.getenv('HERMES_BASE_URL', 'https://hermes-dev.lco.global/'),
-        'SCIMMA_AUTH_USERNAME': os.getenv('SCIMMA_AUTH_USERNAME', None),
-        'CREDENTIAL_USERNAME': os.getenv('SCIMMA_CREDENTIAL_USERNAME', None,),
-        'CREDENTIAL_PASSWORD': os.getenv('SCIMMA_CREDENTIAL_PASSWORD', None),
-        'USER_TOPICS': ['hermes.test', 'tomtoolkit.test']
+        'HERMES_API_KEY': os.getenv('HERMES_API_KEY', 'yourHermesAPIKeyHere'),
+        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', 'Your Default author list here'),
+        'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],
+        'GROUP_NAMES': ['Hermes_group', 'SNEX'],
+        'DEFAULT_TELESCOPE': 'LCO 1m',
+        'DEFAULT_INSTRUMENT': 'Sinistro',
+        'DEFAULT_WAVELENGTH_UNITS': 'Å',
+        'DEFAULT_FLUX_UNITS': 'mJy',
+        # Change this to whatever filtered mapping your data has from filter ID in the datum to TNS filter ID
+        'FILTER_MAPPING': {
+            'B': 'B-astrodon',
+            'V': 'V-Johnson',
+            'gp': 'g-P1',
+            'rp': 'r-P1',
+            'ip': 'i-P1'
+        },
+        'ENABLE_TNS': True
     },
     'tom-demo-dev': {
         'BASE_URL': os.getenv('TOM_DEMO_BASE_URL', 'http://tom-demo-dev.lco.gtn/'),
@@ -373,12 +390,12 @@ HOOKS = {
     'ingest_gw_galaxy_into_snex1': 'gw.hooks.ingest_gw_galaxy_into_snex1',
 }
 
+
 BROKERS = {
     'TNS': {'api_key': os.getenv('TNS_APIKEY', '')}
 }
 
 TOM_ALERT_CLASSES = [
-    'custom_code.brokers.mars.CustomMARSBroker',
     'tom_alerts.brokers.lasair.LasairBroker',
     'tom_alerts.brokers.gaia.GaiaBroker',
     'tom_alerts.brokers.tns.TNSBroker',
@@ -484,6 +501,7 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
 
 SNEX1_DB_URL = 'mysql://{}:{}@supernova.science.lco.global:3306/supernova?charset=utf8&use_unicode=1'
 SNEX1_DB_URL = SNEX1_DB_URL.format(os.getenv('SNEX1_DB_USER', ''), os.getenv('SNEX1_DB_PASSWORD', ''))
+
 
 PLOTLY_DASH = {
     'cache_arguments': False,

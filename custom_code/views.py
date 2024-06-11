@@ -1,16 +1,18 @@
 from django_filters.views import FilterView
 from django.shortcuts import redirect, render
+from django.core.files.base import ContentFile
 from django.db import transaction, IntegrityError
 from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper
 from django.db.models.functions import Cast
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.generic import View
-from django.views.generic.base import TemplateView
+from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView, UpdateView
 from django.views.generic.detail import DetailView
 from django.urls import reverse
 from django.template.loader import render_to_string
+from django.template.context import RequestContext
 from django_comments.models import Comment
 from django_comments.signals import comment_was_posted
 from django.dispatch import receiver
@@ -36,19 +38,12 @@ from astropy import units as u
 from astropy.time import Time
 from datetime import datetime, date, timedelta
 import json
-from statistics import median
 from collections import OrderedDict
 from io import StringIO
 
-from sqlalchemy import create_engine, pool
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.automap import automap_base
-from contextlib import contextmanager
-from plotly import offline
 import plotly.graph_objs as go
 from tom_dataproducts.models import ReducedDatum, DataProduct
-from django.utils.safestring import mark_safe
-from custom_code.templatetags.custom_code_tags import get_24hr_airmass, airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits, lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form, smart_name_list
+from custom_code.templatetags.custom_code_tags import airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits, lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form, smart_name_list
 from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
 from custom_code.thumbnails import make_thumb
 
@@ -58,14 +53,14 @@ from tom_common.hooks import run_hook
 from tom_dataproducts.views import DataProductUploadView, DataProductDeleteView, DataShareView
 from tom_dataproducts.forms import DataShareForm
 from tom_dataproducts.exceptions import InvalidFileFormatException
-from tom_dataproducts.alertstreams.hermes import publish_photometry_to_hermes, BuildHermesMessage, create_hermes_phot_table_row
+from tom_dataproducts.alertstreams.hermes import BuildHermesMessage, create_hermes_phot_table_row
 from custom_code.processors.data_processor import run_custom_data_processor
 from guardian.shortcuts import assign_perm
 
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
-from tom_observations.facilities.lco import FAILED_OBSERVING_STATES, TERMINAL_OBSERVING_STATES
+from tom_observations.facilities.ocs import OCSSettings
 from tom_observations.views import ObservationCreateView, ObservationListView, ObservationRecordCancelView
 import requests
 from rest_framework.authtoken.models import Token
@@ -553,8 +548,8 @@ def cancel_observation(obs):
         last_obs = obs
     
     facility = get_service_class(last_obs.facility)()
-    
-    if last_obs.status not in TERMINAL_OBSERVING_STATES:
+    ocs_settings = OCSSettings()
+    if last_obs.status not in ocs_settings.get_terminal_observing_states():
         success = facility.cancel_observation(last_obs.observation_id)
         if not success:
             return False
@@ -1082,19 +1077,11 @@ def async_spectra_page_view(request):
     target_id = request.GET.get('target_id')
     if target_id:
         target = Target.objects.get(id=target_id)
-        response = dash_spectra_page({'request': request}, target)
-        if 'dash_context' in response.keys():
-            context = {'plot_list': [],
-                       'request': request
-            }
-        else:
-            context = {'plot_list': response['plot_list'],
-                       'request': request
-            }
-
+        context = dash_spectra_page(RequestContext(request), target)
         html = render_to_string(
             template_name='custom_code/dash_spectra_page.html',
-            context=context
+            context=context,
+            request=request
         )
         data_dict = {'html_from_view': html}
 
@@ -1843,6 +1830,27 @@ class SNEx2BuildHermesMessage(BuildHermesMessage, View):
 
         response = requests.post(url=submit_url, json=alert, headers=headers)
         return response
+
+
+class SNEx2SpectroscopyTNSSharePassthrough(RedirectView):
+
+    def get_redirect_url(self, *args, **kwargs):
+        target_id = kwargs['pk']
+        datum_id = kwargs['datum_pk']
+        print(f"Redirecting to share for target {target_id} and reduced datum {datum_id}")
+        # We need to check if the datum has an associated dataproduct here, and if it does not, we should create it and add it to the TOM
+        datum = ReducedDatum.objects.get(pk=datum_id)
+        if not datum.data_product:
+            print(f"Reduced datum {datum_id} does not have an associated data product - creating it now")
+            target = Target.objects.get(pk=target_id)
+            data_str = ''
+            for datapoint in datum.value.values():
+                data_str += f"{datapoint.get('wavelength')}\t{datapoint.get('flux')}\n"
+            dp_name = f"spectra_{datum_id}_{datum.timestamp.strftime('%Y_%m_%d_%H_%M_%S')}.txt"
+            dp = DataProduct.objects.create(target=target, product_id=dp_name, data_product_type='spectroscopy')
+            dp.data.save(dp_name, ContentFile(data_str))
+            ReducedDatum.objects.filter(pk=datum_id).update(data_product=dp)
+        return reverse('tns:report-tns', kwargs={'pk': target_id, 'datum_pk': datum_id})
 
 
 class SNEx2DataShareView(DataShareView):

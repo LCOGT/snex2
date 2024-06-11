@@ -1276,20 +1276,29 @@ def order_by_reminder_upcoming(queryset, pagenumber):
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
 def dash_spectra_page(context, target):
-    request = context['request']
+    request = context.request
     try:
         z = TargetExtra.objects.filter(target_id=target.id, key='redshift').first().float_value
     except:
         z = 0
 
+    # Setup the data share form for this spectra page
+    initial = {
+        'submitter': context.request.user,
+        'target': target,
+        'data_type': 'spectroscopy',
+        'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'SNEx2')}."
+    }
+    form = DataShareForm(initial=initial)
+    form.fields['data_type'].widget = forms.HiddenInput()
+
+    sharing = getattr(settings, "DATA_SHARING", None)
+    hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
+
     ### Send the min and max flux values
     target_id = target.id
     spectral_dataproducts = ReducedDatum.objects.filter(target_id=target_id, data_type='spectroscopy').order_by('timestamp')
-    if not spectral_dataproducts:
-        return {'dash_context': {},
-                'request': request
-            }
-    
+
     plot_list = []
     for i in range(len(spectral_dataproducts)):
     
@@ -1347,6 +1356,10 @@ def dash_spectra_page(context, target):
                           'spectrum': spectrum
                         })
     return {'plot_list': plot_list,
+            'target': target,
+            'target_data_share_form': form,
+            'sharing_destinations': form.fields['share_destination'].choices,
+            'hermes_sharing': hermes_sharing,
             'request': request}
 
 @register.filter
@@ -2010,7 +2023,7 @@ def broker_target_lightcurve(target):
 
 
 @register.inclusion_tag('tom_dataproducts/partials/photometry_datalist_for_target.html', takes_context=True)
-def snex2_get_photometry_data(context, target):
+def snex2_get_photometry_data(context, target, target_share=False):
 
     user = context['request'].user
     photometry = get_objects_for_user(user,
@@ -2026,7 +2039,7 @@ def snex2_get_photometry_data(context, target):
                    'source': reduced_datum.source_name,
                    'filter': reduced_datum.value.get('filter', ''),
                    'telescope': reduced_datum.value.get('telescope', ''),
-                   'error': reduced_datum.value.get('error', '')
+                   'error': reduced_datum.value.get('error', reduced_datum.value.get('magnitude_error', ''))
                    }
 
         if 'limit' in reduced_datum.value.keys():
@@ -2055,10 +2068,15 @@ def snex2_get_photometry_data(context, target):
     form.fields['share_title'].widget = forms.HiddenInput()
     form.fields['data_type'].widget = forms.HiddenInput()
 
+    sharing = getattr(settings, "DATA_SHARING", None)
+    hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
+
     context = {'data': data,
                'target': target,
                'target_data_share_form': form,
-               'sharing_destinations': form.fields['share_destination'].choices}
+               'sharing_destinations': form.fields['share_destination'].choices,
+               'hermes_sharing': hermes_sharing,
+               'target_share': target_share}
     return context
 
 
@@ -2082,9 +2100,11 @@ def snex2_share_data(target, user):
 
 @register.inclusion_tag('custom_code/partials/time_usage_bars.html', takes_context=True)
 def time_usage_bars(context, telescope):
-    
     tu = TimeUsed.objects.filter(telescope_class=telescope).order_by('-id').first()
-    
+    # Added to get a new snex installation to load...
+    if not tu:
+        return
+
     total_time_used = tu.std_time_used + tu.tc_time_used + tu.rr_time_used
     total_time_allocated = tu.std_time_allocated + tu.tc_time_allocated + tu.rr_time_allocated
     total_frac_used = total_time_used/total_time_allocated

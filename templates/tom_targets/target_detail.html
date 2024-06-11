@@ -266,20 +266,44 @@ function display_obs() {
     x.style.display = "none";
   }
 }
-function savecomment(spectrumId) {
+function savecomment(e, spectrumId) {
   var comment = document.getElementById("comment-"+spectrumId).value;
-  $.ajax({
-    url: '{% url "save-comment" %}',
-    data: {'comment': comment,
-           'object_id': spectrumId,
-           'user_id': {{ user.id }},
-	   'tablename': 'spec',
-    },
-    dataType: 'json',
-    success: function() {
-      document.getElementById("comment-"+spectrumId).insertAdjacentHTML('beforebegin', '<div class="row">{{ user.username }}: ' + comment +'</div>');
+  if (e.keyCode == 13 && comment != "") {
+    // Enter key was pressed, so submit the comment now
+    $.ajax({
+      url: '{% url "save-comment" %}',
+      data: {'comment': comment,
+            'object_id': spectrumId,
+            'user_id': {{ user.id }},
+      'tablename': 'spec',
+      },
+      dataType: 'json',
+      success: function() {
+        document.getElementById("comment-"+spectrumId).insertAdjacentHTML('beforebegin', '<div class="row">{{ user.username }}: ' + comment +'</div>');
+      }
+    })
+  }
+}
+function setTargetOnSpectroscopyForm(val) {
+  const spectroscopyShareForm = document.getElementById('spectroscopy-data-share-form');
+  if (val && val != '') {
+    spectroscopyShareForm.setAttribute('target', val);
+  }
+  else{
+    spectroscopyShareForm.removeAttribute('target');
+  }
+  return true;
+};
+function check_selected_spectra()  {
+  var share_boxes = document.querySelectorAll("[name='share-box'][class='spectrum-row']");
+  var submit_btn = document.getElementById('submit_selected_spectra');
+  for (const box of share_boxes) {
+    if(box.checked == true) {
+      submit_btn.disabled = false;
+      return;
     }
-  })
+  }
+  submit_btn.disabled = true;
 }
 function loadStandardTable() {
   var standardDiv = document.getElementById('standard-div');
