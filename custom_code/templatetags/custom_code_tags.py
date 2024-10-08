@@ -2099,24 +2099,6 @@ def snex2_get_photometry_data(context, target, target_share=False):
     return context
 
 
-@register.inclusion_tag('tom_dataproducts/partials/share_target_data.html')
-def snex2_share_data(target, user):
-    """
-    Publish data to Hermes
-    """
-    initial = {'submitter': user,
-               'target': target,
-               'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'TOM Toolkit')}.",
-               }
-    form = DataShareForm(initial=initial)
-    form.fields['share_title'].widget = forms.HiddenInput()
-
-    context = {'target': target,
-               'target_data_share_form': form,
-               'sharing_destinations': form.fields['share_destination'].choices}
-    return context
-
-
 @register.inclusion_tag('custom_code/partials/time_usage_bars.html', takes_context=True)
 def time_usage_bars(context, telescope):
     tu = TimeUsed.objects.filter(telescope_class=telescope).order_by('-id').first()

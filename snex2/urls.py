@@ -62,7 +62,6 @@ urlpatterns = [
     path('scheduling/<str:key>/', ObservationListExtrasView.as_view(), name='observation-list'),
     path('alerts/broker-targets/', BrokerTargetView.as_view(), name='broker-targets'),
     path('change-broker-target-status/', change_broker_target_status_view, name='change-broker-target-status'),
-    path('share-data/', SNEx2DataShareView.as_view(), name='share-data'),
     path('nonlocalizedevents/<int:id>/galaxies/', GWFollowupGalaxyListView.as_view(), name='nonlocalizedevents-galaxies'),
     path('submit-gw-obs/', submit_galaxy_observations_view, name='submit-gw-obs'),
     path('cancel-gw-obs/', cancel_galaxy_observations_view, name='cancel-gw-obs'),

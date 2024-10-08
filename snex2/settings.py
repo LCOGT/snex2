@@ -121,15 +121,30 @@ DATA_SHARING = {
         'BASE_URL': os.getenv('HERMES_BASE_URL', 'https://hermes-dev.lco.global/'),
         'HERMES_API_KEY': os.getenv('HERMES_API_KEY', 'yourHermesAPIKeyHere'),
         'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', 'Your Default author list here'),
-        'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],
+        'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
-        # Change this to whatever filtered mapping your data has from filter ID in the datum to TNS filter ID
+        'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
+        # TODO: Set your proper filter mapping from datum filter to TNS filter name
         'FILTER_MAPPING': {
             'B': 'B-astrodon',
             'V': 'V-Johnson',
             'gp': 'g-P1',
             'rp': 'r-P1',
             'ip': 'i-P1'
+        },
+        # TODO: Set your proper instrument mapping from datum instrument to TNS instrument
+        'INSTRUMENT_MAPPING': {
+            'en06': 'FTN - FS02',
+            'en12': 'FTN - FS01',
+            'fa20': 'LCO1m - Sinistro',
+            'fa19': 'LCO1m - Sinistro',
+            'fa16': 'LCO1m - Sinistro',
+            'fa15': 'LCO1m - Sinistro',
+            'fa14': 'LCO1m - Sinistro',
+            'fa12': 'LCO1m - Sinistro',
+            'fa11': 'LCO1m - Sinistro',
+            'fa06': 'LCO1m - Sinistro',
+            'fa03': 'LCO1m - Sinistro'
         },
         'ENABLE_TNS': True
     },
@@ -566,6 +581,13 @@ ALERT_STREAMS = [
         },
     }
 ]
+
+CACHES = {
+     'default': {
+         'BACKEND': os.getenv('LOCAL_CACHE_BACKEND', 'django.core.cache.backends.locmem.LocMemCache'),
+         'LOCATION': 'locmem-cache'
+     }
+}
 
 if DEBUG:
     INTERNAL_IPS = [
