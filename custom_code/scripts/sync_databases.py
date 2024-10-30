@@ -77,6 +77,7 @@ Targets = load_table('targets', db_address=settings.SNEX1_DB_URL)
 Target_Names = load_table('targetnames', db_address=settings.SNEX1_DB_URL)
 Classifications = load_table('classifications', db_address=settings.SNEX1_DB_URL)
 Groups = load_table('groups', db_address=settings.SNEX1_DB_URL)
+Users = load_table('users', db_address=settings.SNEX1_DB_URL)
 
 ### And our SNex2 tables
 Data_Product = load_table('tom_dataproducts_dataproduct', db_address=_SNEX2_DB)
@@ -87,6 +88,7 @@ Targetname = load_table('tom_targets_targetname', db_address=_SNEX2_DB)
 Auth_Group = load_table('auth_group', db_address=_SNEX2_DB)
 Group_Perm = load_table('guardian_groupobjectpermission', db_address=_SNEX2_DB)
 Datum_Extra = load_table('custom_code_reduceddatumextra', db_address=_SNEX2_DB)
+Auth_User = load_table('auth_user', db_address=_SNEX2_DB)
 
 ### Make a dictionary of the groups in the SNex1 db
 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
@@ -142,6 +144,39 @@ def delete_row(table, id_, db_address=settings.SNEX1_DB_URL):
         criteria = getattr(table, 'id') == id_
         db_session.query(table).filter(criteria).delete()
         db_session.commit()
+
+
+def update_users(action, db_address=_SNEX2_DB):
+    """
+    Update the snex 2 db when a users registers or changes their username/password in the
+    snex 1 db.
+
+    Parameters
+    ----------
+    action: str, action that was done on the users table ['update', 'insert', 'delete']
+    """
+    user_changes = query_db_changes('users', action, db_address=settings.SNEX1_DB_URL)
+    for change in user_changes:
+        try:
+            row_id = change.rowid
+            user_row = get_current_row(Users, row_id, db_address=settings.SNEX1_DB_URL)
+            if action == 'delete':
+                old_username = change.locator
+                with get_session(db_address=db_address) as db_session:
+                    db_session.query(Auth_User).filter(Auth_User.username == old_username).delete()
+                    db_session.commit()
+            elif action == 'insert':
+                with get_session(db_address=db_address) as db_session:
+                    ['name', 'pw', 'groupidcode', 'firstname', 'lastname', 'email']
+                    db_session.add(Auth_User(username=user_row.username, password='crypt$$'+user_row.password))
+                    db_session.commit()
+            elif action == 'update':
+                with get_session(db_address=db_address) as db_session:
+                    db_session.query(Auth_User).filter(Auth_User.username==user_row.username).update({'password': 'crypt$$'+user_row.password})
+                    db_session.commit()
+        except:
+            raise
+
 
 def update_permissions(groupid, permissionid, objectid, contentid):
     """
