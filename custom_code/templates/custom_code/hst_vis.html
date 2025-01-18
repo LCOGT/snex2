@@ -127,10 +127,6 @@
                 color: black;
             }
         }
-
-        #resultText {
-            white-space: pre-wrap; /* Retains newlines and spaces */
-        }
     </style>
 </head>
 
@@ -193,6 +189,9 @@
             <script type="text/javascript">
                 var searchUrl = "{% url 'custom_code:hst-vis-search' %}";
             </script>
+
+            <div id="visibility-status" style="text-align: center; font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; font-size: 28px; margin-bottom: 20px; background-color: #D3D3D3;"></div>  <!-- Empty div to hold the visibility status -->
+
             <div id="plot-container"></div> 
 
 
@@ -276,7 +275,15 @@ $(document).ready(function() {
             data: $(this).serialize(),  // Serialize form data
             success: function(response) {
                 console.log("AJAX Response:", response);  // Log the entire response
-                console.log("Plot HTML:", response.plot_html);  // Log only the plot_html part
+
+                // Insert the visibility status into the #visibility-status div
+                var visibilityMessage = '';
+                if (response.vis === true) {
+                    visibilityMessage = '<p style="color: green;">Visible now!</p>';
+                } else {
+                    visibilityMessage = '<p style="color: red;">Not currently visible by Hubble</p>';
+                }
+                $('#visibility-status').html(visibilityMessage); // Update the visibility status div
 
                 $('#searchResult').html(response.result.replace(/\n/g, '<br>'));  // Update the search result with text
                 $loadingText.hide();  // Hide the loading animation once done
@@ -297,8 +304,10 @@ $(document).ready(function() {
                 }
             },
         });
+
     });
 });
+
 $(document).ready(function() {
     $("form").submit(function(event) {
         event.preventDefault();  // Prevent default form submission
