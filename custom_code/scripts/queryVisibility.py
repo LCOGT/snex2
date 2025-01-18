@@ -18,6 +18,8 @@ import subprocess
 
 #------------- SETTINGS -------------#
 APT_APPLICATION_PATH = '/Applications/APT2024.7/bin/apt'
+HST_TEMPLATE_DIR = '/Users/josephfarah/Documents/phd/snex2/snex2_baremetal/snex2/custom_code/scripts/'
+
 
 #------------- CLASSES -------------#
 class UpdateTargetCoords(object):
@@ -40,7 +42,7 @@ class UpdateTargetCoords(object):
         import argparse
         import xml.etree.ElementTree as ET
      
-        tree = ET.parse('HST_FOR_template.apt')
+        tree = ET.parse(HST_TEMPLATE_DIR + 'HST_FOR_template.apt')
         root = tree.getroot()
         for child in root:
             if child.tag == 'Targets':
@@ -71,7 +73,7 @@ class UpdateTargetCoords(object):
                                                     print(f'Setting UpToDate to false from {q.get("UpToDate")}')    
                                                     q.set('UpToDate', 'false')
         self.tree = tree
-        self.tree.write('HST_FOR_template.apt') # legacy from when we were loading and reloading
+        self.tree.write(HST_TEMPLATE_DIR + 'HST_FOR_template.apt') # legacy from when we were loading and reloading
 
 class AccessAPT(object):
     """
@@ -115,7 +117,7 @@ class WriteVisibility(object):
     def __init__(self, target_name):
         self.target_name = str(target_name)
 
-        self.__write_visibility()
+        self.output = self.__write_visibility()
 
     def __write_visibility(self):
         import datetime
@@ -129,7 +131,7 @@ class WriteVisibility(object):
             time_s = time_ms/1000
             return datetime.datetime.fromtimestamp(time_s, datetime.timezone.utc)
 
-        tree = ET.parse('HST_FOR_template.apt')
+        tree = ET.parse(HST_TEMPLATE_DIR+'HST_FOR_template.apt')
         root = tree.getroot()
 
         for child in root:
@@ -175,14 +177,37 @@ class WriteVisibility(object):
         for vis in vis_windows_string:
             print(vis)
 
+        class ReturnObject(object):
+
+            def __init__(self, vis_list, vis_string):
+                self.vis_list = vis_list
+                self.vis_string = vis_string
+
+        return ReturnObject(vis_windows_string, '\n'.join(vis_windows_string))
+
+
 
 def clean_up_dir():
     """cleans up unnecessary files in directory created by APT"""
     import os, shutil, glob
-    for _fpath in glob.glob("./*.aptbackup") + glob.glob("./*.vot"):
+    for _fpath in glob.glob(HST_TEMPLATE_DIR+"*.aptbackup") + glob.glob(HST_TEMPLATE_DIR+"*.vot"):
         os.remove(_fpath)
-    shutil.rmtree('./OP-cache/')
+    # shutil.rmtree(HST_TEMPLATE_DIR+'OP-cache/')
 
+
+def dummy(q):
+    print("dummy: ", q)
+    return q
+
+
+
+def get_visibility(query_object):
+    UTCStep1Obj = UpdateTargetCoords(query_object.name, query_object.ra, query_object.dec)
+    AAPTStep2Obj = AccessAPT(UTCStep1Obj.target_name, UTCStep1Obj.target_ra, UTCStep1Obj.target_dec)
+    WVStep2Obj = WriteVisibility(UTCStep1Obj.target_name)
+    clean_up_dir()
+
+    return WVStep2Obj
 
 #------------- FUNCTIONS -------------#
 def main():

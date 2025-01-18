@@ -55,6 +55,14 @@ from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
 from tom_observations.facilities.lco import LCOSettings
 from tom_observations.views import ObservationCreateView, ObservationListView
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'scripts'))
+
+import queryVisibility
+
+
 import base64
 
 import logging
@@ -1846,3 +1854,37 @@ def get_target_standards_view(request):
     data_dict = {"html_from_view": html}
 
     return JsonResponse(data=data_dict, safe=False)
+
+
+class HSTVisCalculator(TemplateView):
+
+    template_name = 'custom_code/hst_vis.html'
+
+    def context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        return context
+
+
+def hst_vis_search(request):
+    # Retrieve the search query from the GET parameters
+    query = request.GET.get('query', '')  # Default to an empty string if not found
+
+    # You can then use the query to filter your data, for example:
+    # results = MyModel.objects.filter(name__icontains=query)
+
+
+
+    import time
+    time.sleep(2)  # Simulating a 2-second delay
+
+    class QueryObject(object):
+        def __init__(self, objname):
+            self.name = objname
+            self.ra = "59.3567"
+            self.dec = "-46.1854"
+
+    visibility_result = queryVisibility.get_visibility(QueryObject(query)) 
+
+
+
+    return render(request,'custom_code/hst_vis.html', {'query': query, 'result': visibility_result.output.vis_string})
