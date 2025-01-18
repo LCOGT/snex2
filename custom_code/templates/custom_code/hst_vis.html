@@ -127,6 +127,10 @@
                 color: black;
             }
         }
+
+        #resultText {
+            white-space: pre-wrap; /* Retains newlines and spaces */
+        }
     </style>
 </head>
 
@@ -186,16 +190,16 @@
                 <span class="letter">l</span>
             </p>
         </div>
+            <script type="text/javascript">
+                var searchUrl = "{% url 'custom_code:hst-vis-search' %}";
+            </script>
+            <div id="plot-container"></div> 
 
 
             <div class='search-result' id="searchResult" style="display:none;">
                 <h3>Search Result:</h3>
                 <p id="resultText"></p>
             </div>
-            <script type="text/javascript">
-                var searchUrl = "{% url 'custom_code:hst-vis-search' %}";
-            </script>
-            <div id="plot-container"></div> 
 
         <div>
     </div>
@@ -274,7 +278,7 @@ $(document).ready(function() {
                 console.log("AJAX Response:", response);  // Log the entire response
                 console.log("Plot HTML:", response.plot_html);  // Log only the plot_html part
 
-                $('#searchResult').html(response.result);  // Update the search result with text
+                $('#searchResult').html(response.result.replace(/\n/g, '<br>'));  // Update the search result with text
                 $loadingText.hide();  // Hide the loading animation once done
                 $('#searchResult').fadeIn();  // Show the new result
 

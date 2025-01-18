@@ -1888,7 +1888,7 @@ def hst_vis_search(request):
 
     plot_html = plot_hst_ranges(visibility_result.output.vstart, visibility_result.output.vend)
     print(visibility_result.output.vis_string)
-    return JsonResponse({'query': query, 'result': visibility_result.output.vis_string, 'plot_html':plot_html}, content_type="application/json")
+    return JsonResponse({'query': query, 'result': visibility_result.output.vis_string, 'plot_html':plot_html, 'vis':visibility_result.output.visible_now}, content_type="application/json")
 
 
 
@@ -1935,7 +1935,7 @@ def plot_hst_ranges(vstart, vend):
 
     # Update layout to reflect date formatting
     fig.update_layout(
-        title="Ranges Visualization with Dates",
+        title="Visibility by Hubble",
         xaxis_title="Date",
         yaxis=dict(
             title=None,  # Remove y-axis label
@@ -1943,7 +1943,7 @@ def plot_hst_ranges(vstart, vend):
         ),
         showlegend=False,
         xaxis=dict(
-            tickformat="%Y-%m-%d %H:%M:%S",  # Format the x-axis labels as dates
+            tickformat="%Y-%m-%d",  # Format the x-axis labels as dates
             showgrid=True
         ),
         plot_bgcolor='rgba(0,0,0,0)',  # Transparent background for the plot area
