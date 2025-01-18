@@ -179,11 +179,15 @@ class WriteVisibility(object):
 
         class ReturnObject(object):
 
-            def __init__(self, vis_list, vis_string):
+            def __init__(self, vis_list, vis_string, vstart, vend, visnow):
                 self.vis_list = vis_list
                 self.vis_string = vis_string
+                self.vstart = vstart
+                self.vend = vend
+                self.visible_now = visnow
 
-        return ReturnObject(vis_windows_string, '\n'.join(vis_windows_string))
+        print(visit_start, visit_end)
+        return ReturnObject(vis_windows_string, '\n'.join(vis_windows_string), visit_start, visit_end, VISIBLE_NOW)
 
 
 
@@ -208,6 +212,8 @@ def get_visibility(query_object):
     clean_up_dir()
 
     return WVStep2Obj
+
+
 
 #------------- FUNCTIONS -------------#
 def main():

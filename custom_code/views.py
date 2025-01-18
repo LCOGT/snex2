@@ -37,6 +37,7 @@ import json
 from io import StringIO
 
 import plotly.graph_objs as go
+import plotly.io as pio
 from tom_dataproducts.models import ReducedDatum, DataProduct
 from custom_code.templatetags.custom_code_tags import airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits, lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form, smart_name_list
 from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
@@ -1885,6 +1886,71 @@ def hst_vis_search(request):
 
     visibility_result = queryVisibility.get_visibility(QueryObject(query)) 
 
+    plot_html = plot_hst_ranges(visibility_result.output.vstart, visibility_result.output.vend)
+    print(visibility_result.output.vis_string)
+    return JsonResponse({'query': query, 'result': visibility_result.output.vis_string, 'plot_html':plot_html}, content_type="application/json")
 
 
-    return render(request,'custom_code/hst_vis.html', {'query': query, 'result': visibility_result.output.vis_string})
+
+def plot_hst_ranges(vstart, vend):
+    # Ensure vstart and vend have the same length
+    if len(vstart) != len(vend):
+        print("vstart and vend must have the same length, trimming last item off of longer list.")
+        if len(vstart) > len(vend):
+            vstart = vstart[:-1]
+        elif len(vend) > len(vstart):
+            vend = vend[1:]
+    
+    # Convert Unix timestamps to datetime objects
+    vstart_dates = [datetime.utcfromtimestamp(float(ts) / 1000) for ts in vstart]
+    vend_dates = [datetime.utcfromtimestamp(float(ts) / 1000) for ts in vend]
+    
+    # Choose a constant y-value for all ranges (e.g., 0)
+    y_value = 0
+    
+    # Get today's date
+    today = datetime.today()
+    
+    # Create a Plotly figure
+    fig = go.Figure()
+
+    # Add each range as a line on the plot
+    for i in range(len(vstart_dates)):
+        fig.add_trace(go.Scatter(
+            x=[vstart_dates[i], vend_dates[i]],  # start and end of the range (in dates)
+            y=[y_value, y_value],  # constant y-value for all ranges
+            mode='lines',
+            line=dict(width=100, color='blue'),  # Use a single color for all ranges
+            name=f"Range {i+1}"  # Optional name for the legend
+        ))
+
+    # Add vertical line for today's date
+    fig.add_trace(go.Scatter(
+        x=[today, today],
+        y=[-1, 1],  # Extend the line vertically across the plot
+        mode='lines',
+        line=dict(color='red', dash='dash'),  # Red, dashed line
+        name='Today'
+    ))
+
+    # Update layout to reflect date formatting
+    fig.update_layout(
+        title="Ranges Visualization with Dates",
+        xaxis_title="Date",
+        yaxis=dict(
+            title=None,  # Remove y-axis label
+            showticklabels=False  # Hide y-axis ticks
+        ),
+        showlegend=False,
+        xaxis=dict(
+            tickformat="%Y-%m-%d %H:%M:%S",  # Format the x-axis labels as dates
+            showgrid=True
+        ),
+        plot_bgcolor='rgba(0,0,0,0)',  # Transparent background for the plot area
+        paper_bgcolor='rgba(0,0,0,0)'  # Transparent background for the figure (paper)
+    )
+
+    # Show the figure
+    plot_html = pio.to_html(fig, full_html=False)
+    return plot_html
+
