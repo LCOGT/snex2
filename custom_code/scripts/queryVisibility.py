@@ -199,6 +199,13 @@ def clean_up_dir():
     # shutil.rmtree(HST_TEMPLATE_DIR+'OP-cache/')
 
 
+
+# def check_db_for_coords(target_name):
+#     """ given a target name checks the database for coordinates """
+
+    
+
+
 def dummy(q):
     print("dummy: ", q)
     return q

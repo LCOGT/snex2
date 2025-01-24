@@ -100,31 +100,31 @@
             text-align: center;
             font-size: 20px;
             margin-top: 20px;
+            font-family: Arial, sans-serif;
+            white-space: nowrap; /* Prevent line breaks */
         }
 
         /* Style for individual letters */
-        .loading-text {
-            display: inline-block;
-            font-size: 20px;
-            color: gray;
-        }
-
         .letter {
             display: inline-block;
-            opacity: 0.3;  /* Initially gray with lower opacity */
+            opacity: 0.3; /* Initially gray with lower opacity */
             color: gray;
-            transition: opacity 0.3s ease-in-out, color 0.3s ease-in-out; /* Smooth transition for both opacity and color */
+            animation: colorWave 1.5s infinite ease-in-out;
         }
 
-        /* Add the color change when it animates */
+        /* Keyframes for sweeping effect */
         @keyframes colorWave {
             0% {
                 opacity: 0.3;
                 color: gray;
             }
-            100% {
+            50% {
                 opacity: 1;
                 color: black;
+            }
+            100% {
+                opacity: 0.3;
+                color: gray;
             }
         }
     </style>

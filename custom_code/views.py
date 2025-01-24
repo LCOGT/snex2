@@ -1874,10 +1874,6 @@ def hst_vis_search(request):
     # results = MyModel.objects.filter(name__icontains=query)
 
 
-
-    import time
-    time.sleep(2)  # Simulating a 2-second delay
-
     class QueryObject(object):
         def __init__(self, objname):
             self.name = objname
