@@ -11,6 +11,8 @@ from django.db.models.functions import Lower
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import Group
 
+import re
+
 class CustomTargetCreateForm(SiderealTargetCreateForm):
 
     sciencetags = forms.ModelMultipleChoiceField(ScienceTags.objects.all().order_by(Lower('tag')), widget=forms.CheckboxSelectMultiple, label='Science Tags', required=False)
@@ -18,6 +20,11 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
     def clean(self):
         cleaned_data = super().clean()
         self.cleaned_data = cleaned_data
+
+        name = self.cleaned_data.get('name')
+        if re.match(r'^\d', name):  
+            raise ValidationError("Target name cannot start with a number.")
+        return name
 
 
     def __init__(self, *args, **kwargs):

@@ -275,10 +275,11 @@ class CustomTargetCreateView(TargetCreateView):
         return redirect(self.get_success_url())
     
     def form_valid(self, form):
+
         # First, create the targets in both dbs and nothing else
         with transaction.atomic():
             if form.is_valid():
-                
+
                 ### Check that there are no targets with the same name or coordinates
                 target_cone_search = Target.objects.filter(ra__gte=form.cleaned_data['ra']-4.0/3600.0, ra__lte=form.cleaned_data['ra']+4.0/3600.0, dec__gte=form.cleaned_data['dec']-4.0/3600.0, dec__lte=form.cleaned_data['dec']+4.0/3600.0)
                 if target_cone_search.count() > 0.0:
@@ -289,11 +290,13 @@ class CustomTargetCreateView(TargetCreateView):
 
                 name_lookup = form.cleaned_data['name'].replace('SN', '').replace('AT', '').replace(' ', '')
                 target_name_search = Target.objects.filter(Q(name__icontains=name_lookup) | Q(aliases__name__icontains=name_lookup)).distinct()
+
                 if target_name_search.count() > 0.0:
                     logger.info('Target with name {} already exists'.format(form.cleaned_data['name']))
                     form.errors['name'] = ['Target found with same name']
                     return super().form_invalid(form)
-                
+
+
                 groups = [g.name for g in form.cleaned_data['groups']]
                 self.object = form.save(form)
 
