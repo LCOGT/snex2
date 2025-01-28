@@ -121,15 +121,15 @@ def _get_tns_params(target):
         result = json.dumps(parsed, indent=4)
 
         result = json.loads(result)
-        discoverydate = result['data']['reply']['discoverydate']
-        discoverymag = result['data']['reply']['discoverymag']
-        discoveryfilt = result['data']['reply']['discmagfilter']['name']
+        discoverydate = result['data']['discoverydate']
+        discoverymag = result['data']['discoverymag']
+        discoveryfilt = result['data']['discmagfilter']['name']
 
 
         nondets = {}
         dets = {}
 
-        photometry = result['data']['reply']['photometry']
+        photometry = result['data']['photometry']
         for phot in photometry:
             remarks = phot['remarks']
             if 'Last non detection' in remarks:
