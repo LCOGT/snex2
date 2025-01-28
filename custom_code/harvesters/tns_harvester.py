@@ -20,8 +20,15 @@ def get(term):
         get_data = {'api_key': api_key, 'data': json.dumps(json_file)}
 
         response = requests.post(get_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data=get_data)
-        response = json.loads(response.text)['data']['reply']
-        return response
+        response_data = json.loads(response.text)['data']
+        # If TNS succeeds in finding an object, it returns a reply containing the `objname`.
+        # If TNS fails to find the object, it returns a reply in the form:
+        # {'name': {'110': {'message': 'No results found.', 'message_id': 110}},
+        # 'objid': {'110': {'message': 'No results found.', 'message_id': 110}}}
+        # In this case, we return None
+        if not response_data.get('objname'):
+            return None
+        return response_data
     except Exception as e:
         return [None,'Error message : \n'+str(e)]
 

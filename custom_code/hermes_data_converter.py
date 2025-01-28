@@ -8,6 +8,7 @@ class SNEx2HermesDataConverter(HermesDataConverter):
     def get_hermes_spectroscopy(self, datum):
         spectroscopy_row = super().get_hermes_spectroscopy(datum)
         # Add in SNEx specific ReducedDatumExtras here
+        snex1_id = None
         snex1_id_row = ReducedDatumExtra.objects.filter(
             data_type='spectroscopy',
             target_id=datum.target.id,
