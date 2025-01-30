@@ -94,13 +94,13 @@ def ingest_targets(q, stream_name):
 
             json_list = {'ra': str(ra), 'dec': str(dec), 'radius': '5', 'units': 'arcsec', 'internal_name': name}
             obj_list = requests.post(search_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(json_list)})
-            obj_list = json.loads(obj_list.text)['data']['reply']
+            obj_list = json.loads(obj_list.text)['data']
             if obj_list:
                 tns_name = obj_list[0]['objname']
 
                 class_json_list = {'objname': tns_name, 'photometry': 0, 'spectra': 0, 'classification': 1}
                 obj_data = requests.post(obj_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(class_json_list)})
-                obj_data = json.loads(obj_data.text)['data']['reply']
+                obj_data = json.loads(obj_data.text)['data']
                 if obj_data:
                     sn_class = obj_data['object_type']['name']
                 else:
@@ -183,13 +183,13 @@ class Command(BaseCommand):
 
             json_list = {'ra': str(obj.ra), 'dec': str(obj.dec), 'radius': '5', 'units': 'arcsec', 'internal_name': obj.name}
             obj_list = requests.post(search_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(json_list)})
-            obj_list = json.loads(obj_list.text)['data']['reply']
+            obj_list = json.loads(obj_list.text)['data']
             if obj_list:
                 tns_name = obj_list[0]['objname']
 
                 class_json_list = {'objname': tns_name, 'photometry': 1, 'spectra': 0, 'classification': 0}
                 obj_data = requests.post(obj_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(class_json_list)})
-                obj_data = json.loads(obj_data.text)['data']['reply']
+                obj_data = json.loads(obj_data.text)['data']
                 
                 det = json.loads(obj.detections)
                 nondet = json.loads(obj.nondetections)

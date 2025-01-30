@@ -124,6 +124,9 @@
     <a class="nav-link" id="manage-data-tab" href="#manage-data" role="tab" data-toggle="tab" style="color: #174460;">Manage Data</a>
   </li>
   <li class="nav-item">
+    <a class="nav-link" id="manage-sharing-tab" href="#manage-sharing" role="tab" data-toggle="tab" style="color: #174460;">Manage Sharing</a>
+  </li>
+  <li class="nav-item">
     <a class="nav-link" id="manage-groups-tab" href="#manage-groups" role="tab" data-toggle="tab" style="color: #174460;">Observing Runs</a>
   </li>
   <li class="nav-item">
@@ -210,6 +213,16 @@
 	  {% custom_upload_dataproduct object %}
 	{% endif %}
         {% dataproduct_list_for_target object %}
+      </div>
+      <div class="tab-pane" id="manage-sharing">
+        <h3>Create Persistent Share</h3>
+        <div id='target-persistent-share-create'>
+          {% create_persistent_share target %}
+        </div>
+        <h3>Manage Persistent Shares</h3>
+        <div id='target-persistent-share-table'>
+          {% persistent_share_table object %}
+        </div>
       </div>
       <div class="tab-pane" id="manage-groups">
         {% target_groups target %}
