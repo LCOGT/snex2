@@ -1867,20 +1867,49 @@ class HSTVisCalculator(TemplateView):
 
 
 def hst_vis_search(request):
-    # Retrieve the search query from the GET parameters
+    import sys
+
     query = request.GET.get('query', '')  # Default to an empty string if not found
 
-    # You can then use the query to filter your data, for example:
-    # results = MyModel.objects.filter(name__icontains=query)
-
+    ## parse query to see if coordinates were provided ##
+    element_list = query.split(',')
+    if len(element_list) > 1: # interpret as name, RA, dec
+        name = element_list[0].strip().replace(" ", "")
+        ra = element_list[1].strip()
+        dec = element_list[2].strip()
+        ra, dec = queryVisibility.decimal_to_ra_dec(ra, dec)
+    else:
+        name = query
+        ra, dec = None, None
 
     class QueryObject(object):
-        def __init__(self, objname):
+        def __init__(self, objname, ra, dec):
             self.name = objname
-            self.ra = "59.3567"
-            self.dec = "-46.1854"
+            self.ra = ra
+            self.dec = dec
+    
+    # os.system("python " + os.path.join(os.path.dirname(__file__), 'scripts')+"/queryVisibility.py " + f"{name} {ra} {dec}")
 
-    visibility_result = queryVisibility.get_visibility(QueryObject(query)) 
+
+    # import dill
+    # with open(os.path.join(os.path.dirname(__file__), 'scripts')+"/output.hst", "rb") as f:
+    #     visibility_result = dill.load(f)
+
+    # print("Loaded visibility result.")
+    # os.remove(os.path.join(os.path.dirname(__file__), 'scripts')+"/output.hst")
+
+    waiting = True
+    while waiting:
+        with open(queryVisibility.HST_TEMPLATE_DIR + ".queue", "r") as f:
+            if int(f.read()) == 0:
+                print("No one else using APT, running now.")
+                waiting = False
+            else:
+                print("Someone else using APT, waiting 10 seconds.")
+                import time
+                time.sleep(10)
+
+    visibility_result = queryVisibility.get_visibility(QueryObject(name, ra, dec))
 
     plot_html = plot_hst_ranges(visibility_result.output.vstart, visibility_result.output.vend)
     print(visibility_result.output.vis_string)

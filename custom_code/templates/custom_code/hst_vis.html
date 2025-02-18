@@ -137,14 +137,16 @@
         <h2 style="text-align: center; font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; font-size: 36px; color: #333; margin-bottom: 20px;">What can Hubble see?</h2>
             <div align="center" class="search-container" >
                 <form action="{% url 'custom_code:hst-vis-search' %}" method="GET" style="display: flex; align-items: center;">
-            <input type="text" name="query" class="search-input" placeholder="Type to search...">
+            <input type="text" name="query" class="search-input" placeholder="Search for target...">
             <button type="submit" class="search-button">
                 <img src="https://www.svgrepo.com/show/146737/hubble-space-telescope.svg" class="search-icon" alt="Hubble Space Telescope" style="width: 24px; height: 24px;">
             </button>
                 </form>
-            </div>
-            <br></br>
 
+            </div>
+<!--             </br>
+                            Search for e.g., SN2024abfo, 59.3567, -46.1854 or just object name, e.g., SN2024abfo
+            </br> -->
         <div id="loadingAnimation" style="display:none;">
             <p class="loading-text">
                 <span class="letter">Q</span>
