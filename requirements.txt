@@ -28,3 +28,4 @@ lasair
 importlib-metadata==4.13.0
 sep
 ligo.skymap
+dill
