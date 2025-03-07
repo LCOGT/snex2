@@ -35,11 +35,6 @@ priority_dict = {'NORMAL': 'normal',
                     'TIME_CRITICAL': 'time_critical',
                     'RAPID_RESPONSE': 'immediate_too'}
 
-
-def null_hook(*args, **kwargs):
-    pass
-
-
 @contextmanager
 def _get_session(db_address):
     Base = automap_base()
