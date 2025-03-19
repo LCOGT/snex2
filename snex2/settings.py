@@ -496,7 +496,10 @@ CSRF_TRUSTED_ORIGINS = ['https://test.supernova.exchange']
 TOM_REGISTRATION = {
     'REGISTRATION_AUTHENTICATION_BACKEND': 'django.contrib.auth.backends.AllowAllUsersModelBackend',
     'REGISTRATION_REDIRECT_PATTERN': 'home',
-    'SEND_APPROVAL_EMAILS': True
+    'REGISTRATION_STRATEGY': 'approval_required', 
+    'SEND_APPROVAL_EMAILS': False,  
+    'APPROVAL_SUBJECT': f'Your {TOM_NAME} registration has been approved!',  # Optional subject line of approval email, (Default Shown)
+    'APPROVAL_MESSAGE': f'Your {TOM_NAME} registration has been approved. You can log in <a href="mytom.com/login">here</a>.'  # Optional html-enabled body for approval email, (Default Shown)
 }
 
 MANAGERS = [
