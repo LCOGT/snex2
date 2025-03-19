@@ -89,7 +89,7 @@ Auth_Group = load_table('auth_group', db_address=_SNEX2_DB)
 Group_Perm = load_table('guardian_groupobjectpermission', db_address=_SNEX2_DB)
 Datum_Extra = load_table('custom_code_reduceddatumextra', db_address=_SNEX2_DB)
 Auth_User = load_table('auth_user', db_address=_SNEX2_DB)
-Auth_User_Group = load_table('auth_user_group', db_address=_SNEX2_DB)
+Auth_User_Group = load_table('auth_user_groups', db_address=_SNEX2_DB)
 
 ### Make a dictionary of the groups in the SNex1 db
 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
