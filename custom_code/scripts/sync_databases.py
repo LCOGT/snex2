@@ -347,10 +347,10 @@ def update_spec(action, db_address=_SNEX2_DB):
                             snex2_id = value.get('snex2_id', '')
                             spec = db_session.query(Datum).filter(and_(Datum.data_type=='spectroscopy', Datum.id==snex2_id)).first()
                             if not spec.data_product_id:
-                                spec.delete()
+                                db_session.delete(spec)
                             else: # Delete the associated DataProduct with the spectrum
                                 data_product_id = spec.data_product_id
-                                spec.delete()
+                                db_session.delete(spec)
                                 db_session.query(Data_Product).filter(Data_Product.id == data_product_id).delete()
                             
                             break

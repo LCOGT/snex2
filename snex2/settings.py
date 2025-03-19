@@ -121,15 +121,30 @@ DATA_SHARING = {
         'BASE_URL': os.getenv('HERMES_BASE_URL', 'https://hermes-dev.lco.global/'),
         'HERMES_API_KEY': os.getenv('HERMES_API_KEY', 'yourHermesAPIKeyHere'),
         'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', 'Your Default author list here'),
-        'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],
+        'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
-        # Change this to whatever filtered mapping your data has from filter ID in the datum to TNS filter ID
+        'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
+        # TODO: Set your proper filter mapping from datum filter to TNS filter name
         'FILTER_MAPPING': {
             'B': 'B-astrodon',
             'V': 'V-Johnson',
             'gp': 'g-P1',
             'rp': 'r-P1',
             'ip': 'i-P1'
+        },
+        # TODO: Set your proper instrument mapping from datum instrument to TNS instrument
+        'INSTRUMENT_MAPPING': {
+            'en06': 'FTN - FS02',
+            'en12': 'FTN - FS01',
+            'fa20': 'LCO1m - Sinistro',
+            'fa19': 'LCO1m - Sinistro',
+            'fa16': 'LCO1m - Sinistro',
+            'fa15': 'LCO1m - Sinistro',
+            'fa14': 'LCO1m - Sinistro',
+            'fa12': 'LCO1m - Sinistro',
+            'fa11': 'LCO1m - Sinistro',
+            'fa06': 'LCO1m - Sinistro',
+            'fa03': 'LCO1m - Sinistro'
         },
         'ENABLE_TNS': True
     },
@@ -225,7 +240,7 @@ USE_L10N = False
 
 USE_TZ = True
 
-DATETIME_FORMAT = 'Y-m-d H:m:s'
+DATETIME_FORMAT = 'Y-m-d H:i:s'
 DATE_FORMAT = 'Y-m-d'
 
 
@@ -456,7 +471,7 @@ REST_FRAMEWORK = {
 }
 
 TARGET_CLASSIFICATIONS = [
-    'Afterglow', 'Afterglow?', 'AGN', 'AGN?', 'Ca-rich', 'Ca-rich?', 'CV', 'CV?', 'Galaxy', 'ILRN', 'ILRN?', 'Junk', 'Kilonova', 'Kilonova?', 'LBV', 'LBV?', 'Nova', 'Nova?', 'SLSN-I', 'SLSN-I?', 'SLSN-II', 'SLSN-II?', 'SLSN-R', 'SLSN-R?', 'SN', 'SN I-faint', 'SN I-faint?', 'SN Ia', 'SN Ia 02cx-like', 'SN Ia 02cx-like?', 'SN Ia 02es-like', 'SN Ia 02es-like?', 'SN Ia 02ic-like', 'SN Ia 02ic-like?', 'SN Ia 91bg-like', 'SN Ia 91bg-like?', 'SN Ia 91T-like', 'SN Ia 91T-like?', 'SN Ia pec', 'SN Ia pec?', 'SN Ia?', 'SN Ib', 'SN Ib/c', 'SN Ib/c?', 'SN Ib?', 'SN Ibn', 'SN Ibn?', 'SN Ic', 'SN Ic-BL', 'SN Ic-BL?', 'SN Ic?', 'SN Icn', 'SN II', 'SN II?', 'SN IIb', 'SN IIb?', 'SN IIL', 'SN IIL?', 'SN IIn', 'SN IIn?', 'SN IIP', 'SN IIP?', 'SN?', 'Standard', 'TDE', 'TDE?', 'Unknown', 'Varstar', 'Varstar?'
+    'Afterglow', 'Afterglow?', 'AGN', 'AGN?', 'Ca-rich', 'Ca-rich?', 'CV', 'CV?', 'FBOT', 'Galaxy', 'ILRN', 'ILRN?', 'Junk', 'Kilonova', 'Kilonova?', 'LBV', 'LBV?', 'Nova', 'Nova?', 'SLSN-I', 'SLSN-I?', 'SLSN-II', 'SLSN-II?', 'SLSN-R', 'SLSN-R?', 'SN', 'SN I-faint', 'SN I-faint?', 'SN Ia', 'SN Ia 02cx-like', 'SN Ia 02cx-like?', 'SN Ia 02es-like', 'SN Ia 02es-like?', 'SN Ia 02ic-like', 'SN Ia 02ic-like?', 'SN Ia 91bg-like', 'SN Ia 91bg-like?', 'SN Ia 91T-like', 'SN Ia 91T-like?', 'SN Ia pec', 'SN Ia pec?', 'SN Ia?', 'SN Ib', 'SN Ib/c', 'SN Ib/c?', 'SN Ib?', 'SN Ibn', 'SN Ibn?', 'SN Ic', 'SN Ic-BL', 'SN Ic-BL?', 'SN Ic?', 'SN Icn', 'SN II', 'SN II?', 'SN IIb', 'SN IIb?', 'SN IIL', 'SN IIL?', 'SN IIn', 'SN IIn?', 'SN IIP', 'SN IIP?', 'SN?', 'Standard', 'TDE', 'TDE?', 'Unknown', 'Varstar', 'Varstar?'
 ]
 
 DEFAULT_GROUPS = [
@@ -567,6 +582,13 @@ ALERT_STREAMS = [
         },
     }
 ]
+
+CACHES = {
+     'default': {
+         'BACKEND': os.getenv('LOCAL_CACHE_BACKEND', 'django.core.cache.backends.locmem.LocMemCache'),
+         'LOCATION': 'locmem-cache'
+     }
+}
 
 if DEBUG:
     INTERNAL_IPS = [

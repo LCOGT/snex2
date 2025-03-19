@@ -111,3 +111,5 @@ custom_code/brokers/queries/queries.json
 gw/gw_config.ini
 
 db_data
+
+.DS_STORE

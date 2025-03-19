@@ -1,6 +1,7 @@
 from importlib import import_module
 from django.conf import settings
 from tom_dataproducts.models import ReducedDatum
+from tom_targets.sharing import continuous_share_data
 
 DEFAULT_DATA_PROCESSOR_CLASS = 'tom_dataproducts.data_processor.DataProcessor'
 
@@ -21,8 +22,7 @@ def run_custom_data_processor(dp, extras, rd_extras):
 
     reduced_datums = [ReducedDatum(target=dp.target, data_product=dp, data_type=dp.data_product_type,
                                    timestamp=datum[0], value=datum[1]) for datum in data]
-    ReducedDatum.objects.bulk_create(reduced_datums)
+    reduced_datums = ReducedDatum.objects.bulk_create(reduced_datums)
+    continuous_share_data(dp.target, reduced_datums)
 
     return ReducedDatum.objects.filter(data_product=dp), rd_extras
-
-

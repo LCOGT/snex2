@@ -30,7 +30,7 @@ class Command(BaseCommand):
         json_list = {'public_timestamp': date}
 
         obj_list = requests.post(search_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(json_list)})
-        obj_list = json.loads(obj_list.text)['data']['reply']
+        obj_list = json.loads(obj_list.text)['data']
 
         if not obj_list:
             logger.info('No TNS targets found, have a good day!')
@@ -45,7 +45,7 @@ class Command(BaseCommand):
 
             json_list = {'objname': obj['objname'], 'photometry': 1, 'spectra': 0}
             obj_data = requests.post(obj_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(json_list)})
-            obj_data = json.loads(obj_data.text)['data']['reply']
+            obj_data = json.loads(obj_data.text)['data']
 
             name = obj_data['objname']
             logger.info('Ingesting {name} . . .'.format(name=name))
