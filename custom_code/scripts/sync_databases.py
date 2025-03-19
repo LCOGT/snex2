@@ -77,6 +77,7 @@ Targets = load_table('targets', db_address=settings.SNEX1_DB_URL)
 Target_Names = load_table('targetnames', db_address=settings.SNEX1_DB_URL)
 Classifications = load_table('classifications', db_address=settings.SNEX1_DB_URL)
 Groups = load_table('groups', db_address=settings.SNEX1_DB_URL)
+Users = load_table('users', db_address=settings.SNEX1_DB_URL)
 
 ### And our SNex2 tables
 Data_Product = load_table('tom_dataproducts_dataproduct', db_address=_SNEX2_DB)
@@ -87,6 +88,8 @@ Targetname = load_table('tom_targets_targetname', db_address=_SNEX2_DB)
 Auth_Group = load_table('auth_group', db_address=_SNEX2_DB)
 Group_Perm = load_table('guardian_groupobjectpermission', db_address=_SNEX2_DB)
 Datum_Extra = load_table('custom_code_reduceddatumextra', db_address=_SNEX2_DB)
+Auth_User = load_table('auth_user', db_address=_SNEX2_DB)
+Auth_User_Group = load_table('auth_user_group', db_address=_SNEX2_DB)
 
 ### Make a dictionary of the groups in the SNex1 db
 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
@@ -143,6 +146,16 @@ def delete_row(table, id_, db_address=settings.SNEX1_DB_URL):
         db_session.query(table).filter(criteria).delete()
         db_session.commit()
 
+def powers_of_two(num):
+    powers = []
+    i = 1
+    while i <= num:
+        if i & num:
+            powers.append(i)
+        i <<= 1
+    return powers
+
+
 def update_permissions(groupid, permissionid, objectid, contentid):
     """
     Updates permissions of a specific group for a certain target
@@ -155,14 +168,6 @@ def update_permissions(groupid, permissionid, objectid, contentid):
     objectid: int, the row id of the object
     contentid: int, the content id in the SNex2 db for this object
     """
-    def powers_of_two(num):
-        powers = []
-        i = 1
-        while i <= num:
-            if i & num:
-                powers.append(i)
-            i <<= 1
-        return powers
     target_groups = powers_of_two(groupid)
     
     with get_session(db_address=_SNEX2_DB) as db_session:
@@ -602,6 +607,72 @@ def update_target_extra(action, db_address=_SNEX2_DB):
             raise #continue
 
 
+def update_users(action, db_address=_SNEX2_DB):
+    """
+    Update the snex 2 db when a users registers or changes their username/password in the
+    snex 1 db.
+
+    Parameters
+    ----------
+    action: str, action that was done on the users table ['update', 'insert', 'delete']
+    """
+    user_changes = query_db_changes('users', action, db_address=settings.SNEX1_DB_URL)
+    for change in user_changes:
+        try:
+            row_id = change.rowid
+            user_row = get_current_row(Users, row_id, db_address=settings.SNEX1_DB_URL)
+            if action == 'delete':
+                old_username = change.locator
+                with get_session(db_address=db_address) as db_session:
+                    db_session.query(Auth_User).filter(Auth_User.username == old_username).delete()
+                    db_session.commit()
+
+            elif action == 'insert':
+                with get_session(db_address=db_address) as db_session:
+                    newuser = Auth_User(username=user_row.name, 
+                                        password='crypt$$'+user_row.password,
+                                        first_name = user_row.firstname,
+                                        last_name = user_row.lastname,
+                                        email = user_row.email,
+                                        is_staff=False,
+                                        is_active=True,
+                                        is_superuser=False,
+                                        date_joined=user_row.datecreated)
+                    db_session.add(newuser)
+                    db_session.flush()
+                    
+                    ### Put the new user in the correct groups
+                    affiliated_group_idcodes = powers_of_two(user_row.groupidcode)
+                    for g_name, g_id in snex1_groups.items():
+                        if g_id in affiliated_group_idcodes:
+                            snex2_groupid = db_session.query(Auth_Group).filter(Auth_Group.name==g_name).first().id
+                            new_auth_user_group = Auth_User_Group(
+                                    user_id=newuser.id,
+                                    group_id=snex2_groupid)
+                            db_session.add(new_auth_user_group)
+
+                    db_session.commit()
+
+            elif action == 'update':
+                old_username = change.locator
+                with get_session(db_address=db_address) as db_session:
+                    db_session.query(Auth_User).filter(
+                        Auth_User.username==old_username
+                    ).update(
+                        {'username': user_row.name,
+                         'password': 'crypt$$'+user_row.pw,
+                         'first_name': user_row.firstname,
+                         'last_name': user_row.lastname,
+                         'email': user_row.email}
+                    )
+                    db_session.commit()
+
+            delete_row(Db_Changes, change.id, db_address=settings.SNEX1_DB_URL)
+
+        except:
+            raise
+
+
 def run():
     """
     Migrates all changes from the SNex1 db to the SNex2 db,
@@ -609,6 +680,7 @@ def run():
     """
     actions = ['delete', 'insert', 'update']
     for action in actions:
+        update_users(action, db_address=_SNEX2_DB)
         update_target(action, db_address=_SNEX2_DB)
         update_target_extra(action, db_address=_SNEX2_DB)
         update_phot(action, db_address=_SNEX2_DB)

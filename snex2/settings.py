@@ -403,6 +403,7 @@ HOOKS = {
     'sync_comment_with_snex1': 'custom_code.hooks.sync_comment_with_snex1',
     'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
     'ingest_gw_galaxy_into_snex1': 'gw.hooks.ingest_gw_galaxy_into_snex1',
+    'sync_users_with_snex1': 'custom_code.hooks.sync_users_with_snex1',
 }
 
 

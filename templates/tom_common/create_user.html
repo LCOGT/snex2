@@ -11,7 +11,7 @@
   </div>
 </nav>
 {% if object %}
-<form action="{% url 'user-update' object.id %}" method="POST">
+<form action="{% url 'custom_code:custom-user-update' object.id %}" method="POST">
 {% else %}
 <form action="{% url 'user-create' %}" method="POST">
 {% endif %}

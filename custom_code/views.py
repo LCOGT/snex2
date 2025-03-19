@@ -9,7 +9,7 @@ from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView
 from django.views.generic.detail import DetailView
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
 from django.template.context import RequestContext
 from django_comments.models import Comment
@@ -45,8 +45,11 @@ from custom_code.thumbnails import make_thumb
 from .forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm
 from tom_targets.views import TargetCreateView
 from tom_common.hooks import run_hook
+
+from tom_common.views import UserUpdateView
 from tom_dataproducts.views import DataProductUploadView, DataProductDeleteView
 from tom_dataproducts.exceptions import InvalidFileFormatException
+
 from custom_code.processors.data_processor import run_custom_data_processor
 from guardian.shortcuts import assign_perm
 
@@ -319,6 +322,39 @@ class CustomTargetCreateView(TargetCreateView):
             'groups': Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
             **dict(self.request.GET.items())
         }
+    
+
+class CustomUserUpdateView(UserUpdateView):
+
+    def get_success_url(self):
+        """
+        Returns the redirect URL for a successful update. If the current user is a superuser, returns the URL for the
+        user list. Otherwise, returns the URL for updating the current user.
+
+        :returns: URL for user list or update user
+        :rtype: str
+        """
+        if self.request.user.is_superuser:
+            return reverse_lazy('user-list')
+        else:
+            return reverse_lazy('custom_code:custom-user-update', kwargs={'pk': self.request.user.id})
+
+    def dispatch(self, *args, **kwargs):
+        """
+        Directs the class-based view to the correct method for the HTTP request method. Ensures that non-superusers
+        are not incorrectly updating the profiles of other users.
+        """
+        if not self.request.user.is_superuser and self.request.user.id != self.kwargs['pk']:
+            return redirect('custom_code:custom-user-update', self.request.user.id)
+        else:
+            return super().dispatch(*args, **kwargs)
+
+    def form_valid(self, form):
+        old_username = self.get_object().username
+        print('IN NEW VIEW WITH USERNAME', old_username)
+        super().form_valid(form)
+        run_hook('sync_users_with_snex1', self.get_object(), False, old_username)
+        return redirect(self.get_success_url())
 
 
 class CustomDataProductUploadView(DataProductUploadView):

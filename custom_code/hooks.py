@@ -901,3 +901,55 @@ def get_standards_from_snex1(target_id):
         )
 
     return [dict(r._mapping) for r in standard_info]
+
+
+def sync_users_with_snex1(user, created=False, old_username=''):
+    """
+    Sync a new or updated user with SNEx1
+    
+    Parameters
+    ----------
+    user: User database object
+    created: boolean, True if this user was just created
+    old_username: str, to track the old username of the user prior to update
+    """
+
+    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+
+        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
+        Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
+
+        # Get all groups this user belongs to
+        groups = user.groups.all()
+
+        # Get the idcodes from the groups in the group_list
+        groupidcode = 0
+        for group in groups:
+            groupidcode += int(db_session.query(Groups).filter(Groups.name==group.name).first().idcode)
+
+        if created:
+            newuser = Users(
+                name=user.username,
+                pw=user.password, ### Hash?
+                groupidcode=groupidcode,
+                firstname=user.first_name,
+                lastname=user.last_name,
+                email=user.email,
+                datecreated=user.date_joined
+            )
+            db_session.add(newuser)
+            db_session.commit()
+
+        else:
+            db_session.query(Users).filter(
+                Users.username==old_username
+            ).update(
+                {'name': user.username,
+                'pw': 'crypt$$'+user.password,
+                'firstname': user.first_name,
+                'lastname': user.last_name,
+                'email': user.email}
+            )
+            db_session.commit()
+
+    logger.info('Synced user {} with SNEx1'.format(user.username)) 
