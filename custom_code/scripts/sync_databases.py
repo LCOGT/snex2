@@ -174,8 +174,8 @@ def update_permissions(groupid, permissionid, objectid, contentid):
         for g_name, g_id in snex1_groups.items():
             if g_id in target_groups:
                 snex2_groupid = db_session.query(Auth_Group).filter(Auth_Group.name==g_name).first().id
-                update_permission = db_session.add(Group_Perm(object_pk=str(objectid), content_type_id=contentid, group_id = snex2_groupid, permission_id = permissionid))
-    db_session.commit()
+                db_session.add(Group_Perm(object_pk=str(objectid), content_type_id=contentid, group_id = snex2_groupid, permission_id = permissionid))
+        db_session.flush()
 
 
 def update_phot(action, db_address=_SNEX2_DB):
@@ -487,7 +487,20 @@ def update_target(action, db_address=_SNEX2_DB):
                 elif action=='insert':
                     existing_target_query = db_session.query(Target).filter(criteria).first()
                     if not existing_target_query:
-                        db_session.add(Target(id=target_id, name=t_name, ra=t_ra, dec=t_dec, modified=t_modified, created=t_created, type='SIDEREAL', epoch=2000, scheme=''))
+                        db_session.add(
+                            Target(
+                                id=target_id, 
+                                name=t_name, 
+                                ra=t_ra, 
+                                dec=t_dec, 
+                                modified=t_modified, 
+                                created=t_created, 
+                                type='SIDEREAL', 
+                                epoch=2000, 
+                                scheme='',
+                                permissions='PRIVATE'
+                            )
+                        )
                         if 'postgresql' in db_address:
                             db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
                         update_permissions(t_groupid, 47, target_id, 12) #Change target
