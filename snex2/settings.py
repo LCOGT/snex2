@@ -387,24 +387,44 @@ TARGET_PERMISSIONS_ONLY = False
 # for example: OPEN_URLS = ['/', '/about']
 OPEN_URLS = ['/snex2/tnstargets/', '/pipeline-upload/photometry-upload/']
 
-HOOKS = {
-    'target_post_save': 'custom_code.hooks.target_post_save',
-    'observation_change_state': 'tom_common.hooks.observation_change_state',
-    'targetextra_post_save': 'custom_code.hooks.targetextra_post_save',
-    'targetname_post_save': 'custom_code.hooks.targetname_post_save',
-    'sync_observation_with_snex1': 'custom_code.hooks.sync_observation_with_snex1',
-    'sync_sequence_with_snex1': 'custom_code.hooks.sync_sequence_with_snex1',
-    'cancel_sequence_in_snex1': 'custom_code.hooks.cancel_sequence_in_snex1',
-    'update_reminder_in_snex1': 'custom_code.hooks.update_reminder_in_snex1',
-    'approve_sequence_in_snex1': 'custom_code.hooks.approve_sequence_in_snex1',
-    'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
-    'change_interest_in_snex1': 'custom_code.hooks.change_interest_in_snex1',
-    'sync_paper_with_snex1': 'custom_code.hooks.sync_paper_with_snex1',
-    'sync_comment_with_snex1': 'custom_code.hooks.sync_comment_with_snex1',
-    'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
-    'ingest_gw_galaxy_into_snex1': 'gw.hooks.ingest_gw_galaxy_into_snex1',
-    'sync_users_with_snex1': 'custom_code.hooks.sync_users_with_snex1',
-}
+if DEBUG:
+    HOOKS = {
+        'target_post_save': '',
+        'observation_change_state': '',
+        'targetextra_post_save': '',
+        'targetname_post_save': '',
+        'sync_observation_with_snex1': '',
+        'sync_sequence_with_snex1': '',
+        'cancel_sequence_in_snex1': '',
+        'update_reminder_in_snex1': '',
+        'approve_sequence_in_snex1': '',
+        'find_images_from_snex1': '',
+        'change_interest_in_snex1': '',
+        'sync_paper_with_snex1': '',
+        'sync_comment_with_snex1': '',
+        'cancel_gw_obs': '',
+        'ingest_gw_galaxy_into_snex1': '',
+        'sync_users_with_snex1': '',
+    }
+else:
+    HOOKS = {
+        'target_post_save': 'custom_code.hooks.target_post_save',
+        'observation_change_state': 'tom_common.hooks.observation_change_state',
+        'targetextra_post_save': 'custom_code.hooks.targetextra_post_save',
+        'targetname_post_save': 'custom_code.hooks.targetname_post_save',
+        'sync_observation_with_snex1': 'custom_code.hooks.sync_observation_with_snex1',
+        'sync_sequence_with_snex1': 'custom_code.hooks.sync_sequence_with_snex1',
+        'cancel_sequence_in_snex1': 'custom_code.hooks.cancel_sequence_in_snex1',
+        'update_reminder_in_snex1': 'custom_code.hooks.update_reminder_in_snex1',
+        'approve_sequence_in_snex1': 'custom_code.hooks.approve_sequence_in_snex1',
+        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
+        'change_interest_in_snex1': 'custom_code.hooks.change_interest_in_snex1',
+        'sync_paper_with_snex1': 'custom_code.hooks.sync_paper_with_snex1',
+        'sync_comment_with_snex1': 'custom_code.hooks.sync_comment_with_snex1',
+        'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
+        'ingest_gw_galaxy_into_snex1': 'gw.hooks.ingest_gw_galaxy_into_snex1',
+        'sync_users_with_snex1': 'custom_code.hooks.sync_users_with_snex1',
+    }
 
 
 BROKERS = {
@@ -497,7 +517,7 @@ TOM_REGISTRATION = {
     'REGISTRATION_AUTHENTICATION_BACKEND': 'django.contrib.auth.backends.AllowAllUsersModelBackend',
     'REGISTRATION_REDIRECT_PATTERN': 'home',
     'REGISTRATION_STRATEGY': 'approval_required', 
-    'SEND_APPROVAL_EMAILS': False,  
+    'SEND_APPROVAL_EMAILS': True,  
     'APPROVAL_SUBJECT': f'Your {TOM_NAME} registration has been approved!',  # Optional subject line of approval email, (Default Shown)
     'APPROVAL_MESSAGE': f'Your {TOM_NAME} registration has been approved. You can log in <a href="mytom.com/login">here</a>.'  # Optional html-enabled body for approval email, (Default Shown)
 }
@@ -506,15 +526,15 @@ MANAGERS = [
     ('SNEx Secure', 'sne@lco.global')
 ]
 
+MANAGERS = [("SNe", "sne@lco.global")]
+EMAIL_SUBJECT_PREFIX = f'[{TOM_NAME}]'
 EMAIL_HOST = 'smtp.gmail.com'
-
 EMAIL_PORT = 587
-
 EMAIL_USE_TLS = True
-
+EMAIL_USE_SSL = False
 EMAIL_HOST_USER = 'snex@lco.global'
-
 EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
 
