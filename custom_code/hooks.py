@@ -945,7 +945,7 @@ def sync_users_with_snex1(user, created=False, old_username=''):
                 Users.username==old_username
             ).update(
                 {'name': user.username,
-                'pw': 'crypt$$'+user.password,
+                # 'pw': 'crypt$$'+user.password,
                 'firstname': user.first_name,
                 'lastname': user.last_name,
                 'email': user.email}

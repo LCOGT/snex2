@@ -1,0 +1,18 @@
+{% extends 'tom_common/base.html' %}
+{% load bootstrap4 static %}
+{% block title %}Approve user{% endblock %}
+{% block additional_css %}
+<link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
+{% endblock %}
+{% block content %}
+<form action="{% url 'snex2-approve-user' object.id %}" method="POST">
+{% csrf_token %}
+{% bootstrap_form form %}
+{% bootstrap_formset form.user_profile_formset %}
+{% buttons %}
+  <button type="submit" class="btn btn-primary">
+    Approve
+  </button>
+{% endbuttons %}
+</form>
+{% endblock %}
