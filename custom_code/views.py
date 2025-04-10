@@ -36,6 +36,7 @@ from astropy.time import Time
 from datetime import datetime, date, timedelta
 import json
 from io import StringIO
+import random
 
 import plotly.graph_objs as go
 from tom_dataproducts.models import ReducedDatum, DataProduct
@@ -584,6 +585,18 @@ def cancel_observation(obs):
     # Get the last non-template ObservationRecord and cancel it through the facility
     if 'template' in obs.observation_id:
         last_obs = obs.observationgroup_set.first().observation_records.all().exclude(observation_id__contains='template').order_by('-id').first()
+        if last_obs is None:
+            # Sequence was canceled before a request was submitted to the observation portal
+            obs_group = obs.observationgroup_set.first()
+            dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
+            dynamic_cadence.active = False
+            dynamic_cadence.save()
+            
+            # Update the end date in the template record
+            obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+            obs.save()
+            
+            return True
     else:
         last_obs = obs
     
@@ -643,7 +656,7 @@ def observation_sequence_cancel_view(request):
         else:
             run_hook('cancel_sequence_in_snex1', snex_id, userid=request.user.id)
     except:
-        logger.error('This sequence was not in SNEx1 or was not canceled')
+        logger.error('This sequence was not in SNEx1 or was not canceled', exc_info=True)
     
     response_data = {'success': 'Modified'}
     return HttpResponse(json.dumps(response_data), content_type='application/json')
@@ -1396,6 +1409,9 @@ class CustomObservationCreateView(ObservationCreateView):
             
         else:
             snex_id = run_hook('sync_sequence_with_snex1', form.serialize_parameters(), group_names, userid=self.request.user.id)
+
+        if settings.DEBUG and snex_id is None:
+            snex_id = str(random.randint(0, 99999))
         
         # Change the name of the observation group, if one was created
         if len(records) > 1 or form.cleaned_data.get('cadence_strategy'):
