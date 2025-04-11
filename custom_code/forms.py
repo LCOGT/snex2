@@ -19,13 +19,27 @@ from django.contrib.auth.models import User, Group
 from django.db import transaction
 from crispy_forms.helper import FormHelper
 
+import re
+
 class CustomTargetCreateForm(SiderealTargetCreateForm):
 
+    def validate_target_name(target_name):
+        if target_name and target_name[0].isdigit():
+            raise ValidationError(f"Target name ({target_name}) cannot start with a number")
+
+
+
     sciencetags = forms.ModelMultipleChoiceField(ScienceTags.objects.all().order_by(Lower('tag')), widget=forms.CheckboxSelectMultiple, label='Science Tags', required=False)
+    name = forms.CharField(validators=[validate_target_name])
+
 
     def clean(self):
         cleaned_data = super().clean()
         self.cleaned_data = cleaned_data
+
+        name = self.cleaned_data.get('name')
+        # if re.match(r'^\d', name):  
+        #     raise ValidationError("Target name cannot start with a number.")
 
 
     def __init__(self, *args, **kwargs):
