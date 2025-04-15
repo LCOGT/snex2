@@ -643,7 +643,7 @@ def update_users(action, db_address=_SNEX2_DB):
             elif action == 'insert':
                 with get_session(db_address=db_address) as db_session:
                     newuser = Auth_User(username=user_row.name, 
-                                        password='crypt$$'+user_row.password,
+                                        password='crypt$$'+user_row.pw,
                                         first_name = user_row.firstname,
                                         last_name = user_row.lastname,
                                         email = user_row.email,
