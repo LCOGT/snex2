@@ -967,7 +967,7 @@ def observation_summary(context, target=None, time='previous'):
             ### Get any comments associated with this observation group
             content_type_id = ContentType.objects.get(model='observationgroup').id
             comments = Comment.objects.filter(object_pk=obsgroup.id, content_type_id=content_type_id).order_by('id')
-            comment_list = ['{}: {}'.format(User.objects.get(username=comment.user_name).first_name, comment.comment) for comment in comments]
+            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
 
             parameters.append({'title': 'LCO Sequence'+title_suffix,
                                'summary': parameter_string,
@@ -1066,7 +1066,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
     if not comment:
         comment_str = ''
     else:
-        comment_str = '{}: {}'.format(User.objects.get(username=comment.user_name).first_name, comment.comment)
+        comment_str = '{}: {}'.format(comment.user.first_name, comment.comment)
     
     parameter = observation.parameters
     if parameter.get('observation_type', '') == 'IMAGING':
@@ -1342,7 +1342,7 @@ def dash_spectra_page(context, target):
 
                 content_type_id = ContentType.objects.get(model='reduceddatum').id
                 comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(User.objects.get(username=comment.user_name).first_name, comment.comment) for comment in comments]
+                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
                 spec_extras['comments'] = comment_list
             
             else:
@@ -1360,7 +1360,7 @@ def dash_spectra_page(context, target):
 
                 content_type_id = ContentType.objects.get(model='reduceddatum').id
                 comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(User.objects.get(username=comment.user_name).first_name, comment.comment) for comment in comments]
+                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
                 spec_extras['comments'] = comment_list
         else:
             spec_extras = {}
