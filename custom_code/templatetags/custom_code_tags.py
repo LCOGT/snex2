@@ -26,7 +26,6 @@ from astropy.coordinates import get_moon, get_sun, SkyCoord, AltAz
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-import os
 
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
@@ -1877,7 +1876,7 @@ def lightcurve_with_extras(target, user):
 def test_display_thumbnail(context, target):
     
     from os import listdir
-    from os.path import isdir, isfile, join
+    from os.path import isfile, join
     
     if not settings.DEBUG:
         #NOTE: Production
