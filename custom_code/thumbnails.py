@@ -372,8 +372,12 @@ def getdata(filename, region=None, skip=0, ext=0):
     f.close()
 
     # scale the data as necessary
-    if bscale: section *= bscale
-    if bzero: section += bzero
+    try:
+        if bscale: section *= bscale
+        if bzero: section += bzero
+    except:
+        if bscale: section *= int(bscale)
+        if bzero: section += int(bzero)
 
     return section
 

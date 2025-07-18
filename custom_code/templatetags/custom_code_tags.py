@@ -1599,8 +1599,6 @@ def target_details(context, target):
 
 @register.inclusion_tag('custom_code/image_slideshow.html', takes_context=True)
 def image_slideshow(context, target):
-    request = context['request']
-    user = context['user']
 
     ### Get a list of all the image filenames for this target
     if not settings.DEBUG:
@@ -1613,19 +1611,21 @@ def image_slideshow(context, target):
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
         #NOTE: Development
-        filepaths = ['/test/' for i in range(8)]
-        filenames = ['coj1m011-fa12-20210216-0239-e91' for i in range(8)]
-        dates = ['2020-08-03', '2020-08-02', '2020-08-01', '2020-07-31', '2020-07-30', 
-                 '2020-07-29', '2020-07-28', '2020-07-27']
-        teles = ['1m' for i in range(8)]
-        filters = ['ip', 'ip', 'rp', 'rp', 'gp', 'gp', 'V', 'V']
-        exptimes = [str(round(299.5)) + 's' for i in range(8)]
-        psfxs = [9999 for i in range(8)]
-        psfys = [9999 for i in range(8)]
-    
-    if not filenames or not os.path.isdir('data/thumbs/'):
-        return {'target': target,
-                'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})}
+        if settings.DOWNLOAD_TEST_THUMBNAIL:
+            try:
+                filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
+            except Exception as e:
+                logger.warning("Downloading test image from archive failed", exc_info=e)
+                return {
+                    'target': target,
+                    'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
+                }
+            
+        else:
+            return {
+                'target': target,
+                'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
+            }
     
     thumbdict = [(json.dumps({'filename': filenames[i],
                    'filepath': filepaths[i],
@@ -1889,22 +1889,23 @@ def test_display_thumbnail(context, target):
                     'bottom_images': []}
 
     else:
- 
         #NOTE: Development
-        filepaths = ['/test/' for i in range(8)]
-        filenames = ['coj1m011-fa12-20210216-0239-e91' for i in range(8)]
-        dates = ['2020-08-03', '2020-08-02', '2020-08-01', '2020-07-31', '2020-07-30', 
-                 '2020-07-29', '2020-07-28', '2020-07-27']
-        teles = ['1m' for i in range(8)]
-        filters = ['ip', 'ip', 'rp', 'rp', 'gp', 'gp', 'V', 'V']
-        exptimes = [str(round(299.5)) + 's' for i in range(8)]
-        psfxs = [9999 for i in range(8)]
-        psfys = [9999 for i in range(8)]
-
-    if not filenames or not isdir('data/thumbs/'):
-        return {'top_images': [],
-                'bottom_images': []}
-
+        if settings.DOWNLOAD_TEST_THUMBNAIL:
+            try:
+                filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
+            except Exception as e:
+                logger.warning("Downloading test image from archive failed", exc_info=e)
+                return {
+                    "top_images": [],
+                    "bottom_images": [],
+                }
+            
+        else:
+            return {
+                "top_images": [],
+                "bottom_images": [],
+            }
+    
     thumbs = [f for f in listdir('data/thumbs/') if isfile(join('data/thumbs/', f))]
     top_images = []
     bottom_images = [] 
