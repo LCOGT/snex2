@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 register = template.Library()
 
+
 @register.inclusion_tag('custom_code/airmass_collapse.html')
 def airmass_collapse(target):
     interval = 30 #min
@@ -140,7 +141,6 @@ def airmass_plot(context):
     }
 
 def get_24hr_airmass(target, interval, airmass_limit, halimit=4.8):
-
     plot_data = []
     
     start = Time(datetime.datetime.utcnow())
@@ -297,7 +297,6 @@ def generic_lightcurve_plot(target, user):
 
 @register.inclusion_tag('custom_code/lightcurve.html', takes_context=True)
 def lightcurve(context, target):
-    
     plot_data = generic_lightcurve_plot(target, context['request'].user)         
 
     layout = go.Layout(
@@ -310,10 +309,10 @@ def lightcurve(context, target):
         #width=500
     )
     if plot_data:
-      return {
-          'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
-      }
+        return {
+            'target': target,
+            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+        }
     else:
         return {
             'target': target,
@@ -323,10 +322,9 @@ def lightcurve(context, target):
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_collapse(target, user):
-    
     plot_data = generic_lightcurve_plot(target, user)     
     spec = ReducedDatum.objects.filter(target=target, data_type='spectroscopy')
-    
+
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -362,7 +360,6 @@ def lightcurve_collapse(target, user):
 
 @register.inclusion_tag('custom_code/moon.html')
 def moon_vis(target):
-
     day_range = 30
     times = Time(
         [str(datetime.datetime.utcnow() + datetime.timedelta(days=delta))
@@ -404,7 +401,7 @@ def moon_vis(target):
     figure = offline.plot(
         go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False
     )
-   
+
     return {'plot': figure}
 
 
@@ -497,10 +494,10 @@ def spectra_plot(target, dataproduct=None):
         margin=dict(l=30, r=10, b=30, t=40),
     )
     if plot_data:
-      return {
-          'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
-      }
+        return {
+            'target': target,
+            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+        }
     else:
         return {
             'target': target,
@@ -554,10 +551,10 @@ def spectra_collapse(target):
         plot_bgcolor='white'
     )
     if plot_data:
-      return {
-          'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs='cdn')
-      }
+        return {
+            'target': target,
+            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs='cdn')
+        }
     else:
         return {
             'target': target,
@@ -627,7 +624,6 @@ def get_target_tags(target):
 def custom_upload_dataproduct(context, obj):
     user = context['user']
     initial = {}
-    choices = {}
     if isinstance(obj, Target):
         initial['target'] = obj
         initial['referrer'] = reverse('tom_targets:detail', args=(obj.id,))
@@ -706,7 +702,7 @@ def dash_lightcurve(context, target, width, height):
                 papers_used_in.append(paper_string)
         if group and group not in reducer_groups:
             reducer_groups.append(group)
-   
+
         if de_value.get('final_reduction', '')==True:
             final_reduction = True
             final_reduction_datumid = de_value.get('data_product_id', '')
@@ -865,28 +861,27 @@ def observation_summary(context, target=None, time='previous'):
     """
     if target:
         if settings.TARGET_PERMISSIONS_ONLY:
-            observations = target.observationrecord_set.all()
+            observations = target.observationrecord_set.all().prefetch_related('observationgroup_set', 'observationgroup_set__dynamiccadence_set')
         else:
             observations = get_objects_for_user(
                                 context['request'].user,
                                 'tom_observations.view_observationrecord',
-                                ).filter(target=target)
+                                ).filter(target=target).prefetch_related('observationgroup_set', 'observationgroup_set__dynamiccadence_set')
     else:
-        observations = ObservationRecord.objects.all()
+        observations = ObservationRecord.objects.all().prefetch_related('observationgroup_set', 'observationgroup_set__dynamiccadence_set')
 
     observations = observations.order_by('parameters__start')
 
     if time == 'ongoing':
-        cadences = DynamicCadence.objects.filter(active=True, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
-    
+        observation_groups = {obsgroup for observation in observations for obsgroup in observation.observationgroup_set.all() for cadence in obsgroup.dynamiccadence_set.all() if cadence.active}
     else:
         if time == 'pending':
             observations = observations.filter(observation_id='template pending')
-        cadences = DynamicCadence.objects.filter(active=False, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
-    
+        observation_groups = {obsgroup for observation in observations for obsgroup in observation.observationgroup_set.all() for cadence in obsgroup.dynamiccadence_set.all() if not cadence.active}
+
     parameters = []
-    for cadence in cadences:
-        obsgroup = ObservationGroup.objects.get(id=cadence.observation_group_id)
+    content_type_id = ContentType.objects.get(model='observationgroup').id
+    for obsgroup in observation_groups:
         #Check if the request is pending, and if so skip it
         pending_obs = obsgroup.observation_records.all().filter(observation_id='template pending').first()
         if not pending_obs and time == 'pending':
@@ -943,11 +938,11 @@ def observation_summary(context, target=None, time='previous'):
                 parameter_string += '(rapid response) '
 
             instrument_dict = {'2M0-FLOYDS-SCICAM': 'Floyds',
-                               '1M0-SCICAM-SINISTRO': 'Sinistro',
-                               '2M0-SCICAM-MUSCAT': 'Muscat',
-                               '2M0-SPECTRAL-AG': 'Spectral',
-                               '0M4-SCICAM-SBIG': 'SBIG',
-                               '0M4-SCICAM-QHY600': 'QHY',
+                            '1M0-SCICAM-SINISTRO': 'Sinistro',
+                            '2M0-SCICAM-MUSCAT': 'Muscat',
+                            '2M0-SPECTRAL-AG': 'Spectral',
+                            '0M4-SCICAM-SBIG': 'SBIG',
+                            '0M4-SCICAM-QHY600': 'QHY',
             }
 
             if parameter.get('instrument_type') in instrument_dict.keys():
@@ -965,15 +960,14 @@ def observation_summary(context, target=None, time='previous'):
             parameter_string += requested_str
 
             ### Get any comments associated with this observation group
-            content_type_id = ContentType.objects.get(model='observationgroup').id
-            comments = Comment.objects.filter(object_pk=obsgroup.id, content_type_id=content_type_id).order_by('id')
+            comments = Comment.objects.filter(object_pk=obsgroup.id, content_type_id=content_type_id).select_related('user').order_by('id')
             comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
 
             parameters.append({'title': 'LCO Sequence'+title_suffix,
-                               'summary': parameter_string,
-                               'comments': comment_list,
-                               'observation': observation.id,
-                               'group': obsgroup.id})
+                            'summary': parameter_string,
+                            'comments': comment_list,
+                            'observation': observation.id,
+                            'group': obsgroup.id})
 
         # Now do Gemini observations
         elif parameter.get('facility', '') == 'Gemini':
@@ -985,10 +979,10 @@ def observation_summary(context, target=None, time='previous'):
                 parameter_string = 'Gemini photometry of g (' + str(parameter.get('g_exptime', '')) + 's), r (' + str(parameter.get('r_exptime', '')) + 's), i (' + str(parameter.get('i_exptime', '')) + 's), and z (' + str(parameter.get('z_exptime', '')) + 's), with airmass < ' + str(parameter.get('max_airmass', '')) + ', scheduled on ' + str(observation.created).split(' ')[0]
 
             parameters.append({'title': 'Gemini Sequence',
-                               'summary': parameter_string,
-                               'comments': [''], #No comment functionality for Gemini yet
-                               'observation': observation.id,
-                               'group': obsgroup.id})
+                            'summary': parameter_string,
+                            'comments': [''], #No comment functionality for Gemini yet
+                            'observation': observation.id,
+                            'group': obsgroup.id})
 
     return {
         'observations': observations,
@@ -1366,13 +1360,13 @@ def dash_spectra_page(context, target):
             spec_extras = {}
 
         plot_list.append({'dash_context': {'spectrum_id': {'value': spectrum.id},
-                                           'target_redshift': {'value': z},
-                                           'min-flux': {'value': min_flux},
-                                           'max-flux': {'value': max_flux}
+                                        'target_redshift': {'value': z},
+                                        'min-flux': {'value': min_flux},
+                                        'max-flux': {'value': max_flux}
                                         },
-                          'time': str(spectrum.timestamp).split('+')[0],
-                          'spec_extras': spec_extras,
-                          'spectrum': spectrum
+                        'time': str(spectrum.timestamp).split('+')[0],
+                        'spec_extras': spec_extras,
+                        'spectrum': spectrum
                         })
     return {'plot_list': plot_list,
             'target': target,
@@ -1437,7 +1431,7 @@ def reference_status(target):
 
 @register.inclusion_tag('custom_code/interested_persons.html')
 def interested_persons(target, user, page):
-    interested_persons_query = InterestedPersons.objects.filter(target=target)
+    interested_persons_query = InterestedPersons.objects.filter(target=target).select_related('user')
     interested_persons = [u.user.get_full_name() for u in interested_persons_query]
     try:
         current_user_name = user.get_full_name()
@@ -1449,9 +1443,9 @@ def interested_persons(target, user, page):
         # Make a new list for interesting targets
         interesting_list = TargetList(name='Interesting Targets')
         interesting_list.save()
-    
+
     interesting_list_id = int(interesting_list.id)
-      
+
     return {'target': target,
             'interested_persons': interested_persons,
             'interesting_list_id': interesting_list_id,
@@ -1586,7 +1580,7 @@ def target_details(context, target):
         description = description_query.value
     else:
         description = ''
- 
+
     return {'target': target,
             'request': request,
             'user': user,
@@ -1615,7 +1609,7 @@ def image_slideshow(context, target):
         filepaths = ['/test/' for i in range(8)]
         filenames = ['coj1m011-fa12-20210216-0239-e91' for i in range(8)]
         dates = ['2020-08-03', '2020-08-02', '2020-08-01', '2020-07-31', '2020-07-30', 
-                 '2020-07-29', '2020-07-28', '2020-07-27']
+                '2020-07-29', '2020-07-28', '2020-07-27']
         teles = ['1m' for i in range(8)]
         filters = ['ip', 'ip', 'rp', 'rp', 'gp', 'gp', 'V', 'V']
         exptimes = [str(round(299.5)) + 's' for i in range(8)]
@@ -1627,20 +1621,20 @@ def image_slideshow(context, target):
                 'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})}
     
     thumbdict = [(json.dumps({'filename': filenames[i],
-                   'filepath': filepaths[i],
-                   'date': dates[i],
-                   'tele': teles[i],
-                   'filter': filters[i],
-                   'exptime': exptimes[i],
-                   'psfx': psfxs[i],
-                   'psfy': psfys[i]
+                'filepath': filepaths[i],
+                'date': dates[i],
+                'tele': teles[i],
+                'filter': filters[i],
+                'exptime': exptimes[i],
+                'psfx': psfxs[i],
+                'psfy': psfys[i]
                 }),
                 #filenames[i]) for i in range(len(filenames))]
                 '{} ({} {})'.format(dates[i], filters[i], exptimes[i])) for i in range(len(filenames))]
 
     initial = {'filenames': filenames[0],
-               'zoom': 1.0,
-               'sigma': 4.0
+            'zoom': 1.0,
+            'sigma': 4.0
             }
 
     choices = {'filenames': thumbdict}
@@ -1667,7 +1661,6 @@ def image_slideshow(context, target):
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_fits(target, user, filt=False, days=None):
-    
     filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
         'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
@@ -1679,8 +1672,8 @@ def lightcurve_fits(target, user, filt=False, days=None):
         datums = ReducedDatum.objects.filter(target=target, data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
     else:
         datums = get_objects_for_user(user,
-                                      'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(
+                                    'tom_dataproducts.view_reduceddatum',
+                                    klass=ReducedDatum.objects.filter(
                                         target=target,
                                         data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
 
@@ -1692,7 +1685,7 @@ def lightcurve_fits(target, user, filt=False, days=None):
             value = json.loads(value)
 
         current_filt = filter_translate.get(value.get('filter', ''), '')
-   
+
         photometry_data.setdefault(current_filt, {})
         photometry_data[current_filt].setdefault('time', []).append(rd.timestamp)
         photometry_data[current_filt].setdefault('magnitude', []).append(value.get('magnitude',None))
@@ -1711,7 +1704,7 @@ def lightcurve_fits(target, user, filt=False, days=None):
                 color=get_color(filter_name, filter_translate)
             )
         ) for filter_name, filter_values in photometry_data.items()] 
-     
+
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -1752,7 +1745,7 @@ def lightcurve_fits(target, user, filt=False, days=None):
 
     start_date = min(photometry_to_fit['time'])
     start_jd = Time(start_date, scale='utc').jd
-   
+
     times = photometry_to_fit['time']
     mags = []
     errs = []
@@ -1812,7 +1805,6 @@ def lightcurve_fits(target, user, filt=False, days=None):
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_with_extras(target, user):
-    
     filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
         'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
@@ -1861,10 +1853,10 @@ def lightcurve_with_extras(target, user):
                 )
 
     if plot_data:
-      return {
-          'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
-      }
+        return {
+            'target': target,
+            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+        }
     else:
         return {
             'target': target,
@@ -2043,23 +2035,22 @@ def broker_target_lightcurve(target):
 
 @register.inclusion_tag('tom_dataproducts/partials/photometry_datalist_for_target.html', takes_context=True)
 def snex2_get_photometry_data(context, target, target_share=False):
-
     user = context['request'].user
     photometry = get_objects_for_user(user,
-                                  'tom_dataproducts.view_reduceddatum',
-                                  klass=ReducedDatum.objects.filter(
+                                'tom_dataproducts.view_reduceddatum',
+                                klass=ReducedDatum.objects.filter(
                                     target=target,
                                     data_type=settings.DATA_PRODUCT_TYPES['photometry'][0],
-                                    value__has_key='filter')).order_by('timestamp')
+                                    value__has_key='filter')).order_by('timestamp').prefetch_related('message')
     data = []
     for reduced_datum in photometry:
         rd_data = {'id': reduced_datum.pk,
-                   'timestamp': reduced_datum.timestamp,
-                   'source': reduced_datum.source_name,
-                   'filter': reduced_datum.value.get('filter', ''),
-                   'telescope': reduced_datum.value.get('telescope', ''),
-                   'error': reduced_datum.value.get('error', reduced_datum.value.get('magnitude_error', ''))
-                   }
+                'timestamp': reduced_datum.timestamp,
+                'source': reduced_datum.source_name,
+                'filter': reduced_datum.value.get('filter', ''),
+                'telescope': reduced_datum.value.get('telescope', ''),
+                'error': reduced_datum.value.get('error', reduced_datum.value.get('magnitude_error', ''))
+                }
 
         if 'limit' in reduced_datum.value.keys():
             rd_data['magnitude'] = reduced_datum.value['limit']
@@ -2079,10 +2070,10 @@ def snex2_get_photometry_data(context, target, target_share=False):
         data.append(rd_data)
 
     initial = {'submitter': user,
-               'target': target,
-               'data_type': 'photometry',
-               'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'TOM Toolkit')}.",
-               }
+            'target': target,
+            'data_type': 'photometry',
+            'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'TOM Toolkit')}.",
+            }
     form = DataShareForm(initial=initial)
     form.fields['share_title'].widget = forms.HiddenInput()
     form.fields['data_type'].widget = forms.HiddenInput()
@@ -2091,11 +2082,11 @@ def snex2_get_photometry_data(context, target, target_share=False):
     hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
 
     context = {'data': data,
-               'target': target,
-               'target_data_share_form': form,
-               'sharing_destinations': form.fields['share_destination'].choices,
-               'hermes_sharing': hermes_sharing,
-               'target_share': target_share}
+            'target': target,
+            'target_data_share_form': form,
+            'sharing_destinations': form.fields['share_destination'].choices,
+            'hermes_sharing': hermes_sharing,
+            'target_share': target_share}
     return context
 
 
@@ -2146,4 +2137,3 @@ def time_usage_bars(context, telescope):
             'usedbarwidth': usedbarwidth,
             'tooltip': tooltip,
     }
- 
