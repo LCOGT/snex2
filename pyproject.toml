@@ -18,6 +18,7 @@ dependencies = [
     "astropy>=5",
     "astroquery",
     "requests",
+    "numpy<2",
 ]
 
 
