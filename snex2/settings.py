@@ -314,11 +314,11 @@ TARGET_TYPE = 'SIDEREAL'
 FACILITIES = {
     'LCO': {
         'portal_url': 'https://observe.lco.global',
-        'api_key': os.environ['LCO_APIKEY'],
+        'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
     },
     'SOAR': {
         'portal_url': 'https://observe.lco.global',
-        'api_key': os.environ['LCO_APIKEY'],
+        'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
     },
     'GEM': {
         'portal_url': {
