@@ -19,6 +19,24 @@ dependencies = [
     "astroquery",
     "requests",
     "numpy<2",
+    "lcogt_logging",
+    "django_plotly_dash",
+    "tom_registration",
+    "tom_scimma",
+    "tom_nonlocalizedevents",
+    "tom_alertstreams",
+    "tom_tns",
+    "sep",
+    "requests_oauthlib",
+    "dash",
+    "dash_core_components",
+    "dash_html_components",
+    "dash_table"
+]
+
+[project.optional-dependencies]
+dev = [
+    "django-debug-toolbar",
 ]
 
 
