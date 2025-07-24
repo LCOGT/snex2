@@ -14,6 +14,7 @@ from datetime import datetime, date, timedelta
 import numpy as np
 from django.contrib.auth.models import User
 from django.conf import settings
+import urllib
 
 from sqlalchemy import create_engine, pool, and_, or_, not_
 from sqlalchemy.orm import sessionmaker, aliased
@@ -953,3 +954,51 @@ def sync_users_with_snex1(user, created=False, old_username=''):
             db_session.commit()
 
     logger.info('Synced user {} with SNEx1'.format(user.username)) 
+
+def download_test_image_from_archive():
+    """
+    Download a test image from the LCO archive to test image thumbnails.
+    NOTE: Only runs in dev
+    Creates any directories needed to store the image and thumbnail.
+    Checks if the image exists and if not, downloads it from the archive.
+    Returns the image parameters needed to display its thumbnail.
+    """
+    ### Check if thumbnail directory exists, and if not make it
+    thumbnail_directory = "data/fits/"
+    if not os.path.isdir(thumbnail_directory):
+        os.makedirs(os.path.join(settings.BASE_DIR, thumbnail_directory))
+
+    if not os.path.isdir("data/thumbs/"):
+        os.mkdir(os.path.join(settings.BASE_DIR, "data/thumbs/"))
+
+    ### Check if test image already exists in thumbnail directory,
+    ### and if not download it
+    test_thumbnail_basename = "elp0m414-sq31-20250713-0229-e00" # A lovely M31 image
+    if not any([test_thumbnail_basename in f for f in os.listdir(thumbnail_directory)]):
+        ### GET it from the archive
+        results = requests.get(f"https://archive-api.lco.global/frames/?basename_exact={test_thumbnail_basename}").json()["results"]
+        thumbnail_url = results[0]["url"]
+        thumbnail_filename = results[0]["filename"]
+        # Download image and funpack it
+        urllib.request.urlretrieve(thumbnail_url, os.path.join(settings.BASE_DIR, thumbnail_directory, thumbnail_filename))
+        os.system('funpack -D '+ thumbnail_directory + thumbnail_filename)
+
+    filepaths = ['']
+    filenames = [test_thumbnail_basename]
+    dates = ["2025-07-13"]
+    teles = ["0m4"]
+    filters = ["V"]
+    exptimes = ["240s"]
+    psfxs = [9999]
+    psfys = [9999]
+    
+    return (
+        filepaths, 
+        filenames, 
+        dates, 
+        teles, 
+        filters, 
+        exptimes, 
+        psfxs, 
+        psfys,
+    )

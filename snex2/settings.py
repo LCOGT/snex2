@@ -405,6 +405,7 @@ if DEBUG:
         'cancel_gw_obs': '',
         'ingest_gw_galaxy_into_snex1': '',
         'sync_users_with_snex1': '',
+        'download_test_image_from_archive': 'custom_code.hooks.download_test_image_from_archive',
     }
 else:
     HOOKS = {
@@ -605,6 +606,8 @@ ALERT_STREAMS = [
         },
     }
 ]
+
+DOWNLOAD_TEST_THUMBNAIL = True
 
 CACHES = {
      'default': {
