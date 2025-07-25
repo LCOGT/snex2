@@ -68,7 +68,6 @@ urlpatterns = [
     path('floyds-inbox/', FloydsInboxView.as_view(), name='floyds-inbox'),
     path('nonlocalizedevents/sequence/<int:id>/obs/', EventSequenceGalaxiesTripletView.as_view(), name='nonlocalizedevents-sequence-triplets'),
     path('nonlocalizedevents/galaxies/<int:id>/obs/', GWFollowupGalaxyTripletView.as_view(), name='nonlocalizedevents-galaxies-triplets'),
-    path('', include('tom_registration.registration_flows.approval_required.urls', namespace='registration')),
     path('snex2/accounts/approve/<int:pk>/', SNEx2UserApprovalView.as_view(), name="snex2-approve-user"),
     path('snex2/', include('custom_code.urls')),
     path('nonlocalizedevents/', include('tom_nonlocalizedevents.urls', namespace='nonlocalizedevents')),
