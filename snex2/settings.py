@@ -351,8 +351,12 @@ TARGET_PERMISSIONS_ONLY = False
 
 # URLs that should be allowed access even with AUTH_STRATEGY = LOCKED
 # for example: OPEN_URLS = ['/', '/about']
-OPEN_URLS = ['/accounts/register/','/snex2/tnstargets/', '/pipeline-upload/photometry-upload/','/static/tom_common/css/main_snexclone.css']
-
+OPEN_URLS = [
+    '/accounts/register/',
+    '/snex2/tnstargets/',
+    '/pipeline-upload/photometry-upload/',
+    '/static/tom_common/css/main_snexclone.css',
+]
 if DEBUG:
     HOOKS = {
         'target_post_save': '',
