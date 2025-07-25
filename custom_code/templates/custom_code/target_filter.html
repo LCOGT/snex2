@@ -1,0 +1,32 @@
+{% extends 'tom_common/base.html' %}
+{% load comments bootstrap4 tom_common_extras targets_extras observation_extras dataproduct_extras static cache %}
+{% load custom_code_tags %}
+{/* % load airmass_tags % */}
+{% block title %} Target filtering {% endblock %}
+{% block additional_css %}
+
+
+<link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
+{% endblock %}
+{% block content %}
+
+<h1>Target Filtering</h1>
+  <form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit" class="btn btn-primary">Filter</button>
+</form>
+
+  <hr/>
+
+  <h2>Results</h2>
+  <p>Number of targets: {{ targets|length }}</p>
+  <ul>
+    {% for t in targets %}
+      <li>{{ t.name }}{% if t.some_field %} ({{ t.some_field }}){% endif %}</li>
+    {% empty %}
+      <li><em>No targets found.</em></li>
+    {% endfor %}
+  </ul>
+
+{% endblock %}

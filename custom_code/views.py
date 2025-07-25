@@ -63,9 +63,18 @@ from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_registration.registration_flows.approval_required.views import UserApprovalView
 import base64
 
+import django_filters
+from django import forms
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Submit, Layout, Div, HTML
+from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
+
 import logging
 
 logger = logging.getLogger(__name__)
+
+## debug
+logger.setLevel(logging.DEBUG) 
 
 # Create your views here.
 
@@ -1910,3 +1919,64 @@ def get_target_standards_view(request):
     data_dict = {"html_from_view": html}
 
     return JsonResponse(data=data_dict, safe=False)
+
+
+## Target filtering ##
+class TargetFilterForm(forms.Form):
+    # define all fields
+    apply_name_filter = forms.BooleanField(required=False)
+    target_name = forms.CharField(required=False)
+
+    apply_ra_filter = forms.BooleanField(required=False)
+    max_ra = forms.FloatField(required=False)
+    min_ra = forms.FloatField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.helper = FormHelper()
+        # self.helper.layout = self.get_layout()
+
+    # def get_layout(self):
+    #     pass
+
+class TargetFilteringView(FormView):
+    template_name = 'custom_code/target_filter.html'
+    form_class    = TargetFilterForm
+    success_url   = reverse_lazy('custom_code:target_filter')
+
+
+    def form_valid(self, form):
+        cd = form.cleaned_data
+        filters = Q()                 
+
+        if cd.get('apply_name_filter'):
+            name = cd.get('target_name', '').strip()
+            if name:
+                name_q = (
+                    Q(name__icontains=name)| Q(aliases__name__icontains=name) | Q(name__icontains=name.lower().replace('SN ', ''))| Q(aliases__name__icontains=name.lower().replace('SN ', ''))
+                )
+                filters &= name_q
+
+        if cd.get('apply_ra_filter'):
+            h_min = cd.get('min_ra')
+            h_max = cd.get('max_ra')
+            if h_min is not None:
+                filters &= Q(ra__gte=h_min * 15.0)
+            if h_max is not None:
+                filters &= Q(ra__lte=h_max * 15.0)
+
+        target_match_list = Target.objects.filter(filters).distinct()
+
+        return self.render_to_response(
+            self.get_context_data(form=form, targets=target_match_list)
+        )
+
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.setdefault('targets', [])
+        return context
+
+
+
