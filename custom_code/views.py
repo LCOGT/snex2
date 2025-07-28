@@ -1972,7 +1972,8 @@ def get_target_standards_view(request):
 
 
 class TargetFilterForm(forms.Form):
-    # all your fields…
+
+    # create fields 
     apply_name_filter       = forms.BooleanField(required=False)
     target_name             = forms.CharField(required=False)
     apply_ra_filter         = forms.BooleanField(required=False)
@@ -1997,11 +1998,11 @@ class TargetFilterForm(forms.Form):
 
         self.helper = FormHelper(self)
         self.helper.form_method = 'post'
-        # Optional: add Bootstrap classes
         self.helper.form_class   = 'px-3 py-2 border rounded'
         self.helper.label_class  = 'font-weight-bold'
         self.helper.field_class  = 'mb-2'
 
+        # crispy layout
         self.helper.layout = Layout(
             Fieldset(
                 'Name filter',
@@ -2038,12 +2039,12 @@ class TargetFilterForm(forms.Form):
                 'Redshift',
                 Row(
                     Column('apply_redshift_filter', css_class='col-auto'),
-                    Column('min_red', css_class='col'),
-                    Column('max_red', css_class='col'),
+                    Column('min_redshift', css_class='col'),
+                    Column('max_redshift', css_class='col'),
                 ),
             ),
             Fieldset(
-                'Date created',
+                'Date created (YYYY-MM-DD)',
                 Row(
                     Column('apply_date_created_filter', css_class='col-auto'),
                     Column('date_created_min', css_class='col'),
