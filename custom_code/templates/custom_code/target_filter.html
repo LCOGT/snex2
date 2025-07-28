@@ -16,6 +16,43 @@
   {% crispy form %}
 </form>
 
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // map each checkbox → its related inputs
+  const filters = [
+    { cb: '#id_apply_name_filter',           ins: ['#id_target_name'] },
+    { cb: '#id_apply_ra_filter',             ins: ['#id_min_ra', '#id_max_ra'] },
+    { cb: '#id_apply_dec_filter',            ins: ['#id_min_dec', '#id_max_dec'] },
+    { cb: '#id_apply_class_filter',          ins: ['#id_class_name'] },
+    { cb: '#id_apply_class_exclude_filter',  ins: ['#id_class_exclude_name'] },
+    { cb: '#id_apply_redshift_filter',       ins: ['#id_min_red', '#id_max_red'] },
+    { cb: '#id_apply_date_created_filter',   ins: ['#id_date_created_min', '#id_date_created_max'] },
+  ];
+
+  filters.forEach(({cb, ins}) => {
+    const checkbox = document.querySelector(cb);
+    if (!checkbox) return;
+
+    const inputs = ins
+      .map(sel => document.querySelector(sel))
+      .filter(el => el);
+
+    // toggle disabled + muted styling
+    function update() {
+      inputs.forEach(input => {
+        input.disabled = !checkbox.checked;
+        input.classList.toggle('text-muted', !checkbox.checked);
+      });
+    }
+
+    // init & bind
+    checkbox.addEventListener('change', update);
+    update();
+  });
+});
+</script>
+
   <hr/>
 
 <h2>Results</h2>

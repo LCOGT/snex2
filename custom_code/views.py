@@ -1971,87 +1971,182 @@ def get_target_standards_view(request):
 
 
 
-class TargetFilterForm(forms.Form):
+# class TargetFilterForm(forms.Form):
 
-    # create fields 
-    apply_name_filter       = forms.BooleanField(required=False)
-    target_name             = forms.CharField(required=False)
-    apply_ra_filter         = forms.BooleanField(required=False)
-    min_ra                  = forms.FloatField(required=False)
-    max_ra                  = forms.FloatField(required=False)
-    apply_dec_filter        = forms.BooleanField(required=False)
-    min_dec                 = forms.FloatField(required=False)
-    max_dec                 = forms.FloatField(required=False)
-    apply_class_filter      = forms.BooleanField(required=False)
-    class_name              = forms.CharField(required=False)
+#     # create fields 
+#     apply_name_filter       = forms.BooleanField(required=False)
+#     target_name             = forms.CharField(required=False)
+#     apply_ra_filter         = forms.BooleanField(required=False)
+#     min_ra                  = forms.FloatField(required=False)
+#     max_ra                  = forms.FloatField(required=False)
+#     apply_dec_filter        = forms.BooleanField(required=False)
+#     min_dec                 = forms.FloatField(required=False)
+#     max_dec                 = forms.FloatField(required=False)
+#     apply_class_filter      = forms.BooleanField(required=False)
+#     class_name              = forms.CharField(required=False)
+#     apply_class_exclude_filter = forms.BooleanField(required=False)
+#     class_exclude_name      = forms.CharField(required=False)
+#     apply_redshift_filter   = forms.BooleanField(required=False)
+#     min_red                 = forms.FloatField(required=False)
+#     max_red                 = forms.FloatField(required=False)
+#     apply_date_created_filter = forms.BooleanField(required=False)
+#     date_created_min        = forms.CharField(required=False)
+#     date_created_max        = forms.CharField(required=False)
+
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+
+#         self.helper = FormHelper(self)
+#         self.helper.form_method = 'post'
+#         self.helper.form_class   = 'px-3 py-2 border rounded'
+#         self.helper.label_class  = 'font-weight-bold'
+#         self.helper.field_class  = 'mb-2'
+
+#         # crispy layout
+#         self.helper.layout = Layout(
+#             Fieldset(
+#                 'Name filter',
+#                 Row(
+#                     Column('apply_name_filter', css_class='col-auto'),
+#                     Column('target_name', css_class='col'),
+#                 ),
+#             ),
+#             Fieldset(
+#                 'Position filters',
+#                 Row(
+#                     Column('apply_ra_filter', css_class='col-auto'),
+#                     Column('min_ra', css_class='col'),
+#                     Column('max_ra', css_class='col'),
+#                 ),
+#                 Row(
+#                     Column('apply_dec_filter', css_class='col-auto'),
+#                     Column('min_dec', css_class='col'),
+#                     Column('max_dec', css_class='col'),
+#                 ),
+#             ),
+#             Fieldset(
+#                 'Classification',
+#                 Row(
+#                     Column('apply_class_filter', css_class='col-auto'),
+#                     Column('class_name', css_class='col'),
+#                 ),
+#                 Row(
+#                     Column('apply_class_exclude_filter', css_class='col-auto'),
+#                     Column('class_exclude_name', css_class='col'),
+#                 ),
+#             ),
+#             Fieldset(
+#                 'Redshift',
+#                 Row(
+#                     Column('apply_redshift_filter', css_class='col-auto'),
+#                     Column('min_redshift', css_class='col'),
+#                     Column('max_redshift', css_class='col'),
+#                 ),
+#             ),
+#             Fieldset(
+#                 'Date created (YYYY-MM-DD)',
+#                 Row(
+#                     Column('apply_date_created_filter', css_class='col-auto'),
+#                     Column('date_created_min', css_class='col'),
+#                     Column('date_created_max', css_class='col'),
+#                 ),
+#             ),
+#             Div(Submit('filter', 'Filter', css_class='btn-primary'), css_class='text-right mt-3')
+#         )
+
+
+
+class TargetFilterForm(forms.Form):
+    apply_name_filter        = forms.BooleanField(required=False)
+    target_name              = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'Name contains'}))
+    apply_ra_filter          = forms.BooleanField(required=False)
+    min_ra                   = forms.FloatField(required=False, widget=forms.NumberInput(attrs={'placeholder': 'Min RA'}))
+    max_ra                   = forms.FloatField(required=False, widget=forms.NumberInput(attrs={'placeholder': 'Max RA'}))
+    apply_dec_filter         = forms.BooleanField(required=False)
+    min_dec                  = forms.FloatField(required=False, widget=forms.NumberInput(attrs={'placeholder': 'Min Dec'}))
+    max_dec                  = forms.FloatField(required=False, widget=forms.NumberInput(attrs={'placeholder': 'Max Dec'}))
+    apply_class_filter       = forms.BooleanField(required=False)
+    class_name               = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'Class contains'}))
     apply_class_exclude_filter = forms.BooleanField(required=False)
-    class_exclude_name      = forms.CharField(required=False)
-    apply_redshift_filter   = forms.BooleanField(required=False)
-    min_red                 = forms.FloatField(required=False)
-    max_red                 = forms.FloatField(required=False)
+    class_exclude_name       = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'Exclude class'}))
+    apply_redshift_filter    = forms.BooleanField(required=False)
+    min_red                  = forms.FloatField(required=False, widget=forms.NumberInput(attrs={'placeholder': 'Min z'}))
+    max_red                  = forms.FloatField(required=False, widget=forms.NumberInput(attrs={'placeholder': 'Max z'}))
     apply_date_created_filter = forms.BooleanField(required=False)
-    date_created_min        = forms.CharField(required=False)
-    date_created_max        = forms.CharField(required=False)
+    date_created_min         = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'On or after (YYYY-MM-DD)'}))
+    date_created_max         = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'On or before (YYYY-MM-DD)'}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.helper = FormHelper(self)
         self.helper.form_method = 'post'
-        self.helper.form_class   = 'px-3 py-2 border rounded'
-        self.helper.label_class  = 'font-weight-bold'
-        self.helper.field_class  = 'mb-2'
+        self.helper.form_show_labels = False
 
-        # crispy layout
         self.helper.layout = Layout(
-            Fieldset(
-                'Name filter',
+            HTML('<h3 class="mb-3">Search Filters '
+                 '<small class="text-muted">(optional)</small></h3>'),
+            Div(
                 Row(
-                    Column('apply_name_filter', css_class='col-auto'),
-                    Column('target_name', css_class='col'),
+                    Column(
+                        # Column 1: Name & RA
+                        Row(
+                            Column('apply_name_filter', css_class='col-auto'),
+                            Column('target_name',         css_class='col'),
+                            css_class='form-row align-items-center mb-2'
+                        ),
+                        Row(
+                            Column('apply_ra_filter', css_class='col-auto'),
+                            Column('min_ra',           css_class='col'),
+                            Column('max_ra',           css_class='col'),
+                            css_class='form-row align-items-center mb-2'
+                        ),
+                        css_class='col-lg-4 col-md-6 mb-3'
+                    ),
+                    Column(
+                        # Column 2: Dec & Classification
+                        Row(
+                            Column('apply_dec_filter',                css_class='col-auto'),
+                            Column('min_dec',                         css_class='col'),
+                            Column('max_dec',                         css_class='col'),
+                            css_class='form-row align-items-center mb-2'
+                        ),
+                        Row(
+                            Column('apply_class_filter',              css_class='col-auto'),
+                            Column('class_name',                      css_class='col'),
+                            css_class='form-row align-items-center mb-2'
+                        ),
+                        Row(
+                            Column('apply_class_exclude_filter',      css_class='col-auto'),
+                            Column('class_exclude_name',              css_class='col'),
+                            css_class='form-row align-items-center'
+                        ),
+                        css_class='col-lg-4 col-md-6 mb-3'
+                    ),
+                    Column(
+                        # Column 3: Redshift & Date
+                        Row(
+                            Column('apply_redshift_filter',           css_class='col-auto'),
+                            Column('min_red',                         css_class='col'),
+                            Column('max_red',                         css_class='col'),
+                            css_class='form-row align-items-center mb-2'
+                        ),
+                        Row(
+                            Column('apply_date_created_filter',       css_class='col-auto'),
+                            Column('date_created_min',                css_class='col'),
+                            Column('date_created_max',                css_class='col'),
+                            css_class='form-row align-items-center'
+                        ),
+                        css_class='col-lg-4 col-md-6 mb-3'
+                    ),
+                    css_class='gx-3'
                 ),
+                css_class='bg-light p-4 rounded'
             ),
-            Fieldset(
-                'Position filters',
-                Row(
-                    Column('apply_ra_filter', css_class='col-auto'),
-                    Column('min_ra', css_class='col'),
-                    Column('max_ra', css_class='col'),
-                ),
-                Row(
-                    Column('apply_dec_filter', css_class='col-auto'),
-                    Column('min_dec', css_class='col'),
-                    Column('max_dec', css_class='col'),
-                ),
-            ),
-            Fieldset(
-                'Classification',
-                Row(
-                    Column('apply_class_filter', css_class='col-auto'),
-                    Column('class_name', css_class='col'),
-                ),
-                Row(
-                    Column('apply_class_exclude_filter', css_class='col-auto'),
-                    Column('class_exclude_name', css_class='col'),
-                ),
-            ),
-            Fieldset(
-                'Redshift',
-                Row(
-                    Column('apply_redshift_filter', css_class='col-auto'),
-                    Column('min_redshift', css_class='col'),
-                    Column('max_redshift', css_class='col'),
-                ),
-            ),
-            Fieldset(
-                'Date created (YYYY-MM-DD)',
-                Row(
-                    Column('apply_date_created_filter', css_class='col-auto'),
-                    Column('date_created_min', css_class='col'),
-                    Column('date_created_max', css_class='col'),
-                ),
-            ),
-            Div(Submit('filter', 'Filter', css_class='btn-primary'), css_class='text-right mt-3')
+            Div(
+                Submit('submit', 'Submit', css_class='btn btn-outline-light btn-lg'),
+                css_class='text-right mt-4'
+            )
         )
 
 class TargetFilteringView(FormView):
