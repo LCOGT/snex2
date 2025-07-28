@@ -280,6 +280,7 @@ TARGET_TYPE = 'SIDEREAL'
 FACILITIES = {
     'LCO': {
         'portal_url': 'https://observe.lco.global',
+        'archive_url': 'https://archive-api.lco.global/frames/',
         'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
     },
     'SOAR': {
