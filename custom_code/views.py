@@ -2,7 +2,7 @@ from django_filters.views import FilterView
 from django.shortcuts import redirect, render
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper
+from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery
 from django.db.models.functions import Cast
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.generic.base import TemplateView, RedirectView
@@ -66,8 +66,10 @@ import base64
 import django_filters
 from django import forms
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit, Layout, Div, HTML
+from crispy_forms.layout import Submit, Layout, Div, HTML, Fieldset, Row, Column
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
+
+
 
 import logging
 
@@ -1921,53 +1923,217 @@ def get_target_standards_view(request):
     return JsonResponse(data=data_dict, safe=False)
 
 
-## Target filtering ##
-class TargetFilterForm(forms.Form):
-    # define all fields
-    apply_name_filter = forms.BooleanField(required=False)
-    target_name = forms.CharField(required=False)
+# ## Target filtering ##
+# class TargetFilterForm(forms.Form):
+#     # define all fields
 
-    apply_ra_filter = forms.BooleanField(required=False)
-    max_ra = forms.FloatField(required=False)
-    min_ra = forms.FloatField(required=False)
+#     # name contains
+#     apply_name_filter = forms.BooleanField(required=False)
+#     target_name = forms.CharField(required=False)
+
+#     # RA range
+#     apply_ra_filter = forms.BooleanField(required=False)
+#     min_ra = forms.FloatField(required=False)
+#     max_ra = forms.FloatField(required=False)
+
+#     # Dec range
+#     apply_dec_filter = forms.BooleanField(required=False)
+#     min_dec = forms.FloatField(required=False)
+#     max_dec = forms.FloatField(required=False)
+
+#     # Classification contains
+#     apply_class_filter = forms.BooleanField(required=False)
+#     class_name = forms.CharField(required=False)
+
+#     # Classification doesn't contain
+#     apply_class_exclude_filter = forms.BooleanField(required=False)
+#     class_exclude_name = forms.CharField(required=False)
+
+#     # Dec range
+#     apply_redshift_filter = forms.BooleanField(required=False)
+#     min_red = forms.FloatField(required=False)
+#     max_red = forms.FloatField(required=False)
+
+#     # date created range YYYY-MM-DD
+#     apply_date_created_filter = forms.BooleanField(required=False)
+#     date_created_min = forms.CharField(required=False)
+#     date_created_max = forms.CharField(required=False)
+
+
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+
+#         self.helper = FormHelper()
+#         # self.helper.layout = self.get_layout()
+
+#     # def get_layout(self):
+#     #     pass
+
+
+
+class TargetFilterForm(forms.Form):
+    # all your fields…
+    apply_name_filter       = forms.BooleanField(required=False)
+    target_name             = forms.CharField(required=False)
+    apply_ra_filter         = forms.BooleanField(required=False)
+    min_ra                  = forms.FloatField(required=False)
+    max_ra                  = forms.FloatField(required=False)
+    apply_dec_filter        = forms.BooleanField(required=False)
+    min_dec                 = forms.FloatField(required=False)
+    max_dec                 = forms.FloatField(required=False)
+    apply_class_filter      = forms.BooleanField(required=False)
+    class_name              = forms.CharField(required=False)
+    apply_class_exclude_filter = forms.BooleanField(required=False)
+    class_exclude_name      = forms.CharField(required=False)
+    apply_redshift_filter   = forms.BooleanField(required=False)
+    min_red                 = forms.FloatField(required=False)
+    max_red                 = forms.FloatField(required=False)
+    apply_date_created_filter = forms.BooleanField(required=False)
+    date_created_min        = forms.CharField(required=False)
+    date_created_max        = forms.CharField(required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.helper = FormHelper()
-        # self.helper.layout = self.get_layout()
+        self.helper = FormHelper(self)
+        self.helper.form_method = 'post'
+        # Optional: add Bootstrap classes
+        self.helper.form_class   = 'px-3 py-2 border rounded'
+        self.helper.label_class  = 'font-weight-bold'
+        self.helper.field_class  = 'mb-2'
 
-    # def get_layout(self):
-    #     pass
+        self.helper.layout = Layout(
+            Fieldset(
+                'Name filter',
+                Row(
+                    Column('apply_name_filter', css_class='col-auto'),
+                    Column('target_name', css_class='col'),
+                ),
+            ),
+            Fieldset(
+                'Position filters',
+                Row(
+                    Column('apply_ra_filter', css_class='col-auto'),
+                    Column('min_ra', css_class='col'),
+                    Column('max_ra', css_class='col'),
+                ),
+                Row(
+                    Column('apply_dec_filter', css_class='col-auto'),
+                    Column('min_dec', css_class='col'),
+                    Column('max_dec', css_class='col'),
+                ),
+            ),
+            Fieldset(
+                'Classification',
+                Row(
+                    Column('apply_class_filter', css_class='col-auto'),
+                    Column('class_name', css_class='col'),
+                ),
+                Row(
+                    Column('apply_class_exclude_filter', css_class='col-auto'),
+                    Column('class_exclude_name', css_class='col'),
+                ),
+            ),
+            Fieldset(
+                'Redshift',
+                Row(
+                    Column('apply_redshift_filter', css_class='col-auto'),
+                    Column('min_red', css_class='col'),
+                    Column('max_red', css_class='col'),
+                ),
+            ),
+            Fieldset(
+                'Date created',
+                Row(
+                    Column('apply_date_created_filter', css_class='col-auto'),
+                    Column('date_created_min', css_class='col'),
+                    Column('date_created_max', css_class='col'),
+                ),
+            ),
+            Div(Submit('filter', 'Filter', css_class='btn-primary'), css_class='text-right mt-3')
+        )
 
 class TargetFilteringView(FormView):
     template_name = 'custom_code/target_filter.html'
     form_class    = TargetFilterForm
     success_url   = reverse_lazy('custom_code:target_filter')
 
-
     def form_valid(self, form):
         cd = form.cleaned_data
-        filters = Q()                 
+        filters = Q()
 
+        # annotate to get target extras
+        redshift_sq = TargetExtra.objects.filter(
+            target=OuterRef('pk'), key='redshift'
+        ).values('value')[:1]
+        class_sq = TargetExtra.objects.filter(
+            target=OuterRef('pk'), key='classification'
+        ).values('value')[:1]
+
+        qs = Target.objects.annotate(
+            redshift_extra=Cast(Subquery(redshift_sq), FloatField()),
+            classification_extra=Subquery(class_sq),
+        )
+
+        # name filter
         if cd.get('apply_name_filter'):
-            name = cd.get('target_name', '').strip()
+            name = cd.get('target_name','').strip()
             if name:
                 name_q = (
-                    Q(name__icontains=name)| Q(aliases__name__icontains=name) | Q(name__icontains=name.lower().replace('SN ', ''))| Q(aliases__name__icontains=name.lower().replace('SN ', ''))
+                    Q(name__icontains=name)
+                  | Q(aliases__name__icontains=name)
+                  | Q(name__icontains=name.lower().replace('SN ',''))
+                  | Q(aliases__name__icontains=name.lower().replace('SN ',''))
                 )
                 filters &= name_q
 
+        # RA filter
         if cd.get('apply_ra_filter'):
-            h_min = cd.get('min_ra')
-            h_max = cd.get('max_ra')
+            h_min = cd.get('min_ra'); h_max = cd.get('max_ra')
             if h_min is not None:
                 filters &= Q(ra__gte=h_min * 15.0)
             if h_max is not None:
                 filters &= Q(ra__lte=h_max * 15.0)
 
-        target_match_list = Target.objects.filter(filters).distinct()
+        # Date-created filter
+        if cd.get('apply_date_created_filter'):
+            from datetime import datetime
+            min_str = cd.get('date_created_min','').strip()
+            max_str = cd.get('date_created_max','').strip()
+            if min_str:
+                min_date = datetime.strptime(min_str, '%Y-%m-%d').date()
+                filters &= Q(created__date__gte=min_date)
+            if max_str:
+                max_date = datetime.strptime(max_str, '%Y-%m-%d').date()
+                filters &= Q(created__date__lte=max_date)
 
+        # classification contains
+        if cd.get('apply_class_filter'):
+            cls = cd.get('class_name','').strip()
+            if cls:
+                filters &= Q(classification_extra__icontains=cls)
+
+        # Classification doesn’t contain
+        if cd.get('apply_class_exclude_filter'):
+            excl = cd.get('class_exclude_name','').strip()
+            if excl:
+                filters &= ~Q(classification_extra__icontains=excl)
+
+        # Redshift range
+        if cd.get('apply_redshift_filter'):
+            min_z = cd.get('min_red'); max_z = cd.get('max_red')
+            if min_z is not None:
+                filters &= Q(redshift_extra__gte=min_z)
+            if max_z is not None:
+                filters &= Q(redshift_extra__lte=max_z)
+
+
+
+
+        # apply query
+        target_match_list = qs.filter(filters).distinct()
+
+        # return result
         return self.render_to_response(
             self.get_context_data(form=form, targets=target_match_list)
         )
@@ -1977,6 +2143,3 @@ class TargetFilteringView(FormView):
         context = super().get_context_data(**kwargs)
         context.setdefault('targets', [])
         return context
-
-
-

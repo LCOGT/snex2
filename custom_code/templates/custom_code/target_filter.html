@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load comments bootstrap4 tom_common_extras targets_extras observation_extras dataproduct_extras static cache %}
+{% load comments bootstrap4 crispy_forms_tags tom_common_extras targets_extras observation_extras dataproduct_extras static cache %}
 {% load custom_code_tags %}
 {/* % load airmass_tags % */}
 {% block title %} Target filtering {% endblock %}
@@ -13,20 +13,54 @@
 <h1>Target Filtering</h1>
   <form method="post">
   {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit" class="btn btn-primary">Filter</button>
+  {% crispy form %}
 </form>
 
   <hr/>
 
-  <h2>Results</h2>
-  <p>Number of targets: {{ targets|length }}</p>
-  <ul>
+<h2>Results</h2>
+<p>{{ targets|length }} objects found</p>
+
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Name(s)</th>
+      <th>RA</th>
+      <th>Dec</th>
+      <th>z</th>
+      <th>Type</th>
+      <th>Created</th>
+      <th>SNEx ID</th>
+     
+    </tr>
+  </thead>
+  <tbody>
     {% for t in targets %}
-      <li>{{ t.name }}{% if t.some_field %} ({{ t.some_field }}){% endif %}</li>
+      <tr>
+        
+        <td>
+          {{ t.name }}
+          {% for alias in t.aliases.all %}
+            <br><small class="text-muted">{{ alias.name }}</small>
+          {% endfor %}
+        </td>
+
+        <td>{{ t.ra|floatformat:6 }}</td>
+
+        <td>{{ t.dec }}</td>
+
+        <td>{{ t.redshift_extra|default:"—" }}</td>
+        <td>{{ t.classification_extra|default:"—" }}</td>
+
+        <td>{{ t.created|date:"Y-m-d" }}</td>
+
+        <td>{{ t.id }}</td>
+
+      </tr>
     {% empty %}
-      <li><em>No targets found.</em></li>
+      <tr><td colspan="7"><em>No targets found.</em></td></tr>
     {% endfor %}
-  </ul>
+  </tbody>
+</table>
 
 {% endblock %}
