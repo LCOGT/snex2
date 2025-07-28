@@ -2073,8 +2073,26 @@ class TargetFilterForm(forms.Form):
     min_red                  = forms.FloatField(required=False, widget=forms.NumberInput(attrs={'placeholder': 'Min z'}))
     max_red                  = forms.FloatField(required=False, widget=forms.NumberInput(attrs={'placeholder': 'Max z'}))
     apply_date_created_filter = forms.BooleanField(required=False)
-    date_created_min         = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'Min date (YYYY-MM-DD)'}))
-    date_created_max         = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'Max date (YYYY-MM-DD)'}))
+    date_created_min = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            attrs={
+                'type': 'date',
+                'placeholder': 'Min date'
+            }
+        ),
+        input_formats=['%Y-%m-%d'],
+    )
+    date_created_max = forms.DateField(
+        required=False,
+        widget=forms.DateInput(
+            attrs={
+                'type': 'date',
+                'placeholder': 'Max date'
+            }
+        ),
+        input_formats=['%Y-%m-%d'],
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
