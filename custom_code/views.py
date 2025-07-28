@@ -1716,18 +1716,15 @@ def make_thumbnail_view(request):
 def download_fits_view(request):
     token = settings.FACILITIES['LCO']['api_key']
     url = settings.FACILITIES['LCO']['archive_url']
-    t1 = time.time()
+    
     object_basename = json.loads(request.GET.get('filename'))['filename']
-    t2 = time.time()
-    print(f't2-t1: {t2-t1:0.2e}')
+
     results = requests.get(url,
                            headers={'Authorization': f'Token {token}'}, 
                            params={'basename_exact': object_basename, 'include_related_frames': False}).json()["results"]
-    t3 = time.time()
-    print(f't3-t2: {t3-t2:0.2f}')
+    
     data = requests.get(results[0]["url"]).content
-    t4 = time.time()
-    print(f't4-t3: {t4-t3:0.2f}')
+
     return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
     
 class InterestingTargetsView(ListView):
