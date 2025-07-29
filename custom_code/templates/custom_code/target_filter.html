@@ -1,0 +1,103 @@
+{% extends 'tom_common/base.html' %}
+{% load comments bootstrap4 crispy_forms_tags tom_common_extras targets_extras observation_extras dataproduct_extras static cache %}
+{% load custom_code_tags %}
+{/* % load airmass_tags % */}
+{% block title %} Target filtering {% endblock %}
+{% block additional_css %}
+
+
+<link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
+{% endblock %}
+{% block content %}
+
+<h1>Target Filtering</h1>
+  <form method="post">
+  {% csrf_token %}
+  {% crispy form %}
+</form>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // map each checkbox → its related inputs
+  const filters = [
+    { cb: '#id_apply_name_filter',           ins: ['#id_target_name'] },
+    { cb: '#id_apply_ra_filter',             ins: ['#id_min_ra', '#id_max_ra'] },
+    { cb: '#id_apply_dec_filter',            ins: ['#id_min_dec', '#id_max_dec'] },
+    { cb: '#id_apply_class_filter',          ins: ['#id_class_name'] },
+    { cb: '#id_apply_class_exclude_filter',  ins: ['#id_class_exclude_name'] },
+    { cb: '#id_apply_redshift_filter',       ins: ['#id_min_red', '#id_max_red'] },
+    { cb: '#id_apply_date_created_filter',   ins: ['#id_date_created_min', '#id_date_created_max'] },
+  ];
+
+  filters.forEach(({cb, ins}) => {
+    const checkbox = document.querySelector(cb);
+    if (!checkbox) return;
+
+    const inputs = ins
+      .map(sel => document.querySelector(sel))
+      .filter(el => el);
+
+    // toggle disabled + muted styling
+    function update() {
+      inputs.forEach(input => {
+        input.disabled = !checkbox.checked;
+        input.classList.toggle('text-muted', !checkbox.checked);
+      });
+    }
+
+    // init & bind
+    checkbox.addEventListener('change', update);
+    update();
+  });
+});
+</script>
+
+  <hr/>
+
+<h2>Results</h2>
+<p>{{ targets|length }} objects found</p>
+
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>RA</th>
+      <th>Dec</th>
+      <th>z</th>
+      <th>Type</th>
+      <th>Created</th>
+      <th>SNEx ID</th>
+     
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in targets %}
+      <tr>
+        
+        <td>
+          {{ t.name }}
+          {% for alias in t.aliases.all %}
+            <br><small class="text-muted">{{ alias.name }}</small>
+          {% endfor %}
+        </td>
+
+        <td>{{ t.ra|floatformat:6 }}</td>
+
+        <td>{{ t.dec }}</td>
+
+        <td>{{ t.redshift_extra|default:"—" }}</td>
+        <td>{{ t.classification_extra|default:"—" }}</td>
+
+        <td>{{ t.created|date:"Y-m-d" }}</td>
+
+        <td>{{ t.id }}</td>
+
+      </tr>
+    {% empty %}
+      <tr><td colspan="7"><em>No targets found.</em></td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

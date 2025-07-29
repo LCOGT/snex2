@@ -399,3 +399,4 @@ class ThumbnailForm(forms.Form):
         filename_choices = kwargs.pop('choices')['filenames']
         super(ThumbnailForm, self).__init__(*args, **kwargs)
         self.fields['filenames'].choices = filename_choices
+
