@@ -2212,15 +2212,13 @@ class TargetFilteringView(FormView):
         # Date-created filter
         if cd.get('apply_date_created_filter'):
             from datetime import datetime
-            min_str = cd.get('date_created_min','').strip()
-            max_str = cd.get('date_created_max','').strip()
-            if min_str:
-                min_date = datetime.strptime(min_str, '%Y-%m-%d').date()
-                filters &= Q(created__date__gte=min_date)
-            if max_str:
-                max_date = datetime.strptime(max_str, '%Y-%m-%d').date()
-                filters &= Q(created__date__lte=max_date)
-
+            min_date = cd.get('date_created_min')    # this is already a date or None
+            if min_date:
+                qs = qs.filter(created__date__gte=min_date)
+            max_date = cd.get('date_created_max')
+            if max_date:
+                qs = qs.filter(created__date__lte=max_date)
+                
         # classification contains
         if cd.get('apply_class_filter'):
             cls = cd.get('class_name','').strip()
