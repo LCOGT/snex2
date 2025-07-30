@@ -54,6 +54,7 @@ urlpatterns = [
     path('query-swift-observations/', query_swift_observations_view, name='query-swift-observations'),
     path('load-lc/', load_lightcurve_view, name='load-lc'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
+    path('download-fits/', download_fits_view, name='download-fits'),
     path('interesting-targets/', InterestingTargetsView.as_view(), name='interesting-targets'),
     path('load-spectra-page/', async_spectra_page_view, name='load-spectra-page'),
     path('load-upcoming-reminders/', async_scheduling_page_view, name='load-upcoming-reminders'),

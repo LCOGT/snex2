@@ -973,24 +973,31 @@ def download_test_image_from_archive():
 
     ### Check if test image already exists in thumbnail directory,
     ### and if not download it
-    test_thumbnail_basename = "elp0m414-sq31-20250713-0229-e00" # A lovely M31 image
-    if not any([test_thumbnail_basename in f for f in os.listdir(thumbnail_directory)]):
-        ### GET it from the archive
-        results = requests.get(f"https://archive-api.lco.global/frames/?basename_exact={test_thumbnail_basename}").json()["results"]
-        thumbnail_url = results[0]["url"]
-        thumbnail_filename = results[0]["filename"]
-        # Download image and funpack it
-        urllib.request.urlretrieve(thumbnail_url, os.path.join(settings.BASE_DIR, thumbnail_directory, thumbnail_filename))
-        os.system('funpack -D '+ thumbnail_directory + thumbnail_filename)
+    # 4 test images, first 3 are public, last is of 23ixf
+    test_thumbnail_basenames = ["elp1m008-fa16-20250725-0103-e91","elp0m414-sq31-20250713-0229-e00","ogg0m455-sq30-20250712-0249-e91","tfn0m436-sq33-20250718-0265-e91"]
+    for test_thumbnail_basename in test_thumbnail_basenames:
+        if not any([test_thumbnail_basename in f for f in os.listdir(thumbnail_directory)]):
+            ### GET it from the archive
+            token = settings.FACILITIES['LCO']['api_key']
+            url = settings.FACILITIES['LCO']['archive_url']
 
-    filepaths = ['']
-    filenames = [test_thumbnail_basename]
-    dates = ["2025-07-13"]
-    teles = ["0m4"]
-    filters = ["V"]
-    exptimes = ["240s"]
-    psfxs = [9999]
-    psfys = [9999]
+            results = requests.get(url, 
+                                headers={'Authorization': f'Token {token}'}, 
+                                params={'basename': test_thumbnail_basename}).json()["results"]
+            thumbnail_url = results[0]["url"]
+            thumbnail_filename = results[0]["filename"]
+            # Download image and funpack it
+            urllib.request.urlretrieve(thumbnail_url, os.path.join(settings.BASE_DIR, thumbnail_directory, thumbnail_filename))
+            os.system('funpack -D '+ thumbnail_directory + thumbnail_filename)
+
+    filepaths = ['','','','']
+    filenames = test_thumbnail_basenames
+    dates = ["2025-07-25","2025-07-13","2025-07-12","2025-07-11"]
+    teles = ["1m","0m4","0m4","0m4"]
+    filters = ["B","r","g","V"]
+    exptimes = ["300s","180s","120s","90s"]
+    psfxs = [9999,9999,9999,9999]
+    psfys = [9999,9999,9999,9999]
     
     return (
         filepaths, 
