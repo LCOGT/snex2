@@ -1,8 +1,6 @@
-version: '2'
 services:
     snex2-db:
         image: postgis/postgis:15-3.3-alpine
-#        image: postgres:11.1
         network_mode: bridge
         environment:
             POSTGRES_DB: "snex2"
@@ -12,9 +10,10 @@ services:
             - ${SNEX2_DB_DATA_PATH}:/var/lib/postgresql/data
         ports:
             - 5435:5432
-        #platform: linux/amd64
+        platform: linux/amd64
     snex2:
         image: lcogt/snex2:latest
+        platform: linux/amd64
         network_mode: bridge
         links:
             - "snex2-db:snex2-db"

@@ -1,17 +1,20 @@
 FROM python:3.11-slim
 
-ENTRYPOINT ["./run.sh"]
+RUN apt-get update && apt-get install -y \
+    git libpq-dev gcc gfortran mariadb-client \
+    libmariadb-dev libmagic-dev libcfitsio-bin libffi-dev libgsl-dev \
+    && apt-get autoclean && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install -y git libpq-dev gcc gfortran mariadb-client \
-    libmariadb-dev libmagic-dev libcfitsio-bin libffi-dev libgsl-dev && apt-get autoclean && rm -rf /var/lib/apt/lists/*
+WORKDIR /snex2
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 COPY . /snex2
 
-RUN pip3 install --upgrade pip
+RUN chmod +x ./run.sh
 
-RUN pip install numpy && pip install -r /snex2/requirements.txt
+RUN pip uninstall -y ligo.skymap && pip install ligo.skymap
 
-RUN pip uninstall -y ligo.skymap 
-RUN pip install ligo.skymap
-
-WORKDIR /snex2
+ENTRYPOINT ["./run.sh"]
