@@ -2099,6 +2099,12 @@ class TargetFilterForm(forms.Form):
         min_value=1,
         widget=forms.NumberInput(attrs={'placeholder': '≥ phot pts'})
     )
+    apply_spectra_count_filter = forms.BooleanField(required=False)
+    min_spectra_points = forms.IntegerField(
+        required=False,
+        min_value=1,
+        widget=forms.NumberInput(attrs={'placeholder': '≥ spectra'})
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2143,6 +2149,11 @@ class TargetFilterForm(forms.Form):
                         Row(
                             Column('apply_class_exclude_filter',      css_class='col-auto'),
                             Column('class_exclude_name',              css_class='col'),
+                            css_class='form-row align-items-center'
+                        ),
+                        Row( 
+                            Column('apply_spectra_count_filter', css_class='col-auto'),
+                            Column('min_spectra_points',         css_class='col'),
                             css_class='form-row align-items-center'
                         ),
                         css_class='col-lg-4 col-md-6 mb-3'
@@ -2198,11 +2209,13 @@ class TargetFilteringView(FormView):
 
 
         photometry_q = Q(reduceddatum__data_type='photometry') & Q(reduceddatum__value__has_key='magnitude')
+        spectroscopy_q = Q(reduceddatum__data_type='spectroscopy')
 
         qs = Target.objects.annotate(
             redshift_extra=Cast(Subquery(redshift_sq), FloatField()),
             classification_extra=Subquery(class_sq),
-            phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),  # NEW
+            phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
+            spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  # NEW
         )
 
         # name filter
@@ -2272,6 +2285,11 @@ class TargetFilteringView(FormView):
             nmin = cd.get('min_photometry_points')
             if nmin is not None:
                 filters &= Q(phot_count__gte=nmin)
+
+        if cd.get('apply_spectra_count_filter'):
+            nmin = cd.get('min_spectra_points')
+            if nmin is not None:
+                filters &= Q(spectra_count__gte=nmin)
 
 
         # apply query

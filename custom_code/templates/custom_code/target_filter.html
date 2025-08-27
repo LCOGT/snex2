@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', function() {
     { cb: '#id_apply_class_exclude_filter',  ins: ['#id_class_exclude_name'] },
     { cb: '#id_apply_redshift_filter',       ins: ['#id_min_red', '#id_max_red'] },
     { cb: '#id_apply_date_created_filter',   ins: ['#id_date_created_min', '#id_date_created_max'] },
+    { cb: '#id_apply_photometry_count_filter', ins: ['#id_min_photometry_points'] },
+    { cb: '#id_apply_spectra_count_filter',    ins: ['#id_min_spectra_points'] }
   ];
 
   filters.forEach(({cb, ins}) => {
@@ -68,6 +70,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <th>Type</th>
       <th>Created</th>
       <th># Phot</th>
+      <th># Spec</th>
       <th>SNEx ID</th>
      
     </tr>
@@ -83,22 +86,113 @@ document.addEventListener('DOMContentLoaded', function() {
           {% endfor %}
         </td>
 
-        <td>{{ t.ra_text }}</td>
-        <td>{{ t.dec_text }}</td>
+        <td>{{ t.ra }}</td>
+        <td>{{ t.dec }}</td>
 
         <td>{{ t.redshift_extra|default:"—" }}</td>
         <td>{{ t.classification_extra|default:"—" }}</td>
 
         <td>{{ t.created|date:"Y-m-d" }}</td>
+
         <td>{{ t.phot_count|default:"0" }}</td>
+        <td>{{ t.spectra_count|default:"0" }}</td>
 
         <td>{{ t.id }}</td>
 
       </tr>
     {% empty %}
-      <tr><td colspan="8"><em>No targets found.</em></td></tr>
+      <tr><td colspan="9"><em>No targets found.</em></td></tr>
     {% endfor %}
   </tbody>
 </table>
+
+
+<script>
+// Simple table sorter (no dependencies)
+document.addEventListener('DOMContentLoaded', () => {
+  const table = document.querySelector('table.table');
+  if (!table) return;
+
+  const getCellText = (row, idx) =>
+    (row.children[idx]?.textContent || '').trim();
+
+  const parseVal = (txt, kind) => {
+    if (txt === '—' || txt === '' || txt === '—') return null;
+    if (kind === 'number') {
+      const n = Number(txt.replace(/[, ]/g, ''));
+      return Number.isFinite(n) ? n : null;
+    }
+    if (kind === 'date') {
+      // expects YYYY-MM-DD in your template
+      const t = Date.parse(txt);
+      return Number.isFinite(t) ? t : null;
+    }
+    return txt.toLowerCase();
+  };
+
+  // infer type from first non-empty cell in the column
+  const inferType = (rows, idx) => {
+    for (const r of rows) {
+      const t = getCellText(r, idx);
+      if (!t) continue;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return 'date';
+      const num = Number(t.replace(/[, ]/g,''));
+      if (Number.isFinite(num)) return 'number';
+    }
+    return 'text';
+  };
+
+  const ths = table.querySelectorAll('thead th');
+  ths.forEach((th, idx) => {
+    th.style.cursor = 'pointer';
+    th.setAttribute('role', 'button');
+    th.title = 'Click to sort';
+
+    let asc = true; // toggle per column
+
+    th.addEventListener('click', () => {
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      if (!rows.length) return;
+
+      // remove sort indicators from other headers
+      ths.forEach(h => h.classList.remove('sorted-asc','sorted-desc'));
+
+      const kind = th.dataset.sort || inferType(rows, idx);
+      const dir = asc ? 1 : -1;
+
+      rows.sort((a, b) => {
+        const av = parseVal(getCellText(a, idx), kind);
+        const bv = parseVal(getCellText(b, idx), kind);
+
+        // nulls last
+        if (av === null && bv === null) return 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+
+        if (kind === 'text') return av.localeCompare(bv) * dir;
+        if (av < bv) return -1 * dir;
+        if (av > bv) return  1 * dir;
+        return 0;
+      });
+
+      // reattach rows
+      const frag = document.createDocumentFragment();
+      rows.forEach(r => frag.appendChild(r));
+      tbody.appendChild(frag);
+
+      // update indicator + toggle
+      th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+      asc = !asc;
+    });
+  });
+});
+</script>
+
+<style>
+/* optional: tiny sort indicators */
+th.sorted-asc::after  { content: " ▲"; font-size: 0.8em; }
+th.sorted-desc::after { content: " ▼"; font-size: 0.8em; }
+</style>
 
 {% endblock %}
