@@ -345,14 +345,18 @@ EXTRA_FIELDS = [
 # Authentication strategy can either be LOCKED (required login for all views)
 # or READ_ONLY (read only access to views)
 AUTH_STRATEGY = 'LOCKED'
-#AUTH_STRATEGY = 'READ_ONLY'
+# AUTH_STRATEGY = 'READ_ONLY'
 
 TARGET_PERMISSIONS_ONLY = False
 
 # URLs that should be allowed access even with AUTH_STRATEGY = LOCKED
 # for example: OPEN_URLS = ['/', '/about']
-OPEN_URLS = ['/snex2/tnstargets/', '/pipeline-upload/photometry-upload/']
-
+OPEN_URLS = [
+    '/accounts/register/',
+    '/snex2/tnstargets/',
+    '/pipeline-upload/photometry-upload/',
+    '/static/tom_common/css/main_snexclone.css',
+]
 if DEBUG:
     HOOKS = {
         'target_post_save': '',
