@@ -2,7 +2,7 @@ from django_filters.views import FilterView
 from django.shortcuts import redirect, render
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery
+from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count
 from django.db.models.functions import Cast
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.generic.base import TemplateView, RedirectView
@@ -2093,6 +2093,12 @@ class TargetFilterForm(forms.Form):
         ),
         input_formats=['%Y-%m-%d'],
     )
+    apply_photometry_count_filter = forms.BooleanField(required=False)
+    min_photometry_points = forms.IntegerField(
+        required=False,
+        min_value=1,
+        widget=forms.NumberInput(attrs={'placeholder': '≥ phot pts'})
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2155,6 +2161,11 @@ class TargetFilterForm(forms.Form):
                             Column('date_created_max',                css_class='col'),
                             css_class='form-row align-items-center'
                         ),
+                        Row(
+                            Column('apply_photometry_count_filter',   css_class='col-auto'),
+                            Column('min_photometry_points',           css_class='col'),
+                            css_class='form-row align-items-center'
+                        ),
                         css_class='col-lg-4 col-md-6 mb-3'
                     ),
                     css_class='gx-3'
@@ -2166,6 +2177,7 @@ class TargetFilterForm(forms.Form):
                 css_class='text-right mt-4'
             )
         )
+
 
 class TargetFilteringView(FormView):
     template_name = 'custom_code/target_filter.html'
@@ -2184,9 +2196,13 @@ class TargetFilteringView(FormView):
             target=OuterRef('pk'), key='classification'
         ).values('value')[:1]
 
+
+        photometry_q = Q(reduceddatum__data_type='photometry') & Q(reduceddatum__value__has_key='magnitude')
+
         qs = Target.objects.annotate(
             redshift_extra=Cast(Subquery(redshift_sq), FloatField()),
             classification_extra=Subquery(class_sq),
+            phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),  # NEW
         )
 
         # name filter
@@ -2201,6 +2217,10 @@ class TargetFilteringView(FormView):
                 )
                 filters &= name_q
 
+
+        ## TODO: This filter breaks with:
+        # Exception Type: DataError at /snex2/target_filter/
+        # Exception Value: invalid input syntax for type double precision: "0.012662 S"
         # RA filter
         if cd.get('apply_ra_filter'):
             h_min = cd.get('min_ra'); h_max = cd.get('max_ra')
@@ -2208,6 +2228,14 @@ class TargetFilteringView(FormView):
                 filters &= Q(ra__gte=h_min * 15.0)
             if h_max is not None:
                 filters &= Q(ra__lte=h_max * 15.0)
+        
+        # dec filter
+        if cd.get('apply_dec_filter'):
+            d_min = cd.get('min_dec'); d_max = cd.get('max_dec')
+            if d_min is not None:
+                filters &= Q(ra__gte=d_min * 15.0)
+            if d_max is not None:
+                filters &= Q(ra__lte=d_max * 15.0)
 
         # Date-created filter
         if cd.get('apply_date_created_filter'):
@@ -2239,7 +2267,11 @@ class TargetFilteringView(FormView):
             if max_z is not None:
                 filters &= Q(redshift_extra__lte=max_z)
 
-
+        # NEW: Photometry count threshold
+        if cd.get('apply_photometry_count_filter'):
+            nmin = cd.get('min_photometry_points')
+            if nmin is not None:
+                filters &= Q(phot_count__gte=nmin)
 
 
         # apply query

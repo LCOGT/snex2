@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <th>z</th>
       <th>Type</th>
       <th>Created</th>
+      <th># Phot</th>
       <th>SNEx ID</th>
      
     </tr>
@@ -82,20 +83,20 @@ document.addEventListener('DOMContentLoaded', function() {
           {% endfor %}
         </td>
 
-        <td>{{ t.ra|floatformat:6 }}</td>
-
-        <td>{{ t.dec }}</td>
+        <td>{{ t.ra_text }}</td>
+        <td>{{ t.dec_text }}</td>
 
         <td>{{ t.redshift_extra|default:"—" }}</td>
         <td>{{ t.classification_extra|default:"—" }}</td>
 
         <td>{{ t.created|date:"Y-m-d" }}</td>
+        <td>{{ t.phot_count|default:"0" }}</td>
 
         <td>{{ t.id }}</td>
 
       </tr>
     {% empty %}
-      <tr><td colspan="7"><em>No targets found.</em></td></tr>
+      <tr><td colspan="8"><em>No targets found.</em></td></tr>
     {% endfor %}
   </tbody>
 </table>
