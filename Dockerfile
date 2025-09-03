@@ -1,17 +1,14 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 ENTRYPOINT ["./run.sh"]
 
-RUN apt-get update && apt-get install -y git libpq-dev gcc gfortran mariadb-client \
-    libmariadb-dev libmagic-dev libcfitsio-bin libffi-dev libgsl-dev && apt-get autoclean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git libpq-dev gcc gfortran mariadb-client curl \
+    libmariadb-dev libmagic-dev libcfitsio-bin libffi-dev libgsl-dev && apt-get autoclean libcurl && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 COPY . /snex2
 
-RUN pip3 install --upgrade pip
-
-RUN pip install numpy && pip install -r /snex2/requirements.txt
-
-RUN pip uninstall -y ligo.skymap 
-RUN pip install ligo.skymap
+RUN /root/.local/bin/uv pip install /snex2 --system 
 
 WORKDIR /snex2

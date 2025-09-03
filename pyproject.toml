@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snex2"
+version = "0.9.0"
+description = "Repo for the updated Supernova Exchange, built with the TOM Toolkit and used by the Global Supernova Project collaboration."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "tomtoolkit>2",
+    "astropy>=5",
+    "astroquery",
+    "requests",
+    "numpy<2",
+    "lcogt_logging",
+    "django_plotly_dash",
+    "tom_registration",
+    "tom_scimma",
+    "tom_nonlocalizedevents",
+    "tom_alertstreams",
+    "tom_tns",
+    "sep",
+    "requests_oauthlib",
+    "dash",
+    "dash_core_components",
+    "dash_html_components",
+    "dash_table",
+    "whitenoise"
+]
+
+[project.optional-dependencies]
+dev = [
+    "django-debug-toolbar",
+]
+
+
+[project.urls]
+"Source" = "https://github.com/lcogt/banzai"
+"Docs" = "https://banzai.readthedocs.io/en/latest/"
+
+[tool.setuptools]
+packages = ["snex2"]

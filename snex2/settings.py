@@ -79,6 +79,7 @@ SITE_ID = 2
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -182,12 +183,6 @@ if os.environ.get('SNEX2_DB_BACKEND') == 'postgres':
 else:
     DATABASES = {
         'default': {
-            #'ENGINE': 'django.db.backends.sqlite3',
-            #'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-            #'USER': '',
-            #'PASSWORD': '',
-            #'HOST': '',
-            #'PORT': 5432,
             'ENGINE': 'django.db.backends.postgresql_psycopg2',
             'NAME': 'snex2',
             'USER': 'postgres',
@@ -249,42 +244,13 @@ DATE_FORMAT = 'Y-m-d'
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, '_static')
-STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static'), os.path.join(BASE_DIR, 'static', '.well-known')]
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
 MEDIA_ROOT = os.path.join(BASE_DIR, 'data')
 MEDIA_URL = '/data/'
-
-# Using AWS
-
-if not DEBUG:
-    #DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-    #STATICFILES_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-    STORAGES = {
-        "staticfiles": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-               "bucket_name": os.getenv('AWS_STORAGE_BUCKET_NAME', ''),
-               "region_name": os.getenv('AWS_S3_REGION_NAME', ''),
-               "default_acl": None,
-               "addressing_style": "virtual",
-            }
-        },
-        "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-               "bucket_name": os.getenv('AWS_STORAGE_BUCKET_NAME', ''),
-               "region_name": os.getenv('AWS_S3_REGION_NAME', ''),
-               "default_acl": None,
-               "addressing_style": "virtual",
-            }
-        }
-    }
-
-
-AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
-AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
-AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', '')
-AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', '')
-AWS_DEFAULT_ACL = None
 
 LOGGING = {
     'version': 1,
@@ -314,11 +280,11 @@ TARGET_TYPE = 'SIDEREAL'
 FACILITIES = {
     'LCO': {
         'portal_url': 'https://observe.lco.global',
-        'api_key': os.environ['LCO_APIKEY'],
+        'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
     },
     'SOAR': {
         'portal_url': 'https://observe.lco.global',
-        'api_key': os.environ['LCO_APIKEY'],
+        'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
     },
     'GEM': {
         'portal_url': {
@@ -379,14 +345,18 @@ EXTRA_FIELDS = [
 # Authentication strategy can either be LOCKED (required login for all views)
 # or READ_ONLY (read only access to views)
 AUTH_STRATEGY = 'LOCKED'
-#AUTH_STRATEGY = 'READ_ONLY'
+# AUTH_STRATEGY = 'READ_ONLY'
 
 TARGET_PERMISSIONS_ONLY = False
 
 # URLs that should be allowed access even with AUTH_STRATEGY = LOCKED
 # for example: OPEN_URLS = ['/', '/about']
-OPEN_URLS = ['/snex2/tnstargets/', '/pipeline-upload/photometry-upload/']
-
+OPEN_URLS = [
+    '/accounts/register/',
+    '/snex2/tnstargets/',
+    '/pipeline-upload/photometry-upload/',
+    '/static/tom_common/css/main_snexclone.css',
+]
 if DEBUG:
     HOOKS = {
         'target_post_save': '',
@@ -517,7 +487,7 @@ CSRF_TRUSTED_ORIGINS = ['https://test.supernova.exchange']
 TOM_REGISTRATION = {
     'REGISTRATION_AUTHENTICATION_BACKEND': 'django.contrib.auth.backends.AllowAllUsersModelBackend',
     'REGISTRATION_REDIRECT_PATTERN': 'home',
-    'REGISTRATION_STRATEGY': 'approval_required', 
+    'REGISTRATION_STRATEGY': 'approval_required',
     'SEND_APPROVAL_EMAILS': True,  
     'APPROVAL_SUBJECT': f'Your {TOM_NAME} registration has been approved!',  # Optional subject line of approval email, (Default Shown)
     'APPROVAL_MESSAGE': f'Your {TOM_NAME} registration has been approved. You can log in <a href="mytom.com/login">here</a>.'  # Optional html-enabled body for approval email, (Default Shown)

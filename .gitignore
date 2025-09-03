@@ -113,3 +113,5 @@ gw/gw_config.ini
 db_data
 
 .DS_STORE
+
+_static
