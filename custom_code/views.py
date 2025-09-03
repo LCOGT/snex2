@@ -2,7 +2,7 @@ from django_filters.views import FilterView
 from django.shortcuts import redirect, render
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count
+from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, CharField, Value
 from django.db.models.functions import Cast
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.generic.base import TemplateView, RedirectView
@@ -15,6 +15,7 @@ from django.template.context import RequestContext
 from django_comments.models import Comment
 from django_comments.signals import comment_was_posted
 from django.dispatch import receiver
+from django.db.models import Max
 
 from tom_targets.models import TargetList, Target, TargetExtra, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
@@ -68,8 +69,7 @@ from django import forms
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout, Div, HTML, Fieldset, Row, Column
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
-
-
+from django.utils import timezone
 
 import logging
 
@@ -2105,6 +2105,52 @@ class TargetFilterForm(forms.Form):
         min_value=1,
         widget=forms.NumberInput(attrs={'placeholder': '≥ spectra'})
     )
+    apply_recent_obs_filter = forms.BooleanField(required=False)
+    recent_obs_kind = forms.ChoiceField(
+        required=False,
+        choices=[('any', 'Any'), ('phot', 'Photometry'), ('spec', 'Spectroscopy')],
+        widget=forms.Select()
+    )
+    recent_obs_days = forms.IntegerField(
+        required=False,
+        min_value=1,
+        widget=forms.NumberInput(attrs={'placeholder': 'in last N days'})
+    )
+    apply_recent_date_filter = forms.BooleanField(required=False)
+    recent_date_kind = forms.ChoiceField(
+        required=False,
+        choices=[('any', 'Any'), ('phot', 'Photometry'), ('spec', 'Spectroscopy')],
+        widget=forms.Select()
+    )
+    recent_date_threshold = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date', 'placeholder': 'On or after'}),
+        input_formats=['%Y-%m-%d'],
+    )
+    apply_recent_date_before_filter = forms.BooleanField(required=False)
+    recent_date_before_kind = forms.ChoiceField(
+        required=False,
+        choices=[('any', 'Any'), ('phot', 'Photometry'), ('spec', 'Spectroscopy')],
+        widget=forms.Select()
+    )
+    recent_date_before_threshold = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date', 'placeholder': 'On or before'}),
+        input_formats=['%Y-%m-%d'],
+    )
+    apply_mag_bright_filter = forms.BooleanField(required=False)
+    mag_bright_mode = forms.ChoiceField(
+        required=False,
+        choices=[('any', 'Any obs'), ('last', 'Last obs')],
+        widget=forms.Select()
+    )
+    mag_bright_threshold = forms.FloatField(
+        required=False,
+        widget=forms.NumberInput(attrs={'placeholder': 'mag < X (brighter)'}),
+        min_value=-30  # sane guard; tweak as you like
+    )
+
+
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -2119,7 +2165,7 @@ class TargetFilterForm(forms.Form):
             Div(
                 Row(
                     Column(
-                        # Column 1: Name & RA
+                        # Column 1
                         Row(
                             Column('apply_name_filter', css_class='col-auto'),
                             Column('target_name',         css_class='col'),
@@ -2131,24 +2177,33 @@ class TargetFilterForm(forms.Form):
                             Column('max_ra',           css_class='col'),
                             css_class='form-row align-items-center mb-2'
                         ),
+                        Row(
+                            Column('apply_mag_bright_filter', css_class='col-auto'),
+                            Column('mag_bright_mode',         css_class='col-4'),
+                            HTML('<div class="col-auto text-center align-self-center">&lt;</div>'),
+                            Column('mag_bright_threshold',    css_class='col'),
+                            css_class='form-row align-items-center'
+                        ),
                         css_class='col-lg-4 col-md-6 mb-3'
                     ),
+
+
                     Column(
-                        # Column 2: Dec & Classification
+                        # Column 2
                         Row(
-                            Column('apply_dec_filter',                css_class='col-auto'),
-                            Column('min_dec',                         css_class='col'),
-                            Column('max_dec',                         css_class='col'),
+                            Column('apply_dec_filter', css_class='col-auto'),
+                            Column('min_dec',          css_class='col'),
+                            Column('max_dec',          css_class='col'),
                             css_class='form-row align-items-center mb-2'
                         ),
                         Row(
-                            Column('apply_class_filter',              css_class='col-auto'),
-                            Column('class_name',                      css_class='col'),
+                            Column('apply_class_filter', css_class='col-auto'),
+                            Column('class_name',         css_class='col'),
                             css_class='form-row align-items-center mb-2'
                         ),
                         Row(
-                            Column('apply_class_exclude_filter',      css_class='col-auto'),
-                            Column('class_exclude_name',              css_class='col'),
+                            Column('apply_class_exclude_filter', css_class='col-auto'),
+                            Column('class_exclude_name',         css_class='col'),
                             css_class='form-row align-items-center'
                         ),
                         Row( 
@@ -2159,22 +2214,43 @@ class TargetFilterForm(forms.Form):
                         css_class='col-lg-4 col-md-6 mb-3'
                     ),
                     Column(
-                        # Column 3: Redshift & Date
+                        # Column 3
                         Row(
-                            Column('apply_redshift_filter',           css_class='col-auto'),
-                            Column('min_red',                         css_class='col'),
-                            Column('max_red',                         css_class='col'),
+                            Column('apply_redshift_filter', css_class='col-auto'),
+                            Column('min_red',               css_class='col'),
+                            Column('max_red',               css_class='col'),
                             css_class='form-row align-items-center mb-2'
                         ),
                         Row(
-                            Column('apply_date_created_filter',       css_class='col-auto'),
-                            Column('date_created_min',                css_class='col'),
-                            Column('date_created_max',                css_class='col'),
+                            Column('apply_date_created_filter', css_class='col-auto'),
+                            Column('date_created_min',          css_class='col'),
+                            Column('date_created_max',          css_class='col'),
                             css_class='form-row align-items-center'
                         ),
                         Row(
-                            Column('apply_photometry_count_filter',   css_class='col-auto'),
-                            Column('min_photometry_points',           css_class='col'),
+                            Column('apply_photometry_count_filter', css_class='col-auto'),
+                            Column('min_photometry_points',         css_class='col'),
+                            css_class='form-row align-items-center mb-2'
+                        ),
+                        Row(
+                            Column('apply_recent_date_filter', css_class='col-auto'),
+                            Column('recent_date_kind',         css_class='col-4'),
+                            HTML('<div class="col-auto text-center align-self-center">≥</div>'),
+                            Column('recent_date_threshold',    css_class='col'),
+                            css_class='form-row align-items-center'
+                        ),
+                        Row(
+                            Column('apply_recent_date_before_filter', css_class='col-auto'),
+                            Column('recent_date_before_kind',         css_class='col-4'),
+                            HTML('<div class="col-auto text-center align-self-center">≤</div>'),
+                            Column('recent_date_before_threshold',    css_class='col'),
+                            css_class='form-row align-items-center'
+                        ),
+
+                        Row(
+                            Column('apply_recent_obs_filter', css_class='col-auto'),
+                            Column('recent_obs_kind',         css_class='col-4'),
+                            Column('recent_obs_days',         css_class='col'),
                             css_class='form-row align-items-center'
                         ),
                         css_class='col-lg-4 col-md-6 mb-3'
@@ -2188,7 +2264,6 @@ class TargetFilterForm(forms.Form):
                 css_class='text-right mt-4'
             )
         )
-
 
 class TargetFilteringView(FormView):
     template_name = 'custom_code/target_filter.html'
@@ -2215,7 +2290,7 @@ class TargetFilteringView(FormView):
             redshift_extra=Cast(Subquery(redshift_sq), FloatField()),
             classification_extra=Subquery(class_sq),
             phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
-            spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  # NEW
+            spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
         )
 
         # name filter
@@ -2280,7 +2355,7 @@ class TargetFilteringView(FormView):
             if max_z is not None:
                 filters &= Q(redshift_extra__lte=max_z)
 
-        # NEW: Photometry count threshold
+        # Photometry count threshold
         if cd.get('apply_photometry_count_filter'):
             nmin = cd.get('min_photometry_points')
             if nmin is not None:
@@ -2291,6 +2366,151 @@ class TargetFilteringView(FormView):
             if nmin is not None:
                 filters &= Q(spectra_count__gte=nmin)
 
+        # --- Recent observations in last N days (Any/Phot/Spec)
+        if cd.get('apply_recent_obs_filter'):
+            kind = (cd.get('recent_obs_kind') or 'any').lower()
+            ndays = cd.get('recent_obs_days')
+
+            if ndays:
+                cutoff = timezone.now() - timedelta(days=ndays)
+
+                # Build dynamic kwarg for timestamp field
+                ts_kw = {f'timestamp__gte': cutoff}
+
+                # Subqueries for Exists(...)
+                recent_any_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    **ts_kw
+                )
+                recent_phot_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    data_type='photometry',
+                    **ts_kw
+                ).filter(value__has_key='magnitude')  # keep consistent with your photometry count
+                recent_spec_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    data_type='spectroscopy',
+                    **ts_kw
+                )
+
+                # Annotate booleans once; then filter on them
+                qs = qs.annotate(
+                    has_recent_any = Exists(recent_any_sq),
+                    has_recent_phot = Exists(recent_phot_sq),
+                    has_recent_spec = Exists(recent_spec_sq),
+                )
+
+                if kind == 'any':
+                    filters &= Q(has_recent_any=True)
+                elif kind == 'phot':
+                    filters &= Q(has_recent_phot=True)
+                elif kind == 'spec':
+                    filters &= Q(has_recent_spec=True)
+
+        # --- On/after (≥) ---
+        if cd.get('apply_recent_date_filter'):
+            kind = (cd.get('recent_date_kind') or 'any').lower()
+            date_cut = cd.get('recent_date_threshold')
+            if date_cut:
+                recent_any_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    timestamp__date__gte=date_cut,
+                )
+                recent_phot_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    data_type='photometry',
+                    timestamp__date__gte=date_cut,
+                ).filter(value__has_key='magnitude')
+                recent_spec_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    data_type='spectroscopy',
+                    timestamp__date__gte=date_cut,
+                )
+
+                qs = qs.annotate(
+                    has_since_any  = Exists(recent_any_sq),
+                    has_since_phot = Exists(recent_phot_sq),
+                    has_since_spec = Exists(recent_spec_sq),
+                )
+                filters &= {
+                    'any':  Q(has_since_any=True),
+                    'phot': Q(has_since_phot=True),
+                    'spec': Q(has_since_spec=True),
+                }[kind]
+
+        # --- On/before (≤) ---
+        if cd.get('apply_recent_date_before_filter'):
+            kind = (cd.get('recent_date_before_kind') or 'any').lower()
+            date_cut = cd.get('recent_date_before_threshold')
+            if date_cut:
+                recent_any_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    timestamp__date__lte=date_cut,
+                )
+                recent_phot_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    data_type='photometry',
+                    timestamp__date__lte=date_cut,
+                ).filter(value__has_key='magnitude')
+                recent_spec_sq = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    data_type='spectroscopy',
+                    timestamp__date__lte=date_cut,
+                )
+
+                qs = qs.annotate(
+                    has_before_any  = Exists(recent_any_sq),
+                    has_before_phot = Exists(recent_phot_sq),
+                    has_before_spec = Exists(recent_spec_sq),
+                )
+                filters &= {
+                    'any':  Q(has_before_any=True),
+                    'phot': Q(has_before_phot=True),
+                    'spec': Q(has_before_spec=True),
+                }[kind]
+
+
+        # --- Any/Last observation with apparent mag brighter than X (any filter)
+        ## TODO: this is very slow for some reason
+        if cd.get('apply_mag_bright_filter'):
+            mode = (cd.get('mag_bright_mode') or 'any').lower()
+            X = cd.get('mag_bright_threshold')
+
+            if X is not None:
+                # Base photometry queryset: has numeric magnitude in JSON
+                base_phot = ReducedDatum.objects.filter(
+                    target=OuterRef('pk'),
+                    data_type='photometry',
+                    value__has_key='magnitude',
+                )
+
+                # ANY obs: fast Exists()
+                if mode == 'any':
+                    any_bright_sq = base_phot.annotate(
+                        mag_txt=KeyTextTransform('magnitude', F('value')),
+                        mag=Cast('mag_txt', FloatField()),
+                    ).filter(mag__lt=X)
+
+                    qs = qs.annotate(has_any_bright=Exists(any_bright_sq))
+                    filters &= Q(has_any_bright=True)
+
+                # LAST obs: get latest row id, then its mag
+                else:
+                    latest_phot_id_sq = base_phot.order_by('-timestamp').values('pk')[:1]
+
+                    qs = qs.annotate(
+                        latest_phot_id=Subquery(latest_phot_id_sq)
+                    )
+
+                    last_mag_sq = ReducedDatum.objects.filter(
+                        pk=OuterRef('latest_phot_id')
+                    ).annotate(
+                        mag_txt=KeyTextTransform('magnitude', F('value')),
+                        mag=Cast('mag_txt', FloatField()),
+                    ).values('mag')[:1]
+
+                    qs = qs.annotate(last_mag=Subquery(last_mag_sq))
+                    filters &= Q(last_mag__lt=X)
 
         # apply query
         target_match_list = qs.filter(filters).distinct()
