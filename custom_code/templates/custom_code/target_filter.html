@@ -69,8 +69,8 @@ document.addEventListener('DOMContentLoaded', function() {
       <th>z</th>
       <th>Type</th>
       <th>Created</th>
-      <th># Phot</th>
-      <th># Spec</th>
+      <th># Phot (tot: {{ tot_phot }})</th>
+      <th># Spec (tot: {{ tot_spec }})</th>
       <th>SNEx ID</th>
      
     </tr>
@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <tr>
         
         <td>
-          {{ t.name }}
+          <a href="/targets/{{ t.id }}/">{{ t.name }}</a>
           {% for alias in t.aliases.all %}
             <br><small class="text-muted">{{ alias.name }}</small>
           {% endfor %}

@@ -2,7 +2,7 @@ from django_filters.views import FilterView
 from django.shortcuts import redirect, render
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, CharField, Value
+from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, CharField, Value, Max, Sum
 from django.db.models.functions import Cast
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
 from django.views.generic.base import TemplateView, RedirectView
@@ -15,7 +15,6 @@ from django.template.context import RequestContext
 from django_comments.models import Comment
 from django_comments.signals import comment_was_posted
 from django.dispatch import receiver
-from django.db.models import Max
 
 from tom_targets.models import TargetList, Target, TargetExtra, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
@@ -2149,7 +2148,8 @@ class TargetFilterForm(forms.Form):
         widget=forms.NumberInput(attrs={'placeholder': 'mag < X (brighter)'}),
         min_value=-30  # sane guard; tweak as you like
     )
-
+    apply_proposal_filter = forms.BooleanField(required=False)
+    proposal_choice = forms.ChoiceField(required=False, choices=[], widget=forms.Select())
 
 
     def __init__(self, *args, **kwargs):
@@ -2158,6 +2158,17 @@ class TargetFilterForm(forms.Form):
         self.helper = FormHelper(self)
         self.helper.form_method = 'post'
         self.helper.form_show_labels = False
+
+        codes = (
+            ObservationRecord.objects
+            .filter(parameters__has_key='proposal')
+            .values_list('parameters__proposal', flat=True)
+            .distinct()
+            .order_by('parameters__proposal')
+        )
+
+        self.fields['proposal_choice'].choices = [('', '— Select proposal —')] + [(c, c) for c in codes][::-1]
+
 
         self.helper.layout = Layout(
             HTML('<h3 class="mb-3">Search Filters '
@@ -2184,6 +2195,12 @@ class TargetFilterForm(forms.Form):
                             Column('mag_bright_threshold',    css_class='col'),
                             css_class='form-row align-items-center'
                         ),
+                        Row(
+                            Column('apply_proposal_filter', css_class='col-auto'),
+                            Column('proposal_choice',       css_class='col'),
+                            css_class='form-row align-items-center'
+                        ),
+
                         css_class='col-lg-4 col-md-6 mb-3'
                     ),
 
@@ -2512,12 +2529,33 @@ class TargetFilteringView(FormView):
                     qs = qs.annotate(last_mag=Subquery(last_mag_sq))
                     filters &= Q(last_mag__lt=X)
 
+
+        if cd.get('apply_proposal_filter'):
+            code = cd.get('proposal_choice')
+            if code:
+                base = ObservationRecord.objects.filter(
+                    target=OuterRef('pk'),
+                    parameters__proposal=code
+                )
+                qs = qs.annotate(has_proposal=Exists(base))
+                filters &= Q(has_proposal=True)
+
         # apply query
         target_match_list = qs.filter(filters).distinct()
 
+        # compute totals for photometry and spectra across all matched targets
+        tot_phot = target_match_list.aggregate(total=Sum('phot_count'))['total'] or 0
+        tot_spec = target_match_list.aggregate(total=Sum('spectra_count'))['total'] or 0
+
+
         # return result
         return self.render_to_response(
-            self.get_context_data(form=form, targets=target_match_list)
+            self.get_context_data(
+                form=form,
+                targets=target_match_list,
+                tot_phot=tot_phot,
+                tot_spec=tot_spec,
+            )
         )
 
 
