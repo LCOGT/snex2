@@ -1,5 +1,6 @@
 from django.db import models
 from tom_dataproducts.models import ReducedDatum
+from tom_targets.models import BaseTarget
 from tom_targets.models import Target
 from django.contrib.auth.models import User
 
@@ -10,6 +11,22 @@ STATUS_CHOICES = (
     ('submitted', 'Submitted'),
     ('published', 'Published')
 )
+
+class SNExTarget(BaseTarget):
+    '''
+    Custom target modeling from BaseTarget for SNEx2 with attributes relating to the target details not included in BaseTarget.
+    '''
+    redshift = models.FloatField(default=0)
+    classification = models.CharField(max_length=30, default='', null=True, blank=True)
+    tweet = models.BooleanField(default=False)
+    reference = models.CharField(max_length=300, default='', null=True, blank=True)
+    observing_run_priority = models.FloatField(default=0)
+    last_nondetection = models.CharField(max_length=20,default='',null=True,blank=True)
+    first_detection = models.CharField(max_length=20,default='',null=True,blank=True)
+    maximum = models.CharField(max_length=20,default='',null=True,blank=True)
+    target_description = models.CharField(max_length=20,default='',null=True,blank=True)
+    
+
 
 class TNSTarget(models.Model):
     
