@@ -20,12 +20,26 @@ class SNExTarget(BaseTarget):
     classification = models.CharField(max_length=30, default='', null=True, blank=True)
     tweet = models.BooleanField(default=False)
     reference = models.CharField(max_length=300, default='', null=True, blank=True)
+    reference.hidden = True
     observing_run_priority = models.FloatField(default=0)
+    observing_run_priority.hidden = True
     last_nondetection = models.CharField(max_length=20,default='',null=True,blank=True)
+    last_nondetection.hidden = True
     first_detection = models.CharField(max_length=20,default='',null=True,blank=True)
+    first_detection.hidden = True
     maximum = models.CharField(max_length=20,default='',null=True,blank=True)
+    maximum.hidden = True
     target_description = models.CharField(max_length=20,default='',null=True,blank=True)
+    target_description.hidden = True
     
+    class Meta:
+        verbose_name = "target"
+        permissions = (
+            ('view_target', 'View Target'),
+            ('add_target', 'Add Target'),
+            ('change_target', 'Change Target'),
+            ('delete_target', 'Delete Target'),
+        )
 
 
 class TNSTarget(models.Model):
