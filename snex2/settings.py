@@ -330,6 +330,9 @@ FACILITIES = {
 #     {'name': 'eligible', 'type': 'boolean'},
 #     {'name': 'dicovery_date', 'type': 'datetime'}
 # ]
+
+TARGET_MODEL_CLASS = 'custom_code.models.SNExTarget'
+
 EXTRA_FIELDS = [
     {'name': 'redshift', 'type': 'number'},
     {'name': 'classification', 'type': 'string'},
