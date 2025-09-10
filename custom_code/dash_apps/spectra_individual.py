@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 external_stylesheets = [dbc.themes.BOOTSTRAP]
 
-app = DjangoDash(name='Spectra_Individual', id='spectrum_id', add_bootstrap_links=True, suppress_callback_exceptions=True)   # replaces dash.Dash
+app = DjangoDash(name='Spectra_Individual', add_bootstrap_links=True, suppress_callback_exceptions=True)   # replaces dash.Dash
 app.css.append_css({'external_url': static('custom_code/css/dash.css')})
 
 params = [
