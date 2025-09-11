@@ -331,7 +331,7 @@ FACILITIES = {
 #     {'name': 'dicovery_date', 'type': 'datetime'}
 # ]
 
-TARGET_MODEL_CLASS = 'custom_code.models.SNExTarget'
+TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
 
 EXTRA_FIELDS = [
     {'name': 'redshift', 'type': 'number'},
