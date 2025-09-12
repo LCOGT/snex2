@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tom_targets', '0018_auto_20200714_1832'),
+        ('tom_targets', '0029_alter_basetarget_permissions'),
         ('custom_code', '0005_reduceddatumextra_target'),
     ]
 
@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='reduceddatumextra',
             name='target',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tom_targets.target'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tom_targets.basetarget'),
         ),
         migrations.CreateModel(
             name='Papers',
@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
                 ('description', models.TextField(default='', help_text='Brief description of the contents of the paper', null=True, verbose_name='Description')),
                 ('status', models.CharField(choices=[('in prep', 'In Prep'), ('submitted', 'Submitted'), ('published', 'Published')], max_length=10)),
                 ('created', models.DateTimeField(auto_now_add=True)),
-                ('target', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tom_targets.target')),
+                ('target', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tom_targets.basetarget')),
             ],
             options={
                 'get_latest_by': ('id',),

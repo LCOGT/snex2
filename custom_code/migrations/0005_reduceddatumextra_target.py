@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tom_targets', '0018_auto_20200714_1832'),
+        ('tom_targets', '0029_alter_basetarget_permissions'),
         ('custom_code', '0004_reduceddatumextra'),
     ]
 
@@ -15,6 +15,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='reduceddatumextra',
             name='target',
-            field=models.ForeignKey(default=27, on_delete=django.db.models.deletion.CASCADE, to='tom_targets.target'),
+            field=models.ForeignKey(default=27, on_delete=django.db.models.deletion.CASCADE, to='tom_targets.basetarget'),
         ),
     ]

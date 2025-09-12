@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tom_targets', '0018_auto_20200714_1832'),
+        ('tom_targets', '0029_alter_basetarget_permissions'),
         ('custom_code', '0002_auto_20200903_1655'),
     ]
 
@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('tag', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='custom_code.sciencetags')),
-                ('target', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tom_targets.target')),
+                ('target', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tom_targets.basetarget')),
             ],
         ),
     ]
