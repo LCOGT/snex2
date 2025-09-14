@@ -508,10 +508,12 @@ EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
-
-SNEX1_DB_URL = 'mysql://{}:{}@supernova.science.lco.global:3306/supernova?charset=utf8&use_unicode=1'
-SNEX1_DB_URL = SNEX1_DB_URL.format(os.getenv('SNEX1_DB_USER', ''), os.getenv('SNEX1_DB_PASSWORD', ''))
-
+SNEX1_DB_HOST = os.getenv('SNEX1_DB_HOST', 'supernova.science.lco.global')
+SNEX1_DB_PORT = os.getenv('SNEX1_DB_PORT', '3306')
+SNEX1_DB_NAME = os.getenv('SNEX1_DB_NAME', 'supernova')
+SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
+SNEX1_DB_PASSWORD = os.getenv('SNEX1_DB_PASSWORD', '')
+SNEX1_DB_URL = f'mysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
 
 PLOTLY_DASH = {
     'cache_arguments': False,
