@@ -24,7 +24,7 @@ class SNExTarget(BaseTarget):
     first_detection.hidden = True
     maximum = models.CharField(max_length=200,default='',null=True,blank=True)
     maximum.hidden = True
-    target_description = models.CharField(max_length=200,default='',null=True,blank=True)
+    target_description = models.CharField(max_length=500,default='',null=True,blank=True)
     target_description.hidden = True
     
     class Meta:
