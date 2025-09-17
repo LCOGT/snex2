@@ -14,18 +14,17 @@ class SNExTarget(BaseTarget):
     '''
     redshift = models.FloatField(default=0)
     classification = models.CharField(max_length=30, default='', null=True, blank=True)
-    tweet = models.BooleanField(default=False)
-    reference = models.CharField(max_length=300, default='', null=True, blank=True)
+    reference = models.CharField(max_length=200, default='', null=True, blank=True)
     reference.hidden = True
     observing_run_priority = models.FloatField(default=0)
     observing_run_priority.hidden = True
-    last_nondetection = models.CharField(max_length=20,default='',null=True,blank=True)
+    last_nondetection = models.CharField(max_length=200,default='',null=True,blank=True)
     last_nondetection.hidden = True
-    first_detection = models.CharField(max_length=20,default='',null=True,blank=True)
+    first_detection = models.CharField(max_length=200,default='',null=True,blank=True)
     first_detection.hidden = True
-    maximum = models.CharField(max_length=20,default='',null=True,blank=True)
+    maximum = models.CharField(max_length=200,default='',null=True,blank=True)
     maximum.hidden = True
-    target_description = models.CharField(max_length=20,default='',null=True,blank=True)
+    target_description = models.CharField(max_length=200,default='',null=True,blank=True)
     target_description.hidden = True
     
     class Meta:
