@@ -10,7 +10,11 @@ from contextlib import contextmanager
 import os
 import datetime
 from django.conf import settings
-from tom_dataproducts.models import DataProduct, data_product_path
+from tom_dataproducts.models import DataProduct, ReducedDatum, data_product_path
+#import TOM Django models
+from tom_targets.models import Target
+from custom_code.models import ReducedDatumExtra, Papers
+
 
 _SNEX2_DB = 'postgresql://{}:{}@supernova.science.lco.global:5435/snex2'.format(os.environ.get('SNEX2_DB_USER'), os.environ.get('SNEX2_DB_PASSWORD'))
 
@@ -82,8 +86,8 @@ Users = load_table('users', db_address=settings.SNEX1_DB_URL)
 ### And our SNex2 tables
 Data_Product = load_table('tom_dataproducts_dataproduct', db_address=_SNEX2_DB)
 Datum = load_table('tom_dataproducts_reduceddatum', db_address=_SNEX2_DB)
-Target = load_table('tom_targets_basetarget', db_address=_SNEX2_DB)
-Target_Extra = load_table('tom_targets_targetextra', db_address=_SNEX2_DB)
+# Target = load_table('tom_targets_basetarget', db_address=_SNEX2_DB)
+# Target_Extra = load_table('tom_targets_targetextra', db_address=_SNEX2_DB)
 Targetname = load_table('tom_targets_targetname', db_address=_SNEX2_DB)
 Auth_Group = load_table('auth_group', db_address=_SNEX2_DB)
 Group_Perm = load_table('guardian_groupobjectpermission', db_address=_SNEX2_DB)
@@ -192,7 +196,7 @@ def update_phot(action, db_address=_SNEX2_DB):
         try:
             id_ = result.rowid # The ID of the row in the photlco table
             phot_row = get_current_row(Photlco, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the photlco table    
-            #targetid = phot_row.targetid
+            targetid = phot_row.targetid
             
             if action=='delete':
                 #Look up the dataproductid from the datum_extra table
@@ -207,6 +211,11 @@ def update_phot(action, db_address=_SNEX2_DB):
                     #     if id_ == value.get('snex_id', ''):
                     #         db_session.delete(snex2_row)
                     #         break
+                # t = Target.objects.filter(px=targetid)[0]
+                # r = ReducedDatum.objects.filter(target=t,value={'snex_id': id_})
+                # if len(r) > 0:
+                #     r[0].delete()
+
                     snex2_id_query = db_session.query(Datum).filter(
                         Datum.value['snex_id'].astext == str(id_)
                     ).first()
@@ -271,7 +280,8 @@ def update_phot(action, db_address=_SNEX2_DB):
                             #snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.snex_id==id_, Datum_Extra.data_type=='photometry')).first()
                             ##if snex2_id_query is not None:
                             #snex2_id = snex2_id_query.reduced_datum_id
-                            
+                            # t = Target.objects.filter(px=targetid)[0]
+                            # r = ReducedDatum.objects.filter(target=t,data_type='photometry')
                             snex2_id_query = db_session.query(Datum).filter(and_(Datum.target_id==targetid, Datum.data_type=='photometry')).all()
                             for snex2_row in snex2_id_query:
                                 value = snex2_row.value
@@ -279,10 +289,12 @@ def update_phot(action, db_address=_SNEX2_DB):
                                     value = json.loads(snex2_row.value)
                                 if int(id_) == value.get('snex_id', ''):
                                     snex2_id = snex2_row.id
+                                    # ReducedDatum.objects.filter(id=snex2_id).update({'target_id': targetid, 'timestamp': time, 'value': phot, 'data_type': 'photometry', 'source_name': '', 'source_location': ''})
                                     db_session.query(Datum).filter(Datum.id==snex2_id).update({'target_id': targetid, 'timestamp': time, 'value': phot, 'data_type': 'photometry', 'source_name': '', 'source_location': ''})
                                     break
 
                         elif action=='insert':
+                            # newphot = ReducedDatum.objects.create(target_id=targetid, timestamp=time, value=phot, data_type='photometry', source_name='', source_location='')
                             newphot = Datum(target_id=targetid, timestamp=time, value=phot, data_type='photometry', source_name='', source_location='')
                             db_session.add(newphot)
                             db_session.flush()
@@ -327,7 +339,7 @@ def update_spec(action, db_address=_SNEX2_DB):
     for result in spec_result:
         try:
             id_ = result.rowid # The ID of the row in the spec table
-
+            target_id = result.targetid
             if action=='delete':
                 #Look up the dataproductid from the datum_extra table
                 with get_session(db_address=db_address) as db_session:
@@ -341,6 +353,8 @@ def update_spec(action, db_address=_SNEX2_DB):
                     #db_session.commit()
 
                     snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.data_type=='spectroscopy', Datum_Extra.key=='snex_id')).all()
+                    # t = Target.objects.filter(pk=target_id)
+                    # ReducedDatumExtra.objects.filter(target=t,data_type='spectroscopy',snex_id=id_)
                     for snex2_row in snex2_id_query:
                         value = json.loads(snex2_row.value)
                         if id_ == value.get('snex_id', ''):
@@ -468,6 +482,12 @@ def update_target(action, db_address=_SNEX2_DB):
             if t_created is None:
                 t_created = t_modified
             t_groupid = int(target_row.groupidcode)
+            t_redshift = target_row.redshift
+
+            class_id = target_row.classificationid
+            if class_id is not None:
+                class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
+                
 
             ### Get the name of the target
             with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
@@ -482,7 +502,8 @@ def update_target(action, db_address=_SNEX2_DB):
             with get_session(db_address=db_address) as db_session:
                 criteria = getattr(Target, 'id') == target_id
                 if action=='update':
-                    db_session.query(Target).filter(criteria).update({'ra': t_ra, 'dec': t_dec, 'modified': t_modified, 'created': t_created, 'type': 'SIDEREAL', 'epoch': 2000, 'scheme': ''})
+                    db_session.query(Target).filter(criteria).update({'ra': t_ra, 'dec': t_dec, 'modified': t_modified, 'created': t_created, 'type': 'SIDEREAL', 'epoch': 2000, 'scheme': '',
+                                                                      'redshift':t_redshift, 'classification': class_name}) #classification isn't just target_row.classification?
 
                 elif action=='insert':
                     existing_target_query = db_session.query(Target).filter(criteria).first()
@@ -498,6 +519,8 @@ def update_target(action, db_address=_SNEX2_DB):
                                 type='SIDEREAL', 
                                 epoch=2000, 
                                 scheme='',
+                                redshift=t_redshift,
+                                classification=class_name,
                                 permissions='PRIVATE'
                             )
                         )
@@ -560,64 +583,97 @@ def update_target(action, db_address=_SNEX2_DB):
             raise #continue
 
 
-def update_target_extra(action, db_address=_SNEX2_DB):
-    """
-    Queries the Targetextra table in the SNex2 db with any changes made to the Targets table, along with info from the Classifications table, in the SNex1 db
+# def update_target_extra(action, db_address=_SNEX2_DB):
+#     """
+#     Queries the Targetextra table in the SNex2 db with any changes made to the Targets table, along with info from the Classifications table, in the SNex1 db
 
-    Parameters
-    ----------
-    action: str, one of 'update', 'insert', or 'delete'
-    db_address: str, sqlalchemy address to the SNex2 db
-    """
-    target_result = query_db_changes('targets', action, db_address=settings.SNEX1_DB_URL)
+#     Parameters
+#     ----------
+#     action: str, one of 'update', 'insert', or 'delete'
+#     db_address: str, sqlalchemy address to the SNex2 db
+#     """
+#     target_result = query_db_changes('targets', action, db_address=settings.SNEX1_DB_URL)
 
-    for tresult in target_result:
-        try:
-            target_id = tresult.rowid # The ID of the row in the targets table
-            target_row = get_current_row(Targets, target_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to target_id in the targets table
+#     for tresult in target_result:
+#         try:
+#             target_id = tresult.rowid # The ID of the row in the targets table
+#             target_row = get_current_row(Targets, target_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to target_id in the targets table
 
-            #t_id = target_row.id
-            value = target_row.redshift
-            if value is not None:
-                with get_session(db_address=db_address) as db_session:
-                    z_criteria = and_(Target_Extra.target_id==target_id, Target_Extra.key=='redshift') # Criteria for updating the redshift info in the targetextra table
+#             #t_id = target_row.id
+#             value = target_row.redshift
+#             if value is not None:
+#                 with get_session(db_address=db_address) as db_session:
+#                 ##    From update_target():
+#                     # criteria = getattr(Target, 'id') == target_id
+#                     # if action=='update':
+#                     #     db_session.query(Target).filter(criteria).update({'ra': t_ra, 'dec': t_dec, 'modified': t_modified, 'created': t_created, 'type': 'SIDEREAL', 'epoch': 2000, 'scheme': ''})
+
+#                     # elif action=='insert':
+#                     #     existing_target_query = db_session.query(Target).filter(criteria).first()
+#                     #     if not existing_target_query:
+#                     #         db_session.add(
+#                     #             Target(
+#                     #                 id=target_id, 
+#                     #                 name=t_name, 
+#                     #                 ra=t_ra, 
+#                     #                 dec=t_dec, 
+#                     #                 modified=t_modified, 
+#                     #                 created=t_created, 
+#                     #                 type='SIDEREAL', 
+#                     #                 epoch=2000, 
+#                     #                 scheme='',
+#                     #                 permissions='PRIVATE'
+#                     #             )
+#                     #         )
+
+#                     criteria = getattr(Target, 'id') == target_id
+#                     if action=='update':
+#                         if db_session.query(Target).filter(criteria).first() is not None:
+#                             db_session.query(Target).filter(criteria).update({'redshift': float(value)})
+#                         else:
+#                             db_session.query(Target).filter(criteria).add({'redshift': float(value)}) # ???
+#                             db_session.add(Target_Extra(target_id=target_id, key='redshift', value=str(value), float_value=float(value)))
+#                     elif action=='delete':
+#                         db_session.query(Target).filter(criteria).delete() # ???
+
+#                     z_criteria = and_(Target_Extra.target_id==target_id, Target_Extra.key=='redshift') # Criteria for updating the redshift info in the targetextra table
                     
-                    if action=='update':
-                        if db_session.query(Target_Extra).filter(z_criteria).first() is not None:
-                            db_session.query(Target_Extra).filter(z_criteria).update({'value': str(value), 'float_value': float(value)})
-                        else:
-                            db_session.add(Target_Extra(target_id=target_id, key='redshift', value=str(value), float_value=float(value)))
+#                     if action=='update':
+#                         if db_session.query(Target_Extra).filter(z_criteria).first() is not None:
+#                             db_session.query(Target_Extra).filter(z_criteria).update({'value': str(value), 'float_value': float(value)})
+#                         else:
+#                             db_session.add(Target_Extra(target_id=target_id, key='redshift', value=str(value), float_value=float(value)))
 
-                    #Don't think the below are necessary, but need to double check
-                    #elif action=='insert':
-                        #db_session.add(Target_Extra(target_id=target_id, key='redshift', value=str(value), float_value=float(value)))
+#                     #Don't think the below are necessary, but need to double check
+#                     #elif action=='insert':
+#                         #db_session.add(Target_Extra(target_id=target_id, key='redshift', value=str(value), float_value=float(value)))
                     
-                    elif action=='delete':
-                        db_session.query(Target_Extra).filter(z_criteria).delete()
-                    db_session.commit()
+#                     elif action=='delete':
+#                         db_session.query(Target_Extra).filter(z_criteria).delete()
+#                     db_session.commit()
 
-            class_id = target_row.classificationid
-            if class_id is not None:
-                class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
-                with get_session(db_address=db_address) as db_session:
-                    c_criteria = and_(Target_Extra.target_id==target_id, Target_Extra.key=='classification') # Criteria for updating the classification info in the targetextra table
-                    if action=='update':
-                        if db_session.query(Target_Extra).filter(c_criteria).first() is not None:
-                            db_session.query(Target_Extra).filter(c_criteria).update({'value': class_name})
-                        else:
-                            db_session.add(Target_Extra(target_id=target_id, key='classification', value=class_name))
+#             class_id = target_row.classificationid
+#             if class_id is not None:
+#                 class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
+#                 with get_session(db_address=db_address) as db_session:
+#                     c_criteria = and_(Target_Extra.target_id==target_id, Target_Extra.key=='classification') # Criteria for updating the classification info in the targetextra table
+#                     if action=='update':
+#                         if db_session.query(Target_Extra).filter(c_criteria).first() is not None:
+#                             db_session.query(Target_Extra).filter(c_criteria).update({'value': class_name})
+#                         else:
+#                             db_session.add(Target_Extra(target_id=target_id, key='classification', value=class_name))
 
-                    elif action=='insert':
-                        db_session.add(Target_Extra(target_id=target_id, key='classification', value=class_name))
+#                     elif action=='insert':
+#                         db_session.add(Target_Extra(target_id=target_id, key='classification', value=class_name))
 
-                    elif action=='delete':
-                        db_session.query(Target_Extra).filter(c_criteria).delete()
+#                     elif action=='delete':
+#                         db_session.query(Target_Extra).filter(c_criteria).delete()
 
-                    db_session.commit()
-            delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
+#                     db_session.commit()
+#             delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
 
-        except:
-            raise #continue
+#         except:
+#             raise #continue
 
 
 def update_users(action, db_address=_SNEX2_DB):
@@ -695,6 +751,6 @@ def run():
     for action in actions:
         update_users(action, db_address=_SNEX2_DB)
         update_target(action, db_address=_SNEX2_DB)
-        update_target_extra(action, db_address=_SNEX2_DB)
+        # update_target_extra(action, db_address=_SNEX2_DB)
         update_phot(action, db_address=_SNEX2_DB)
         update_spec(action, db_address=_SNEX2_DB)
