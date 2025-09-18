@@ -1,5 +1,5 @@
 from tom_targets.forms import SiderealTargetCreateForm, TargetForm
-from tom_targets.models import Target, TargetExtra
+from tom_targets.models import Target
 from tom_dataproducts.forms import DataProductUploadForm
 from tom_observations.widgets import FilterField
 from tom_dataproducts.models import DataProduct
