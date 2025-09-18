@@ -14,7 +14,7 @@ from statistics import median
 
 from django_plotly_dash import DjangoDash
 from tom_dataproducts.models import ReducedDatum
-from tom_targets.models import Target, TargetExtra
+from tom_targets.models import Target
 from custom_code.templatetags.custom_code_tags import bin_spectra
 from django.db.models import Q
 from django.templatetags.static import static
@@ -454,12 +454,8 @@ def display_output(selected_rows,
             max_flux = 0
 
             spectrum = ReducedDatum.objects.get(id=spectrum_id)
-       
-            object_z_query = TargetExtra.objects.filter(target_id=spectrum.target_id,key='redshift').first()
-            if not object_z_query:
-                object_z = 0
-            else:
-                object_z = float(object_z_query.value)
+            target_first = Target.objects.get(pk=spectrum.target_id)
+            object_z = target_first.redshift
 
             if not spectrum:
                 return 'No spectra yet'
@@ -494,20 +490,15 @@ def display_output(selected_rows,
             )
             graph_data['data'] = [scatter_obj]
 
-            target = Target.objects.filter(Q(name__icontains=compare_target) | Q(aliases__name__icontains=compare_target)).first()
-            
-            compare_z_query = TargetExtra.objects.filter(target_id=target.id,key='redshift').first()
-            if not compare_z_query:
-                compare_z = 0
-            else:
-                compare_z = float(compare_z_query.value)
+            target_compare = Target.objects.filter(Q(name__icontains=compare_target) | Q(aliases__name__icontains=compare_target)).first()
+            compare_z = target_compare.redshift 
 
-            spectral_dataproducts = ReducedDatum.objects.filter(target=target, data_type='spectroscopy').order_by('-timestamp')
+            spectral_dataproducts = ReducedDatum.objects.filter(target=target_compare, data_type='spectroscopy').order_by('-timestamp')
             for spectrum in spectral_dataproducts:
                 datum = spectrum.value
                 wavelength = []
                 flux = []
-                name = target.name + ' --- ' +  str(spectrum.timestamp).split(' ')[0]
+                name = target_compare.name + ' --- ' +  str(spectrum.timestamp).split(' ')[0]
                 if datum.get('photon_flux'):
                     wavelength = datum.get('wavelength')
                     flux = datum.get('photon_flux')
@@ -601,11 +592,8 @@ def display_output(selected_rows,
                 flux.append(float(value['flux']))
 
         if 'mask' in mask_value:
-            object_z_query = TargetExtra.objects.filter(target_id=spectrum.target_id,key='redshift').first()
-            if not object_z_query:
-                object_z = 0
-            else:
-                object_z = float(object_z_query.value)
+            t = Target.objects.get(pk=spectrum.target_id)
+            object_z = t.redshift
 
             pfit = np.poly1d(np.polyfit(wavelength, flux, 4))
             for galaxy_wave in elements['Galaxy']['waves']:
