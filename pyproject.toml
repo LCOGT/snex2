@@ -33,7 +33,9 @@ dependencies = [
     "dash_html_components",
     "dash_table",
     "whitenoise",
-    "mysqlclient"
+    "mysqlclient",
+    "gevent",
+    "gunicorn"
 ]
 
 [project.optional-dependencies]
