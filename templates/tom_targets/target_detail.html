@@ -66,44 +66,35 @@
     <script>
     function edit_redshift() {
       var targetid = {{ target.id }};
-      var redshiftid = {{ target|get_targetextra_id:"redshift" }};
       var new_value = $('#thenewredshift').val();
       var newdata = {
         "key": "redshift",
-        "value": new_value
+        "value": new_value,
+        "targetid": targetid
       };
-      if (redshiftid != null) {
-	newdata = {
-	  "id": redshiftid,
-	  "key": "redshift",
-	  "value": new_value
-	};
-      }
-      console.log(targetid, redshiftid, new_value);
+      
+      console.log(targetid, new_value);
       $.ajax({
-	url: '/api/targets/' + targetid + '/',
-	type: "PATCH",
-	headers: {"X-CSRFToken": '{{ csrf_token }}'}, 
-	data: JSON.stringify({
-	  "targetextra_set": [
-	    newdata
-	  ]
-	}),
-	contentType: "application/json",
-	dataType: "json",
-	success: function() {
-	  newdata['targetid'] = targetid;
+        url: '/api/targets/' + targetid + '/',
+        type: "PATCH",
+        headers: {"X-CSRFToken": '{{ csrf_token }}'}, 
+        contentType: "application/json",
+        dataType: "json",
+        data: JSON.stringify({ "redshift": new_value }),
           $.ajax({
             url: '{% url "sync_targetextra" %}',
+            type: 'GET',
             data: {'newdata': JSON.stringify(newdata)},
-            dataType: 'json'
-          })
-        },
-	error: function(e) {
-	  console.log(e);
-	}
-      })
-    }
+            dataType: 'json',
+            success: function(){
+              console.log("Redshift synced: ", new_value)
+            },
+            error: function(e) {
+              console.log("Error syncing redshift: ", e)
+            }
+          });
+        });
+      }
     </script>
     <td align="left">
       <span style="display: inline-block; font-size: 23px;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}</span><br><span style="display: inline-block; font-size: 20px;">{{ target.ra|floatformat:4 }} {{ target.dec|floatformat:4 }}</span>

@@ -125,7 +125,6 @@ DATA_SHARING = {
         'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
         'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
-        # TODO: Set your proper filter mapping from datum filter to TNS filter name
         'FILTER_MAPPING': {
             'B': 'B-astrodon',
             'V': 'V-Johnson',
