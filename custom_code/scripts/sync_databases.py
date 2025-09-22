@@ -12,10 +12,16 @@ import datetime
 from django.conf import settings
 from tom_dataproducts.models import DataProduct, data_product_path
 
-_SNEX2_DB = 'postgresql://{}:{}@supernova.science.lco.global:5435/snex2'.format(os.environ.get('SNEX2_DB_USER'), os.environ.get('SNEX2_DB_PASSWORD'))
+_SNEX2_DB = 'postgresql://{}:{}@{}:{}/snex2'.format(
+    os.environ.get('SNEX2_DB_USER'),
+    os.getenv('SNEX2_DB_PASSWORD'),
+    os.getenv('SNEX2_DB_HOST', 'snex2-db'),
+    os.getenv('SNEX2_DB_PORT', 5432)
+)
 
 engine1 = create_engine(settings.SNEX1_DB_URL)
 engine2 = create_engine(_SNEX2_DB)
+
 
 @contextmanager
 def get_session(db_address=settings.SNEX1_DB_URL):
@@ -27,7 +33,7 @@ def get_session(db_address=settings.SNEX1_DB_URL):
     session: SQLAlchemy database session
     """
     Base = automap_base()
-    if db_address==settings.SNEX1_DB_URL:
+    if db_address == settings.SNEX1_DB_URL:
         Base.metadata.bind = engine1
         db_session = sessionmaker(bind=engine1, autoflush=False, expire_on_commit=False)
     else:
