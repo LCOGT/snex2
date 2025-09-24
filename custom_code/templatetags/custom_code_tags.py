@@ -9,7 +9,7 @@ from django.contrib.auth.models import User, Group
 from django_comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
 
-from tom_targets.models import Target, TargetList
+from tom_targets.models import Target, TargetList, TargetExtra
 from tom_targets.forms import TargetVisibilityForm
 from tom_observations import utils, facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
