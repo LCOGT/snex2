@@ -54,7 +54,7 @@
       <form style="display: inline; font-size: 20px" name="form_redshift_theredshift" autocomplete="off" action="javascript: edit_redshift()">
         <span id="zpre">z=</span>
         <input type="hidden" name="targetid" id="thetargetid" value={{ target.id }}>
-	{% with z=target|target_extra_field:"redshift" %}
+	{% with z=target.redshift%}
 	{% if z == None %}
         <input type="text" name="redshift" id="thenewredshift" placeholder={{ z|strip_trailing_zeros }} autocomplete="off" style="background: none; border: 0px solid #174460; font-family: 'Open Sans', sans-serif; color: white;">
 	{% else %}
@@ -72,28 +72,20 @@
         "value": new_value,
         "targetid": targetid
       };
-      
-      console.log(targetid, new_value);
+
       $.ajax({
-        url: '/api/targets/' + targetid + '/',
-        type: "PATCH",
-        headers: {"X-CSRFToken": '{{ csrf_token }}'}, 
+        url: '{% url "sync_targetextra" %}',
+        type: "GET",
+        data: {"newdata": JSON.stringify(newdata)},
         contentType: "application/json",
         dataType: "json",
-        data: JSON.stringify({ "redshift": new_value }),
-          $.ajax({
-            url: '{% url "sync_targetextra" %}',
-            type: 'GET',
-            data: {'newdata': JSON.stringify(newdata)},
-            dataType: 'json',
-            success: function(){
-              console.log("Redshift synced: ", new_value)
-            },
-            error: function(e) {
-              console.log("Error syncing redshift: ", e)
-            }
-          });
-        });
+        success: function(response) {
+          console.log("Redshift synced for target: ",targetid,new_value,response)
+        },
+        error: function(e) {
+          console.log("Error syncing Redshift for target: ",targetid,new_value,e);
+        }
+      })
       }
     </script>
     <td align="left">

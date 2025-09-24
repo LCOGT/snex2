@@ -9,7 +9,7 @@ from django.contrib.auth.models import User, Group
 from django_comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
 
-from tom_targets.models import Target, TargetList, TargetExtra
+from tom_targets.models import Target, TargetList, TargetExtra, BaseTarget
 from tom_targets.forms import TargetVisibilityForm
 from tom_observations import utils, facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
@@ -568,15 +568,6 @@ def spectra_collapse(target):
 def aladin_collapse(target):
     return {'target': target}
 
-@register.filter
-def get_targetextra_id(target, keyword):
-    try:
-        targetextra = TargetExtra.objects.get(target_id=target.id, key=keyword)
-        return targetextra.id
-    except:
-        return json.dumps(None)
-
-
 @register.inclusion_tag('tom_targets/partials/target_data.html', takes_context=True)
 def target_data_with_user(context, target):
     """
@@ -594,14 +585,14 @@ def target_data_with_user(context, target):
 @register.inclusion_tag('custom_code/classifications_dropdown.html')
 def classifications_dropdown(target):
     classifications = [i for i in settings.TARGET_CLASSIFICATIONS]
-    target_classification = TargetExtra.objects.filter(target=target, key='classification').first()
-    if target_classification is None:
-        target_class = None
-    else:
-        target_class = target_classification.value
+    target_classification = target.classification
+    # if target_classification is None:
+    #     target_class = None
+    # else:
+    #     target_class = target_classification
     return {'target': target,
             'classifications': classifications,
-            'target_class': target_class}
+            'target_class': target_classification}
 
 @register.inclusion_tag('custom_code/science_tags_dropdown.html')
 def science_tags_dropdown(target):

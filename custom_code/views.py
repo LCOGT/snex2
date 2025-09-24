@@ -1729,6 +1729,13 @@ def sync_targetextra_view(request):
     newdata = json.loads(request.GET.get('newdata'))
     target_id = newdata.get('targetid')
     target = Target.objects.get(id=target_id)
+    if newdata['key'] == 'classification':
+        target.classification = newdata['value']
+    elif newdata['key'] == 'redshift':
+        target.redshift = newdata['value']
+    logger.info(f"Updated target {newdata['key']} to {newdata['value']}")
+    target.save()
+
     run_hook('targetextra_post_save',target)
     
     return HttpResponse(json.dumps({'success': 'Synced'}), content_type='application/json')

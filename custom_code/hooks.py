@@ -175,6 +175,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
     logger.info('Target post save hook: %s created: %s', target, created)
     
     if not created:
+        
         ### Add the last nondetection and first detection from TNS, if it exists
         tns_results = _get_tns_params(target)
         if tns_results.get('success', ''):
