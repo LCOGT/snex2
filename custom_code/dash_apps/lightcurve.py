@@ -1,6 +1,6 @@
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
-import dash_html_components as html
+from dash import html
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output, State
 import json
@@ -392,7 +392,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             text=['{} (MJD {})'.format(t.strftime('%m/%d/%Y'), str(round(Time(t).mjd, 2))) for t in filter_values['time']],
         ) for filter_name, filter_values in selected_photometry.items()]
 
-    if target.redshift is not None and target.redshift > 0.01:
+    if target.redshift > 0.01:
         ydata = []
         for filter_name, filter_values in selected_photometry.items():
             if filter_name is not None:

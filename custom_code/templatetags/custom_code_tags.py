@@ -326,7 +326,7 @@ def lightcurve_collapse(target, user):
     
     plot_data = generic_lightcurve_plot(target, user)     
     spec = ReducedDatum.objects.filter(target=target, data_type='spectroscopy')
-    
+
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -661,7 +661,6 @@ def submit_lco_observations(target):
 @register.inclusion_tag('custom_code/dash_lightcurve.html', takes_context=True)
 def dash_lightcurve(context, target, width, height):
     request = context['request']
-    
     # Get initial choices and values for some dash elements
     telescopes = ['LCO']
     reducer_groups = []
@@ -1851,7 +1850,7 @@ def lightcurve_with_extras(target, user):
                     go.Scatter(
                         x=[Time(float(jd), format='jd', scale='utc').isot],
                         y=[float(value['mag'])], mode='markers',
-                        marker=dict(color=get_color(value['filt'], filter_translate), size=12, symbol=symbols[key]),
+                        marker=dict(color=get_color(value['filt'], filter_translate), size=12, symbol=symbols[i]),
                         name=names[i]
                     )
                 )
