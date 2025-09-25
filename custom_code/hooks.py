@@ -4,7 +4,6 @@ import logging
 from astropy.time import Time, TimezoneInfo
 from tom_dataproducts.models import ReducedDatum
 import json
-from tom_targets.templatetags.targets_extras import target_extra_field
 from tom_targets.models import Target
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from requests_oauthlib import OAuth1

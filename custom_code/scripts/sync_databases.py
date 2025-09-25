@@ -656,6 +656,5 @@ def run():
     for action in actions:
         update_users(action, db_address=_SNEX2_DB)
         update_target(action, db_address=_SNEX2_DB)
-        # update_target_extra(action, db_address=_SNEX2_DB)
         update_phot(action, db_address=_SNEX2_DB)
         update_spec(action, db_address=_SNEX2_DB)

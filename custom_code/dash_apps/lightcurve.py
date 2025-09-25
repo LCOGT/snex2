@@ -7,7 +7,6 @@ import json
 import numpy as np
 from django_plotly_dash import DjangoDash
 from tom_dataproducts.models import ReducedDatum
-from tom_targets.templatetags.targets_extras import target_extra_field
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra, Papers
 import logging
@@ -393,7 +392,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             text=['{} (MJD {})'.format(t.strftime('%m/%d/%Y'), str(round(Time(t).mjd, 2))) for t in filter_values['time']],
         ) for filter_name, filter_values in selected_photometry.items()]
 
-    if target_extra_field(target, 'redshift') is not None and float(target_extra_field(target, 'redshift')) > 0.01:
+    if target.redshift is not None and target.redshift > 0.01:
         ydata = []
         for filter_name, filter_values in selected_photometry.items():
             if filter_name is not None:
@@ -409,7 +408,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             ymin_view = 0
             ymax_view = 0
 
-        dm = 5*np.log10(float(target_extra_field(target, 'redshift'))*3e5/70.0*1e6) - 5
+        dm = 5*np.log10(target.redshift*3e5/70.0*1e6) - 5
         yaxis2 = {'range': (ymax_view-dm, ymin_view-dm),
                   'showgrid': False,
                   'overlaying': 'y',

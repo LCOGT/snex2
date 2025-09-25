@@ -20,7 +20,6 @@ from tom_targets.models import TargetList, Target, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
 from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
 from custom_code.forms import SNEx2UserCreationForm
-from tom_targets.templatetags.targets_extras import target_extra_field
 from guardian.mixins import PermissionListMixin
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
@@ -1702,9 +1701,9 @@ class InterestingTargetsView(ListView):
         active_target_ids = [c.observation_group.observation_records.first().target.id for c in active_cadences]
         for target in context['global_interesting_targets']:
             target.best_name = get_best_name(target)
-            target.classification = target_extra_field(target, 'classification')
-            target.redshift = target_extra_field(target, 'redshift')
-            target.description = target_extra_field(target, 'target_description')
+            target.classification = Target.objects.get(pk=target.pk).classification
+            target.redshift = Target.objects.get(pk=target.pk).redshift
+            target.description = Target.objects.get(pk=target.pk).target_description
             target.science_tags = ', '.join([s.tag for s in ScienceTags.objects.filter(id__in=[t.tag_id for t in TargetTags.objects.filter(target_id=target.id)])])
             if target.id in active_target_ids:
                 target.active_cadences = 'Yes'
@@ -1715,9 +1714,9 @@ class InterestingTargetsView(ListView):
         context['personal_interesting_targets'] = [q.target for q in InterestedPersons.objects.filter(user=self.request.user)] 
         for target in context['personal_interesting_targets']:
             target.best_name = get_best_name(target)
-            target.classification = target_extra_field(target, 'classification')
-            target.redshift = target_extra_field(target, 'redshift')
-            target.description = target_extra_field(target, 'target_description')
+            target.classification = Target.objects.get(pk=target.pk).classification
+            target.redshift = Target.objects.get(pk=target.pk).redshift
+            target.description = Target.objects.get(pk=target.pk).target_description
             target.science_tags = ', '.join([s.tag for s in ScienceTags.objects.filter(id__in=[t.tag_id for t in TargetTags.objects.filter(target_id=target.id)])])
             if target.id in active_target_ids:
                 target.active_cadences = 'Yes'
