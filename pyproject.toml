@@ -15,7 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "tomtoolkit>2",
-    "astropy>=5",
+    "astropy>=5,<6",
     "astroquery",
     "requests",
     "numpy<2",
@@ -34,7 +34,7 @@ dependencies = [
     "dash_table",
     "whitenoise",
     "mysqlclient",
-    "gevent",
+    "gevent>1.4",
     "gunicorn"
 ]
 

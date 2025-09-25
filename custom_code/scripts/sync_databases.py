@@ -10,7 +10,9 @@ from contextlib import contextmanager
 import os
 import datetime
 from django.conf import settings
-from tom_dataproducts.models import DataProduct, data_product_path
+from tom_targets.models import Target
+from tom_dataproducts.models import DataProduct, data_product_path, ReducedDatum
+from guardian.shortcuts import assign_perm
 
 _SNEX2_DB = 'postgresql://{}:{}@{}:{}/snex2'.format(
     os.environ.get('SNEX2_DB_USER'),
@@ -162,7 +164,7 @@ def powers_of_two(num):
     return powers
 
 
-def update_permissions(groupid, permissionid, objectid, contentid):
+def update_permissions(groupid, permission, object):
     """
     Updates permissions of a specific group for a certain target
     or reduceddatum
@@ -170,17 +172,17 @@ def update_permissions(groupid, permissionid, objectid, contentid):
     Parameters
     ----------
     groupid: int, corresponding to which groups in SNex1 have permissions for this object
-    permissionid: int, the permission id in the SNex2 db for this permission
-    objectid: int, the row id of the object
-    contentid: int, the content id in the SNex2 db for this object
+    permission: str, the permission name in the SNex2 db for this permission
+    object: row of the object to assign permissions to
     """
     target_groups = powers_of_two(groupid)
     
     with get_session(db_address=_SNEX2_DB) as db_session:
         for g_name, g_id in snex1_groups.items():
             if g_id in target_groups:
-                snex2_groupid = db_session.query(Auth_Group).filter(Auth_Group.name==g_name).first().id
-                db_session.add(Group_Perm(object_pk=str(objectid), content_type_id=contentid, group_id = snex2_groupid, permission_id = permissionid))
+                snex2_group = db_session.query(Auth_Group).filter(Auth_Group.name==g_name).first()
+                assign_perm(permission, snex2_group, object)
+                # db_session.add(Group_Perm(object_pk=str(objectid), content_type_id=contentid, group_id = snex2_groupid, permission_id = permissionid))
         db_session.flush()
 
 
@@ -259,46 +261,42 @@ def update_phot(action, db_address=_SNEX2_DB):
                         else:
                             template_source = 'LCO'
                         phot = {'magnitude': float(phot_row.mag), 'filter': phot_row.filter, 'error': float(phot_row.dmag), 'snex_id': int(id_), 'background_subtracted': True, 'subtraction_algorithm': subtraction_algorithm, 'template_source': template_source, 'reduction_type': 'manual', 'telescope': phot_row.telescope, 'instrument': phot_row.instrument}
-                    
+                
                     else:
                         phot = {'snex_id': int(id_)}
                 else:
                     phot = {'snex_id': int(id_)}
-    
+
                 phot_groupid = phot_row.groupidcode
-    
+
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-                    standard_list = db_session.query(Targets).filter(Targets.classificationid==1)
+                    standard_list = db_session.query(Targets).filter(Targets.classificationid == 1)
                     standard_ids = [x.id for x in standard_list]
-                if targetid not in standard_ids and int(phot_row.filetype) in (1,3):
-                    with get_session(db_address=db_address) as db_session:
-                        #criteria = and_(Datum.data_type=='photometry', Datum.timestamp==time)
-                        if action=='update':
-                            #snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.snex_id==id_, Datum_Extra.data_type=='photometry')).first()
-                            ##if snex2_id_query is not None:
-                            #snex2_id = snex2_id_query.reduced_datum_id
-                            
-                            snex2_id_query = db_session.query(Datum).filter(and_(Datum.target_id==targetid, Datum.data_type=='photometry')).all()
-                            for snex2_row in snex2_id_query:
-                                value = snex2_row.value
-                                if type(value) == str: #Some rows are still strings for some reason
-                                    value = json.loads(snex2_row.value)
-                                if int(id_) == value.get('snex_id', ''):
-                                    snex2_id = snex2_row.id
-                                    db_session.query(Datum).filter(Datum.id==snex2_id).update({'target_id': targetid, 'timestamp': time, 'value': phot, 'data_type': 'photometry', 'source_name': '', 'source_location': ''})
-                                    break
+                if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
+                    if action == 'update':
+                        data_point = ReducedDatum.objects.filter(value__snex_id=int(id_)).first()
+                        data_point.update(
+                            value=phot,
+                            timestamp=time,
+                            data_type='photometry',
+                            source_name='',
+                            source_location='',
+                            target_id=targetid
+                        )
+                        if phot_groupid is not None:
+                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point)
+                    elif action == 'insert':
+                        data_point = ReducedDatum.objects.create(
+                            target_id=targetid,
+                            timestamp=time,
+                            value=phot,
+                            data_type='photometry',
+                            source_name='',
+                            source_location=''
+                        )
 
-                        elif action=='insert':
-                            newphot = Datum(target_id=targetid, timestamp=time, value=phot, data_type='photometry', source_name='', source_location='')
-                            db_session.add(newphot)
-                            db_session.flush()
-    
-                            if phot_groupid is not None:
-                                update_permissions(int(phot_groupid), 77, newphot.id, 19) #View reduceddatum
-
-                            #newphot_extra = Datum_Extra(snex_id=int(id_), reduced_datum_id=int(newphot.id), data_type='photometry', key='filetype', value=phot_row.filetype, float_value = float(phot_row.filetype))
-                            #db_session.add(newphot_extra)
-
+                        if phot_groupid is not None:
+                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point)
                         db_session.commit()
                 delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
@@ -418,7 +416,7 @@ def update_spec(action, db_address=_SNEX2_DB):
                             db_session.flush()
 
                             if spec_groupid is not None:
-                                update_permissions(int(spec_groupid), 77, newspec.id, 19) #View reduceddatum
+                                update_permissions(int(spec_groupid), 'view_reduceddatum', newspec) #View reduceddatum
  
                             #newspec_extra = Datum_Extra(snex_id=int(id_), reduced_datum_id=int(newspec.id), data_type='spectroscopy', key='', value='')
                             #db_session.add(newspec_extra)
@@ -493,7 +491,7 @@ def update_target(action, db_address=_SNEX2_DB):
                 elif action=='insert':
                     existing_target_query = db_session.query(Target).filter(criteria).first()
                     if not existing_target_query:
-                        db_session.add(
+                        newtarget = db_session.add(
                             Target(
                                 id=target_id, 
                                 name=t_name, 
@@ -509,9 +507,9 @@ def update_target(action, db_address=_SNEX2_DB):
                         )
                         if 'postgresql' in db_address:
                             db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
-                        update_permissions(t_groupid, 47, target_id, 12) #Change target
-                        update_permissions(t_groupid, 48, target_id, 12) #Delete target
-                        update_permissions(t_groupid, 49, target_id, 12) #View target
+                        update_permissions(t_groupid, 'change_basetarget', newtarget) #Change target
+                        update_permissions(t_groupid, 'delete_basetarget', newtarget) #Delete target
+                        update_permissions(t_groupid, 'view_basetarget', newtarget) #View target
 
                 elif action=='delete':
                     db_session.query(Target).filter(criteria).delete()
@@ -692,6 +690,36 @@ def update_users(action, db_address=_SNEX2_DB):
             raise
 
 
+def update_groups(action, db_address=_SNEX2_DB):
+    group_changes = query_db_changes('groups', action, db_address=settings.SNEX1_DB_URL)
+    for change in group_changes:
+        row_id = change.rowid
+        group_row = get_current_row(Groups, row_id, db_address=settings.SNEX1_DB_URL)
+        if action == 'delete':
+            old_group_name = change.locator
+            with get_session(db_address=db_address) as db_session:
+                db_session.query(Auth_Group).filter(Auth_Group.name == old_group_name).delete()
+                db_session.commit()
+
+        elif action == 'insert':
+            with get_session(db_address=db_address) as db_session:
+                new_group = Auth_Group(name=group_row.name)
+                db_session.add(new_group)
+                db_session.commit()
+
+        elif action == 'update':
+            old_group_name = change.locator
+            with get_session(db_address=db_address) as db_session:
+                db_session.query(Auth_Group).filter(
+                    Auth_Group.name == old_group_name
+                ).update(
+                    {'name': group_row.name}
+                )
+                db_session.commit()
+
+        delete_row(Db_Changes, change.id, db_address=settings.SNEX1_DB_URL)
+
+
 def run():
     """
     Migrates all changes from the SNex1 db to the SNex2 db,
@@ -699,6 +727,7 @@ def run():
     """
     actions = ['delete', 'insert', 'update']
     for action in actions:
+        update_groups(action, db_address=_SNEX2_DB)
         update_users(action, db_address=_SNEX2_DB)
         update_target(action, db_address=_SNEX2_DB)
         update_target_extra(action, db_address=_SNEX2_DB)
