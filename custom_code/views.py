@@ -51,6 +51,7 @@ from tom_common.hooks import run_hook
 from tom_common.views import UserUpdateView
 from tom_dataproducts.views import DataProductUploadView, DataProductDeleteView
 from tom_dataproducts.exceptions import InvalidFileFormatException
+from tom_targets.base_models import TargetMatchManager
 
 from custom_code.processors.data_processor import run_custom_data_processor
 from guardian.shortcuts import assign_perm
@@ -1103,8 +1104,8 @@ def search_name_view(request):
         target_match_list = Target.objects.none()
 
     context['targets'] = target_match_list
-
-    if request.is_ajax():
+    
+    if request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest':
         html = render_to_string(
             template_name='custom_code/partials/name-search-results.html',
             context={'targets': target_match_list}
@@ -1154,20 +1155,22 @@ def async_scheduling_page_view(request):
 
 def add_target_to_group_view(request):
     target_name = request.GET.get('target_name')
-    target = Target.objects.get(name=target_name)
-    
+
+    target = Target.objects.filter(Q(name__icontains=target_name) | Q(aliases__name__icontains=target_name)).first()
+
     targetlist_id = request.GET.get('group_id')
     targetlist = TargetList.objects.get(id=targetlist_id)
 
     list_type = request.GET.get('list')
 
-    if request.user.has_perm('tom_targets.view_target', target) and target not in targetlist.targets.all():
+    if request.user.has_perm('custom_code.view_target', target) and target not in targetlist.targets.all():
 
         if list_type == 'observing_run':
             if len(targetlist.targets.all()) == 0:
                 target_priority = 1
             else:
-                target_priority = max([t.observing_run_priority for t in targetlist.targets.all()]) + 1
+                #currently targetlist.targets.all() is a list of basetargets, needs to be snextargets
+                target_priority = max([Target.objects.get(pk=t.pk).observing_run_priority for t in targetlist.targets.all()]) + 1
             target.observing_run_priority = target_priority
             target.save()
         
@@ -1733,6 +1736,8 @@ def sync_targetextra_view(request):
         target.classification = newdata['value']
     elif newdata['key'] == 'redshift':
         target.redshift = newdata['value']
+    elif newdata['key'] == 'name':
+        print('When updating alias,the target.save() just needs to happen')
     logger.info(f"Updated target {newdata['key']} to {newdata['value']}")
     target.save()
 

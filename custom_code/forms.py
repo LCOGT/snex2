@@ -40,15 +40,6 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
     def save(self, commit=True):
         instance = super().save(commit=commit)
         if commit:
-            #for field in settings.EXTRA_FIELDS:
-            #    if self.cleaned_data.get(field['name']) is not None:
-            #        print(instance.id, field['name'])
-            #        TargetExtra.objects.update_or_create(
-            #                target=instance,
-            #                key=field['name'],
-            #                defaults={'value': self.cleaned_data[field['name']]}
-            #        )
-            # Save groups for this target
             for group in self.cleaned_data['groups']:
                 assign_perm('tom_targets.view_target', group, instance)
                 assign_perm('tom_targets.change_target', group, instance)
