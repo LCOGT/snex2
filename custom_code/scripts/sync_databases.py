@@ -12,7 +12,8 @@ import datetime
 from django.conf import settings
 from tom_targets.models import Target
 from tom_dataproducts.models import DataProduct, data_product_path, ReducedDatum
-from guardian.shortcuts import assign_perm
+from custom_code.utils import powers_of_two
+from custom_code.utils import update_permissions
 
 _SNEX2_DB = 'postgresql://{}:{}@{}:{}/snex2'.format(
     os.environ.get('SNEX2_DB_USER'),
@@ -90,7 +91,7 @@ Users = load_table('users', db_address=settings.SNEX1_DB_URL)
 ### And our SNex2 tables
 Data_Product = load_table('tom_dataproducts_dataproduct', db_address=_SNEX2_DB)
 Datum = load_table('tom_dataproducts_reduceddatum', db_address=_SNEX2_DB)
-Target = load_table('tom_targets_basetarget', db_address=_SNEX2_DB)
+TargetTable = load_table('tom_targets_basetarget', db_address=_SNEX2_DB)
 Target_Extra = load_table('tom_targets_targetextra', db_address=_SNEX2_DB)
 Targetname = load_table('tom_targets_targetname', db_address=_SNEX2_DB)
 Auth_Group = load_table('auth_group', db_address=_SNEX2_DB)
@@ -153,37 +154,6 @@ def delete_row(table, id_, db_address=settings.SNEX1_DB_URL):
         criteria = getattr(table, 'id') == id_
         db_session.query(table).filter(criteria).delete()
         db_session.commit()
-
-def powers_of_two(num):
-    powers = []
-    i = 1
-    while i <= num:
-        if i & num:
-            powers.append(i)
-        i <<= 1
-    return powers
-
-
-def update_permissions(groupid, permission, object):
-    """
-    Updates permissions of a specific group for a certain target
-    or reduceddatum
-
-    Parameters
-    ----------
-    groupid: int, corresponding to which groups in SNex1 have permissions for this object
-    permission: str, the permission name in the SNex2 db for this permission
-    object: row of the object to assign permissions to
-    """
-    target_groups = powers_of_two(groupid)
-    
-    with get_session(db_address=_SNEX2_DB) as db_session:
-        for g_name, g_id in snex1_groups.items():
-            if g_id in target_groups:
-                snex2_group = db_session.query(Auth_Group).filter(Auth_Group.name==g_name).first()
-                assign_perm(permission, snex2_group, object)
-                # db_session.add(Group_Perm(object_pk=str(objectid), content_type_id=contentid, group_id = snex2_groupid, permission_id = permissionid))
-        db_session.flush()
 
 
 def update_phot(action, db_address=_SNEX2_DB):
@@ -274,20 +244,33 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
                     if action == 'update':
-                        data_point = ReducedDatum.objects.filter(value__snex_id=int(id_)).first()
-                        data_point.update(
-                            value=phot,
-                            timestamp=time,
+                        #snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.snex_id==id_, Datum_Extra.data_type=='photometry')).first()
+                        #if snex2_id_query is not None:
+                        #snex2_id = snex2_id_query.reduced_datum_id
+                        all_rows = ReducedDatum.objects.filter(
+                            target__pk=targetid,
                             data_type='photometry',
-                            source_name='',
-                            source_location='',
-                            target_id=targetid
-                        )
+                        ).all()
+                        for snex2_row in all_rows:
+                            value = snex2_row.value
+                            if type(value) == str: #Some rows are still strings for some reason
+                                value = json.loads(snex2_row.value)
+                            if int(id_) == value.get('snex_id', ''):
+                                snex2_id = snex2_row.id
+                                data_point = ReducedDatum.objects.get(id=snex2_id)
+                                break
+                        data_point.value = phot
+                        data_point.timestamp = time
+                        data_point.data_type = 'photometry'
+                        data_point.source_name = ''
+                        data_point.source_location = ''
+                        data_point.target_id = targetid
+                        data_point.save()
                         if phot_groupid is not None:
-                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point)
+                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
                     elif action == 'insert':
-                        data_point = ReducedDatum.objects.create(
-                            target_id=targetid,
+                        data_point, created = ReducedDatum.objects.get_or_create(
+                            target=Target.objects.get(pk=targetid),
                             timestamp=time,
                             value=phot,
                             data_type='photometry',
@@ -296,7 +279,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                         )
 
                         if phot_groupid is not None:
-                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point)
+                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
                         db_session.commit()
                 delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
@@ -377,25 +360,34 @@ def update_spec(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid==1)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids:
-                    with get_session(db_address=db_address) as db_session:
-                        #criteria = and_(Datum.data_type=='spectroscopy', Datum.timestamp==time)
-                        if action=='update':
-                            #snex2_id_query = db_session.query(Datum).filter(and_(Datum.target_id==targetid, Datum.data_type=='spectroscopy')).all()
-                            #for snex2_row in snex2_id_query:
-                            #    value = json.loads(snex2_row.value)
-                            #    if id_ == value.get('snex_id', ''):
-                            #        snex2_row.update({'target_id': targetid, 'timestamp': time, 'value': spec, 'data_type': 'spectroscopy', 'source_name': '', 'source_location': ''})
-                            #        break
-                            
+                    if action=='update':
+                        #snex2_id_query = db_session.query(Datum).filter(and_(Datum.target_id==targetid, Datum.data_type=='spectroscopy')).all()
+                        #for snex2_row in snex2_id_query:
+                        #    value = json.loads(snex2_row.value)
+                        #    if id_ == value.get('snex_id', ''):
+                        #        snex2_row.update({'target_id': targetid, 'timestamp': time, 'value': spec, 'data_type': 'spectroscopy', 'source_name': '', 'source_location': ''})
+                        #        break
+                        with get_session(db_address=db_address) as db_session:
                             snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.target_id==targetid, Datum_Extra.key=='snex_id', Datum_Extra.data_type=='spectroscopy')).all()
                             for snex2_row in snex2_id_query:
                                 value = json.loads(snex2_row.value)
                                 if id_ == value.get('snex_id', ''):
                                     snex2_id = value.get('snex2_id', '')
-                                    db_session.query(Datum).filter(Datum.id==snex2_id).update({'target_id': targetid, 'timestamp': time, 'value': spec, 'data_type': 'spectroscopy', 'source_name': '', 'source_location': ''})
+                                    data_point = ReducedDatum.objects.get(id=snex2_id)
+
+                                    data_point.target_id = targetid
+                                    data_point.timestamp = time
+                                    data_point.value = spec
+                                    data_point.data_type = 'spectroscopy'
+                                    data_point.source_name = ''
+                                    data_point.source_location = ''
+                                    data_point.save()
+                                    if spec_groupid is not None:
+                                        update_permissions(int(spec_groupid), 'view_reduceddatum', data_point, snex1_groups) #View reduceddatum
                                     break
 
-                        elif action=='insert':
+                    elif action=='insert':
+                        with get_session(db_address=db_address) as db_session:
                             # First create the dataproduct for this spectra linking to the ascii file
                             newdp = Data_Product(
                                 target_id=targetid, 
@@ -409,39 +401,38 @@ def update_spec(action, db_address=_SNEX2_DB):
                             db_session.add(newdp)
                             db_session.flush()
 
-                            # Then create the reduced datum referencing the data product
-                            newspec = Datum(target_id=targetid, data_product_id=newdp.id, timestamp=time, value=spec, data_type='spectroscopy', source_name='', source_location='')
-                            #newspec = Datum(target_id=targetid, timestamp=time, value=spec, data_type='spectroscopy', source_name='', source_location='')
-                            db_session.add(newspec)
-                            db_session.flush()
+                        data_point, created = ReducedDatum.objects.get_or_create(target_id=targetid, data_product_id=newdp.id, timestamp=time, value=spec, data_type='spectroscopy', source_name='', source_location='')
+                        # Then create the reduced datum referencing the data product
+                        #newspec = Datum(target_id=targetid, timestamp=time, value=spec, data_type='spectroscopy', source_name='', source_location='')
 
-                            if spec_groupid is not None:
-                                update_permissions(int(spec_groupid), 'view_reduceddatum', newspec) #View reduceddatum
- 
-                            #newspec_extra = Datum_Extra(snex_id=int(id_), reduced_datum_id=int(newspec.id), data_type='spectroscopy', key='', value='')
-                            #db_session.add(newspec_extra)
 
-                            newspec_extra_value = json.dumps({'snex_id': int(id_), 'snex2_id': int(newspec.id)})
-                            newspec_extra = Datum_Extra(target_id=targetid, data_type='spectroscopy', key='snex_id', value=newspec_extra_value)
-                            db_session.add(newspec_extra)
+                        if spec_groupid is not None:
+                            update_permissions(int(spec_groupid), 'view_reduceddatum', data_point, snex1_groups) #View reduceddatum
 
-                            spec_extras = {}
-                            for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
-                                if getattr(spec_row, key):
-                                    spec_extras[key] = getattr(spec_row, key)
-                            spec_extras['snex_id'] = int(id_)
-                            spec_extras_row = Datum_Extra(data_type='spectroscopy', key='spec_extras', value=json.dumps(spec_extras), target_id=targetid)
-                            db_session.add(spec_extras_row)
+                        #newspec_extra = Datum_Extra(snex_id=int(id_), reduced_datum_id=int(newspec.id), data_type='spectroscopy', key='', value='')
+                        #db_session.add(newspec_extra)
 
-                        db_session.commit()
-                        if action == 'insert':
-                            # Finally update the newly created dataproduct using the Django path
-                            # This is normally done automatically using the Django ORM,
-                            # but since we're using sqlalchemy we have to do it manually
-                            snex2_dp = DataProduct.objects.get(id=newdp.id)
-                            snex2_dp.data = data_product_path(snex2_dp, snex2_dp.data)
-                            snex2_dp.save()
-                            
+                        newspec_extra_value = json.dumps({'snex_id': int(id_), 'snex2_id': int(data_point.id)})
+                        newspec_extra = Datum_Extra(target_id=targetid, data_type='spectroscopy', key='snex_id', value=newspec_extra_value)
+                        db_session.add(newspec_extra)
+
+                        spec_extras = {}
+                        for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
+                            if getattr(spec_row, key):
+                                spec_extras[key] = getattr(spec_row, key)
+                        spec_extras['snex_id'] = int(id_)
+                        spec_extras_row = Datum_Extra(data_type='spectroscopy', key='spec_extras', value=json.dumps(spec_extras), target_id=targetid)
+                        db_session.add(spec_extras_row)
+
+                    db_session.commit()
+                    if action == 'insert':
+                        # Finally update the newly created dataproduct using the Django path
+                        # This is normally done automatically using the Django ORM,
+                        # but since we're using sqlalchemy we have to do it manually
+                        snex2_dp = DataProduct.objects.get(id=newdp.id)
+                        snex2_dp.data = data_product_path(snex2_dp, snex2_dp.data)
+                        snex2_dp.save()
+                        
             delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except:
@@ -484,35 +475,31 @@ def update_target(action, db_address=_SNEX2_DB):
                 db_session.commit()
 
             with get_session(db_address=db_address) as db_session:
-                criteria = getattr(Target, 'id') == target_id
                 if action=='update':
-                    db_session.query(Target).filter(criteria).update({'ra': t_ra, 'dec': t_dec, 'modified': t_modified, 'created': t_created, 'type': 'SIDEREAL', 'epoch': 2000, 'scheme': ''})
-
+                    target = Target.objects.get(id=target_id)
+                    target.update(ra=t_ra, dec=t_dec, modified=t_modified, created=t_created, type='SIDEREAL', epoch=2000, scheme='')
+                    update_permissions(t_groupid, 'change_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'delete_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'view_target', target, snex1_groups)
                 elif action=='insert':
-                    existing_target_query = db_session.query(Target).filter(criteria).first()
-                    if not existing_target_query:
-                        newtarget = db_session.add(
-                            Target(
-                                id=target_id, 
-                                name=t_name, 
-                                ra=t_ra, 
-                                dec=t_dec, 
-                                modified=t_modified, 
-                                created=t_created, 
-                                type='SIDEREAL', 
-                                epoch=2000, 
-                                scheme='',
-                                permissions='PRIVATE'
-                            )
-                        )
-                        if 'postgresql' in db_address:
-                            db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
-                        update_permissions(t_groupid, 'change_basetarget', newtarget) #Change target
-                        update_permissions(t_groupid, 'delete_basetarget', newtarget) #Delete target
-                        update_permissions(t_groupid, 'view_basetarget', newtarget) #View target
-
+                    target, created = Target.objects.get_or_create(id=target_id)
+                    target.name = t_name
+                    target.ra = t_ra
+                    target.dec = t_dec
+                    target.modified = t_modified
+                    target.created = t_created
+                    target.type = 'SIDEREAL'
+                    target.epoch = 2000
+                    target.scheme = ''
+                    target.permissions = 'PRIVATE'
+                    target.save()
+                    if 'postgresql' in db_address:
+                        db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
+                    update_permissions(t_groupid, 'change_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'delete_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'view_target', target, snex1_groups)
                 elif action=='delete':
-                    db_session.query(Target).filter(criteria).delete()
+                    Target.objects.delete(id=target_id)
 
                 db_session.commit()
             #delete_row(Db_Changes, tresult.id, db_address=_SNEX1_DB)
@@ -538,7 +525,7 @@ def update_target(action, db_address=_SNEX2_DB):
                     with get_session(db_address=db_address) as db_session:
                         targetname_criteria = and_(Targetname.name==t_name, Targetname.target_id==n_id)
                         if action=='update':
-                            db_session.query(Target).filter(Target.id==n_id).update({'name': t_name})
+                            db_session.query(TargetTable).filter(TargetTable.id==n_id).update({'name': t_name})
                             db_session.query(Targetname).filter(targetname_criteria).update({'name': t_name})
 
                         elif action=='insert':
@@ -586,7 +573,7 @@ def update_target_extra(action, db_address=_SNEX2_DB):
                 with get_session(db_address=db_address) as db_session:
                     z_criteria = and_(Target_Extra.target_id==target_id, Target_Extra.key=='redshift') # Criteria for updating the redshift info in the targetextra table
                     
-                    if action=='update':
+                    if action=='update' or action=='insert':
                         if db_session.query(Target_Extra).filter(z_criteria).first() is not None:
                             db_session.query(Target_Extra).filter(z_criteria).update({'value': str(value), 'float_value': float(value)})
                         else:

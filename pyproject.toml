@@ -35,7 +35,8 @@ dependencies = [
     "whitenoise",
     "mysqlclient",
     "gevent>1.4",
-    "gunicorn"
+    "gunicorn", 
+    "dpd_static_support"
 ]
 
 [project.optional-dependencies]

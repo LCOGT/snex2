@@ -19,3 +19,5 @@ COPY . /snex2
 RUN /root/.local/bin/uv pip install /snex2 --no-deps --system
 
 WORKDIR /snex2
+
+RUN python manage.py collectstatic --noinput

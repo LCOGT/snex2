@@ -978,6 +978,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/8b/1b/9a200a62cb5f0e441294428ce87fa78ef215293616827350f9a4d265c9b6/dpd_components-0.2.0.tar.gz", hash = "sha256:5db0f68abf2f8d3b0219876b6bac78eca1e311ae71062ea7531508f10f28f6b5", size = 7697, upload-time = "2025-07-09T03:36:39.81Z" }
 
 [[package]]
+name = "dpd-static-support"
+version = "0.0.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9c/f8/71404425b9b532692a26cd513f739d874ec55c8a1db1ece112ec7ff403ef/dpd-static-support-0.0.5.tar.gz", hash = "sha256:ba03e2fde126b45b20df63e3c5eb162d1e9c2ca83868ef37b6f5482abe6f81aa", size = 496864, upload-time = "2019-12-20T18:13:59.381Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/49/0a/5317e8a0cd55407de1f6c0785cbeb1024042dea0780059a86d20e0534ba0/dpd_static_support-0.0.5-py3-none-any.whl", hash = "sha256:34037d342a27e3f183f36150c5956e26fb17de7ee8c4a5b651f7c4edaa6c465d", size = 509597, upload-time = "2019-12-20T18:13:56.612Z" },
+]
+
+[[package]]
 name = "fastavro"
 version = "1.11.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2898,6 +2907,7 @@ dependencies = [
     { name = "dash-html-components" },
     { name = "dash-table" },
     { name = "django-plotly-dash" },
+    { name = "dpd-static-support" },
     { name = "gevent" },
     { name = "gunicorn" },
     { name = "lcogt-logging" },
@@ -2930,6 +2940,7 @@ requires-dist = [
     { name = "dash-table" },
     { name = "django-debug-toolbar", marker = "extra == 'dev'" },
     { name = "django-plotly-dash" },
+    { name = "dpd-static-support" },
     { name = "gevent", specifier = ">1.4" },
     { name = "gunicorn" },
     { name = "lcogt-logging" },
