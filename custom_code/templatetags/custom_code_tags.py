@@ -1840,12 +1840,11 @@ def lightcurve_with_extras(target, user):
     )
 
     ## Check for last nondetection, first detection, and max in the database
-    symbols = {'last_nondetection': 'arrow-down', 'first_detection': 'arrow-up', 'maximum': 'star'}
-    names = {'last_nondetection': 'Last non-detection', 'first_detection': 'First detection', 'maximum': 'Maximum'}
-    for key in ['last_nondetection', 'first_detection', 'maximum']:
-        query = TargetExtra.objects.filter(target=target, key=key).first()
-        if query and query.value:
-            value = json.loads(query.value)
+    symbols = ['arrow-down', 'arrow-up', 'star']
+    names = ['Last non-detection', 'First detection', 'Maximum']
+    for i,target_param in enumerate([target.last_nondetection, target.first_detection, target.maximum]):
+        if target_param:
+            value = json.loads(target_param)
             jd = value.get('jd', None)
             if jd:
                 plot_data.append(
@@ -1853,7 +1852,7 @@ def lightcurve_with_extras(target, user):
                         x=[Time(float(jd), format='jd', scale='utc').isot],
                         y=[float(value['mag'])], mode='markers',
                         marker=dict(color=get_color(value['filt'], filter_translate), size=12, symbol=symbols[key]),
-                        name=names[key]
+                        name=names[i]
                     )
                 )
 
