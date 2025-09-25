@@ -24,6 +24,7 @@ class Migration(migrations.Migration):
                 ('first_detection', models.CharField(blank=True, default='', max_length=200, null=True)),
                 ('maximum', models.CharField(blank=True, default='', max_length=200, null=True)),
                 ('target_description', models.CharField(blank=True, default='', max_length=500, null=True)),
+                ('gwfollowupgalaxy_id',models.FloatField(null=True,blank=True))
             ],
             options={
                 'verbose_name': 'target',

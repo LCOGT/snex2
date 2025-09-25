@@ -26,6 +26,8 @@ class SNExTarget(BaseTarget):
     maximum.hidden = True
     target_description = models.CharField(max_length=500,default='',null=True,blank=True)
     target_description.hidden = True
+    gwfollowupgalaxy_id = models.FloatField(null=True,blank=True)
+    gwfollowupgalaxy_id.hidden = True
     
     class Meta:
         verbose_name = "target"

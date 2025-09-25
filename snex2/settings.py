@@ -333,6 +333,7 @@ FACILITIES = {
 TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
 
 EXTRA_FIELDS = [
+    {'name': 'gwfollowupgalaxy_id', 'type':'number', 'hidden':True},
     {'name': 'redshift', 'type': 'number'},
     {'name': 'classification', 'type': 'string'},
     {'name': 'tweet', 'type': 'boolean'},
