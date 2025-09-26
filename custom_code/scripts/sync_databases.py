@@ -171,7 +171,6 @@ def update_phot(action, db_address=_SNEX2_DB):
             id_ = result.rowid # The ID of the row in the photlco table
             phot_row = get_current_row(Photlco, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the photlco table    
             #targetid = phot_row.targetid
-            
             if action=='delete':
                 #Look up the dataproductid from the datum_extra table
                 with get_session(db_address=db_address) as db_session:
@@ -240,7 +239,12 @@ def update_phot(action, db_address=_SNEX2_DB):
                 phot_groupid = phot_row.groupidcode
 
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-                    standard_list = db_session.query(Targets).filter(Targets.classificationid == 1)
+                    standard_classification_row = db_session.query(Classifications).filter(Classifications.name=='Standard').first()
+                    if standard_classification_row is not None:
+                        standard_classification_id = standard_classification_row.id
+                    else:
+                        standard_classification_id = -1
+                    standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
                     if action == 'update':
@@ -357,7 +361,12 @@ def update_spec(action, db_address=_SNEX2_DB):
                 spec_groupid = spec_row.groupidcode
     
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-                    standard_list = db_session.query(Targets).filter(Targets.classificationid==1)
+                    standard_classification_row = db_session.query(Classifications).filter(Classifications.name=='Standard').first()
+                    if standard_classification_row is not None:
+                        standard_classification_id = standard_classification_row.id
+                    else:
+                        standard_classification_id = -1
+                    standard_list = db_session.query(Targets).filter(Targets.classificationid==standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids:
                     if action=='update':
@@ -517,7 +526,12 @@ def update_target(action, db_address=_SNEX2_DB):
                 t_name = name_row.name
                 
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-                    standard_list = db_session.query(Targets).filter(Targets.classificationid==1)
+                    standard_classification_row = db_session.query(Classifications).filter(Classifications.name=='Standard').first()
+                    if standard_classification_row is not None:
+                        standard_classification_id = standard_classification_row.id
+                    else:
+                        standard_classification_id = -1
+                    standard_list = db_session.query(Targets).filter(Targets.classificationid==standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
 
                 if n_id not in standard_ids:
