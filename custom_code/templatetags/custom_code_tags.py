@@ -1648,11 +1648,11 @@ def image_slideshow(context, target):
 
     ### Make the initial thumbnail
     if psfxs[0] < 9999 and psfys[0] < 9999:
-        f = make_thumb(['data/fits/'+filepaths[0]+filenames[0]+'.fits'], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
+        f = make_thumb([settings.FITS_DIR+filepaths[0]+filenames[0]+'.fits'], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
     else:
-        f = make_thumb(['data/fits/'+filepaths[0]+filenames[0]+'.fits'], grow=1.0, x=1024, y=1024, ticks=False)
+        f = make_thumb([settings.FITS_DIR+filepaths[0]+filenames[0]+'.fits'], grow=1.0, x=1024, y=1024, ticks=False)
 
-    with open('data/thumbs/'+f[0], 'rb') as imagefile:        
+    with open(settings.THUMB_DIR+f[0], 'rb') as imagefile:        
         b64_image = base64.b64encode(imagefile.read())
         thumb = b64_image
 
@@ -1905,7 +1905,7 @@ def test_display_thumbnail(context, target):
                 "bottom_images": [],
             }
     
-    thumbs = [f for f in listdir('data/thumbs/') if isfile(join('data/thumbs/', f))]
+    thumbs = [f for f in listdir(settings.THUMB_DIR) if isfile(join(settings.THUMB_DIR, f))]
     top_images = []
     bottom_images = [] 
     sites = [f[:3].upper() for f in filenames]
@@ -1926,9 +1926,9 @@ def test_display_thumbnail(context, target):
         else:
             # Generate the thumbnail and save the image
             if psfxs[i] < 9999 and psfys[i] < 9999:
-                f = make_thumb(['data/fits/'+filepaths[i]+currentfile+'.fits'], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
+                f = make_thumb([settings.FITS_DIR+filepaths[i]+currentfile+'.fits'], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
             else:
-                f = make_thumb(['data/fits/'+filepaths[i]+currentfile+'.fits'], grow=1.0, x=1024, y=1024, ticks=False)
+                f = make_thumb([settings.FITS_DIR+filepaths[i]+currentfile+'.fits'], grow=1.0, x=1024, y=1024, ticks=False)
             thumbfiles.append(f[0])
         
         thumbdates.append(dates[i])
@@ -1940,7 +1940,7 @@ def test_display_thumbnail(context, target):
     halfway = round(len(thumbfiles)/2)
     
     for i in range(len(thumbfiles)):
-        with open('data/thumbs/'+thumbfiles[i], 'rb') as imagefile:        
+        with open(settings.THUMB_DIR+thumbfiles[i], 'rb') as imagefile:        
             b64_image = base64.b64encode(imagefile.read())
             label = '{} {} {} {} {}'.format(thumbdates[i], thumbsites[i], thumbteles[i], thumbfilters[i], thumbexptimes[i])
             if i < halfway:
