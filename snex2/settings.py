@@ -86,6 +86,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django_plotly_dash.middleware.BaseMiddleware',
+    'django_plotly_dash.middleware.ExternalRedirectionMiddleware',
     'tom_common.middleware.Raise403Middleware',
     'tom_common.middleware.ExternalServiceMiddleware',
     'tom_common.middleware.AuthStrategyMiddleware',
@@ -247,6 +249,9 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static'), os.path.join(BASE_DIR, 'st
 STATICFILES_FINDERS = [
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    'django_plotly_dash.finders.DashAssetFinder',
+    'django_plotly_dash.finders.DashComponentFinder',
+    'django_plotly_dash.finders.DashAppDirectoryFinder',
 ]
 MEDIA_ROOT = os.path.join(BASE_DIR, 'data')
 MEDIA_URL = '/data/'
@@ -511,15 +516,30 @@ EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
-
-SNEX1_DB_URL = 'mysql://{}:{}@supernova.science.lco.global:3306/supernova?charset=utf8&use_unicode=1'
-SNEX1_DB_URL = SNEX1_DB_URL.format(os.getenv('SNEX1_DB_USER', ''), os.getenv('SNEX1_DB_PASSWORD', ''))
-
+SNEX1_DB_HOST = os.getenv('SNEX1_DB_HOST', 'supernova.science.lco.global')
+SNEX1_DB_PORT = os.getenv('SNEX1_DB_PORT', '3306')
+SNEX1_DB_NAME = os.getenv('SNEX1_DB_NAME', 'supernova')
+SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
+SNEX1_DB_PASSWORD = os.getenv('SNEX1_DB_PASSWORD', '')
+SNEX1_DB_URL = f'mysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
 
 PLOTLY_DASH = {
     'cache_arguments': False,
     #'cache_timeout_initial_arguments': 120,
 }
+
+PLOTLY_COMPONENTS = [
+
+    # Common components (ie within dash itself) are automatically added
+
+    # django-plotly-dash components
+    'dpd_components',
+    # static support if serving local assets
+    'dpd_static_support',
+
+    # Other components, as needed
+    'dash_bootstrap_components',
+]
 
 VUE_FRONTEND_DIR_TOM_NONLOCAL = os.path.join(STATIC_ROOT, 'tom_nonlocalizedevents/vue')
 WEBPACK_LOADER = {

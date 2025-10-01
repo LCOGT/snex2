@@ -15,7 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "tomtoolkit>2",
-    "astropy>=5",
+    "astropy>=5,<6",
     "astroquery",
     "requests",
     "numpy<2",
@@ -32,7 +32,11 @@ dependencies = [
     "dash_core_components",
     "dash_html_components",
     "dash_table",
-    "whitenoise"
+    "whitenoise",
+    "mysqlclient",
+    "gevent>1.4",
+    "gunicorn", 
+    "dpd_static_support"
 ]
 
 [project.optional-dependencies]

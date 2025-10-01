@@ -17,9 +17,8 @@ from tom_observations.models import ObservationRecord, ObservationGroup, Dynamic
 from tom_targets.models import Target
 from custom_code.management.commands.ingest_observations import get_session, load_table, update_permissions, get_snex2_params
 from custom_code.models import ScienceTags, TargetTags
-from django.contrib.auth.models import Group, User
+from django.contrib.auth.models import User
 from django_comments.models import Comment
-from guardian.shortcuts import assign_perm
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
 
