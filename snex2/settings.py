@@ -20,6 +20,14 @@ from lcogt_logging import LCOGTFormatter
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+#only environment variables needed for bare metal install
+DATA_DIR = os.getenv('SNEX2_DATADIR','data/')
+SN_DIR = os.getenv('SUPERNOVA_DIR','/supernova/')
+
+THUMB_DIR = os.path.join(DATA_DIR,'thumbs')
+FITS_DIR = os.path.join(DATA_DIR,'fits')
+LSC_DIR = os.path.join(SN_DIR,'data','lsc')
+FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.1/howto/deployment/checklist/

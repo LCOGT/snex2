@@ -1693,11 +1693,11 @@ def make_thumbnail_view(request):
     sigma = float(request.GET['sigma'])
 
     if filename_dict['psfx'] < 9999 and filename_dict['psfy'] < 9999:
-        f = make_thumb(['data/fits/'+filename_dict['filepath']+filename_dict['filename']+'.fits'], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
+        f = make_thumb([settings.FITS_DIR+filename_dict['filepath']+filename_dict['filename']+'.fits'], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
     else:
-        f = make_thumb(['data/fits/'+filename_dict['filepath']+filename_dict['filename']+'.fits'], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
+        f = make_thumb([settings.FITS_DIR+filename_dict['filepath']+filename_dict['filename']+'.fits'], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
 
-    with open('data/thumbs/'+f[0], 'rb') as imagefile:
+    with open(settings.THUMB_DIR+f[0], 'rb') as imagefile:
         b64_image = base64.b64encode(imagefile.read())
         thumb = b64_image.decode('utf-8')
 

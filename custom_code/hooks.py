@@ -690,7 +690,7 @@ def find_images_from_snex1(targetid, allimages=False):
             query = db_session.query(Photlco).filter(and_(Photlco.targetid==targetid, Photlco.filetype==1)).order_by(Photlco.id.desc()).limit(8)
         else:
             query = db_session.query(Photlco).filter(and_(Photlco.targetid==targetid, Photlco.filetype==1)).order_by(Photlco.id.desc())
-        filepaths = [q.filepath.replace('/supernova/data/lsc/', '').replace('/supernova/data/', '') for q in query]
+        filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
         filenames = [q.filename.replace('.fits', '') for q in query]
         dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
         teles = [q.telescope[:3] for q in query]
@@ -867,7 +867,7 @@ def get_unreduced_spectra(allspec=True):
         dateobs = [s.dateobs for s in unreduced_spectra]
         paths = [s.filepath for s in unreduced_spectra]
         filenames = [s.filename for s in unreduced_spectra]
-        imgpaths = [s.filepath.replace('/supernova/data/floyds', '/snex2/data/floyds') + s.filename.replace('.fits', '.png') for s in unreduced_spectra]
+        imgpaths = [s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds') + s.filename.replace('.fits', '.png') for s in unreduced_spectra]
 
     return targetids, propids, dateobs, paths, filenames, imgpaths
 
@@ -964,12 +964,12 @@ def download_test_image_from_archive():
     Returns the image parameters needed to display its thumbnail.
     """
     ### Check if thumbnail directory exists, and if not make it
-    thumbnail_directory = "data/fits/"
+    thumbnail_directory = settings.FITS_DIR
     if not os.path.isdir(thumbnail_directory):
         os.makedirs(os.path.join(settings.BASE_DIR, thumbnail_directory))
 
-    if not os.path.isdir("data/thumbs/"):
-        os.mkdir(os.path.join(settings.BASE_DIR, "data/thumbs/"))
+    if not os.path.isdir(settings.THUMB_DIR):
+        os.mkdir(os.path.join(settings.BASE_DIR, settings.THUMB_DIR))
 
     ### Check if test image already exists in thumbnail directory,
     ### and if not download it
