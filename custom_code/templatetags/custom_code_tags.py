@@ -9,7 +9,7 @@ from django.contrib.auth.models import User, Group
 from django_comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
 
-from tom_targets.models import Target, TargetExtra, TargetList
+from tom_targets.models import Target, TargetList, BaseTarget
 from tom_targets.forms import TargetVisibilityForm
 from tom_observations import utils, facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
@@ -326,7 +326,7 @@ def lightcurve_collapse(target, user):
     
     plot_data = generic_lightcurve_plot(target, user)     
     spec = ReducedDatum.objects.filter(target=target, data_type='spectroscopy')
-    
+
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -568,15 +568,6 @@ def spectra_collapse(target):
 def aladin_collapse(target):
     return {'target': target}
 
-@register.filter
-def get_targetextra_id(target, keyword):
-    try:
-        targetextra = TargetExtra.objects.get(target_id=target.id, key=keyword)
-        return targetextra.id
-    except:
-        return json.dumps(None)
-
-
 @register.inclusion_tag('tom_targets/partials/target_data.html', takes_context=True)
 def target_data_with_user(context, target):
     """
@@ -594,14 +585,14 @@ def target_data_with_user(context, target):
 @register.inclusion_tag('custom_code/classifications_dropdown.html')
 def classifications_dropdown(target):
     classifications = [i for i in settings.TARGET_CLASSIFICATIONS]
-    target_classification = TargetExtra.objects.filter(target=target, key='classification').first()
-    if target_classification is None:
-        target_class = None
-    else:
-        target_class = target_classification.value
+    target_classification = target.classification
+    # if target_classification is None:
+    #     target_class = None
+    # else:
+    #     target_class = target_classification
     return {'target': target,
             'classifications': classifications,
-            'target_class': target_class}
+            'target_class': target_classification}
 
 @register.inclusion_tag('custom_code/science_tags_dropdown.html')
 def science_tags_dropdown(target):
@@ -670,7 +661,6 @@ def submit_lco_observations(target):
 @register.inclusion_tag('custom_code/dash_lightcurve.html', takes_context=True)
 def dash_lightcurve(context, target, width, height):
     request = context['request']
-    
     # Get initial choices and values for some dash elements
     telescopes = ['LCO']
     reducer_groups = []
@@ -760,7 +750,7 @@ def dash_spectra(context, target):
     request = context['request']
 
     try:
-        z = TargetExtra.objects.filter(target_id=target.id, key='redshift').first().float_value
+        z = target.redshift
     except:
         z = 0
 
@@ -1282,7 +1272,7 @@ def order_by_reminder_upcoming(queryset, pagenumber):
 def dash_spectra_page(context, target):
     request = context.request
     try:
-        z = TargetExtra.objects.filter(target_id=target.id, key='redshift').first().float_value
+        z = target.redshift
     except:
         z = 0
 
@@ -1422,7 +1412,7 @@ def target_known_to(target):
 
 @register.inclusion_tag('custom_code/reference_status.html')
 def reference_status(target):
-    old_status_query = TargetExtra.objects.filter(target=target, key='reference')
+    old_status_query = target.reference
     if not old_status_query:
         old_status = 'Undetermined'
     else:
@@ -1553,13 +1543,19 @@ def get_other_observing_runs(targetlist):
 
 @register.filter
 def order_by_priority(targetlist):
-    return targetlist.filter(targetextra__key='observing_run_priority').order_by('targetextra__value')
+    if targetlist:
+        print(targetlist)
+        ids = [target.pk for target in targetlist]
+        test = Target.objects.filter(pk__in=ids)
+        print(test)
+        return test
+    else:
+        return
 
 
-def get_lightcurve_params(target, key):
-    query = TargetExtra.objects.filter(target=target, key=key).first()
-    if query and query.value:
-        value = json.loads(query.value)
+def get_lightcurve_params(existing_target_param):
+    if existing_target_param:
+        value = json.loads(existing_target_param)
         date = "{} ({})".format(value['date'], value['jd'])
         params = {'date': date,
                   'mag': str(value['mag']),
@@ -1577,13 +1573,13 @@ def target_details(context, target):
     user = context['user']
     
     ### Get previously saved target information
-    nondet_params = get_lightcurve_params(target, 'last_nondetection')
-    det_params = get_lightcurve_params(target, 'first_detection')
-    max_params = get_lightcurve_params(target, 'maximum')
+    nondet_params = get_lightcurve_params(target.last_nondetection)
+    det_params = get_lightcurve_params(target.first_detection)
+    max_params = get_lightcurve_params(target.maximum)
     
-    description_query = TargetExtra.objects.filter(target=target, key='target_description').first()
+    description_query = target.target_description
     if description_query:
-        description = description_query.value
+        description = description_query
     else:
         description = ''
  
@@ -1843,20 +1839,19 @@ def lightcurve_with_extras(target, user):
     )
 
     ## Check for last nondetection, first detection, and max in the database
-    symbols = {'last_nondetection': 'arrow-down', 'first_detection': 'arrow-up', 'maximum': 'star'}
-    names = {'last_nondetection': 'Last non-detection', 'first_detection': 'First detection', 'maximum': 'Maximum'}
-    for key in ['last_nondetection', 'first_detection', 'maximum']:
-        query = TargetExtra.objects.filter(target=target, key=key).first()
-        if query and query.value:
-            value = json.loads(query.value)
+    symbols = ['arrow-down', 'arrow-up', 'star']
+    names = ['Last non-detection', 'First detection', 'Maximum']
+    for i,target_param in enumerate([target.last_nondetection, target.first_detection, target.maximum]):
+        if target_param:
+            value = json.loads(target_param)
             jd = value.get('jd', None)
             if jd:
                 plot_data.append(
                     go.Scatter(
                         x=[Time(float(jd), format='jd', scale='utc').isot],
                         y=[float(value['mag'])], mode='markers',
-                        marker=dict(color=get_color(value['filt'], filter_translate), size=12, symbol=symbols[key]),
-                        name=names[key]
+                        marker=dict(color=get_color(value['filt'], filter_translate), size=12, symbol=symbols[i]),
+                        name=names[i]
                     )
                 )
 

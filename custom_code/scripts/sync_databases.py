@@ -184,6 +184,11 @@ def update_phot(action, db_address=_SNEX2_DB):
                     #     if id_ == value.get('snex_id', ''):
                     #         db_session.delete(snex2_row)
                     #         break
+                # t = Target.objects.filter(px=targetid)[0]
+                # r = ReducedDatum.objects.filter(target=t,value={'snex_id': id_})
+                # if len(r) > 0:
+                #     r[0].delete()
+
                     snex2_id_query = db_session.query(Datum).filter(
                         Datum.value['snex_id'].astext == str(id_)
                     ).first()
@@ -318,7 +323,7 @@ def update_spec(action, db_address=_SNEX2_DB):
     for result in spec_result:
         try:
             id_ = result.rowid # The ID of the row in the spec table
-
+            target_id = result.targetid
             if action=='delete':
                 #Look up the dataproductid from the datum_extra table
                 with get_session(db_address=db_address) as db_session:
@@ -332,6 +337,8 @@ def update_spec(action, db_address=_SNEX2_DB):
                     #db_session.commit()
 
                     snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.data_type=='spectroscopy', Datum_Extra.key=='snex_id')).all()
+                    # t = Target.objects.filter(pk=target_id)
+                    # ReducedDatumExtra.objects.filter(target=t,data_type='spectroscopy',snex_id=id_)
                     for snex2_row in snex2_id_query:
                         value = json.loads(snex2_row.value)
                         if id_ == value.get('snex_id', ''):
@@ -472,6 +479,12 @@ def update_target(action, db_address=_SNEX2_DB):
             if t_created is None:
                 t_created = t_modified
             t_groupid = int(target_row.groupidcode)
+            t_redshift = target_row.redshift
+
+            class_id = target_row.classificationid
+            if class_id is not None:
+                class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
+                
 
             ### Get the name of the target
             with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
@@ -731,6 +744,5 @@ def run():
         update_groups(action, db_address=_SNEX2_DB)
         update_users(action, db_address=_SNEX2_DB)
         update_target(action, db_address=_SNEX2_DB)
-        update_target_extra(action, db_address=_SNEX2_DB)
         update_phot(action, db_address=_SNEX2_DB)
         update_spec(action, db_address=_SNEX2_DB)

@@ -18,7 +18,7 @@ from gw.models import GWFollowupGalaxy
 from gw.forms import GWGalaxyObservationForm
 from gw.treasure_map_utils import build_tm_pointings, submit_tm_pointings
 from tom_common.hooks import run_hook
-from tom_targets.models import Target, TargetExtra
+from tom_targets.models import Target
 from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from custom_code.hooks import _return_session, _load_table
@@ -227,6 +227,7 @@ def submit_galaxy_observations_view(request):
                 if created:
                     newtarget.ra = galaxy.ra
                     newtarget.dec = galaxy.dec
+                    newtarget.gwfollowupgalaxy_id = galaxy.id
                     newtarget.save()
                     gw = Group.objects.get(name='GWO4')
                     assign_perm('tom_targets.view_target', gw, newtarget)
@@ -234,11 +235,6 @@ def submit_galaxy_observations_view(request):
                     assign_perm('tom_targets.delete_target', gw, newtarget)
 
                 run_hook('target_post_save', target=newtarget, created=created, group_names=['GWO4'], wrapped_session=db_session)
-
-                ### Create TargetExtra linking the Target with the GWFollowupGalaxy
-                if created:
-                    targetextralink = TargetExtra(target=newtarget, key='gwfollowupgalaxy_id', value=galaxy.id)
-                    targetextralink.save()
 
                 ### Create and submit the observation requests
                 form_data = {'name': newtarget.name,

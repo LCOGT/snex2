@@ -70,20 +70,10 @@ input[type=number]::-webkit-outer-spin-button {
       <td><a href="{% url 'tom_targets:detail' parameter.target.id %}" title="{{ parameter.target.id }}" target="_blank">{{ parameter.names|join:", " }}</a></td>
       <td>
       {% with parameter.target as target %}
-        {% if target|target_extra_field:"classification" %}
-          {{ target|target_extra_field:"classification" }}
-        {% else %}
-          None
-        {% endif %}
+          {{ target.classification }}
       </td>
       <td>
-	{% if target|target_extra_field:"redshift" %}
-	  {% with z=target|target_extra_field:"redshift" %}
-	  {{ z|strip_trailing_zeros }}
-	  {% endwith %}
-	{% else %}
-	  None
-	{% endif %}
+	      {{ target.redshift|strip_trailing_zeros }}
       {% endwith %}
       </td>
       <td>

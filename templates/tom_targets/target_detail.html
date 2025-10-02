@@ -54,7 +54,7 @@
       <form style="display: inline; font-size: 20px" name="form_redshift_theredshift" autocomplete="off" action="javascript: edit_redshift()">
         <span id="zpre">z=</span>
         <input type="hidden" name="targetid" id="thetargetid" value={{ target.id }}>
-	{% with z=target|target_extra_field:"redshift" %}
+	{% with z=target.redshift%}
 	{% if z == None %}
         <input type="text" name="redshift" id="thenewredshift" placeholder={{ z|strip_trailing_zeros }} autocomplete="off" style="background: none; border: 0px solid #174460; font-family: 'Open Sans', sans-serif; color: white;">
 	{% else %}
@@ -66,44 +66,27 @@
     <script>
     function edit_redshift() {
       var targetid = {{ target.id }};
-      var redshiftid = {{ target|get_targetextra_id:"redshift" }};
       var new_value = $('#thenewredshift').val();
       var newdata = {
         "key": "redshift",
-        "value": new_value
+        "value": new_value,
+        "targetid": targetid
       };
-      if (redshiftid != null) {
-	newdata = {
-	  "id": redshiftid,
-	  "key": "redshift",
-	  "value": new_value
-	};
-      }
-      console.log(targetid, redshiftid, new_value);
+
       $.ajax({
-	url: '/api/targets/' + targetid + '/',
-	type: "PATCH",
-	headers: {"X-CSRFToken": '{{ csrf_token }}'}, 
-	data: JSON.stringify({
-	  "targetextra_set": [
-	    newdata
-	  ]
-	}),
-	contentType: "application/json",
-	dataType: "json",
-	success: function() {
-	  newdata['targetid'] = targetid;
-          $.ajax({
-            url: '{% url "sync_targetextra" %}',
-            data: {'newdata': JSON.stringify(newdata)},
-            dataType: 'json'
-          })
+        url: '{% url "sync_targetextra" %}',
+        type: "GET",
+        data: {"newdata": JSON.stringify(newdata)},
+        contentType: "application/json",
+        dataType: "json",
+        success: function(response) {
+          console.log("Redshift synced for target: ",targetid,new_value,response)
         },
-	error: function(e) {
-	  console.log(e);
-	}
+        error: function(e) {
+          console.log("Error syncing Redshift for target: ",targetid,new_value,e);
+        }
       })
-    }
+      }
     </script>
     <td align="left">
       <span style="display: inline-block; font-size: 23px;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}</span><br><span style="display: inline-block; font-size: 20px;">{{ target.ra|floatformat:4 }} {{ target.dec|floatformat:4 }}</span>
@@ -214,16 +197,7 @@
 	{% endif %}
         {% dataproduct_list_for_target object %}
       </div>
-      <div class="tab-pane" id="manage-sharing">
-        <h3>Create Persistent Share</h3>
-        <div id='target-persistent-share-create'>
-          {% create_persistent_share target %}
-        </div>
-        <h3>Manage Persistent Shares</h3>
-        <div id='target-persistent-share-table'>
-          {% persistent_share_table object %}
-        </div>
-      </div>
+      
       <div class="tab-pane" id="manage-groups">
         {% target_groups target %}
       </div>
