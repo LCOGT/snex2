@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('tom_targets', '0029_alter_basetarget_permissions'),
+        ('tom_targets', '0021_rename_target_basetarget_alter_basetarget_options'),
         ('custom_code', '0006_auto_20201221_2047'),
     ]
 
