@@ -15,7 +15,7 @@ classifiers = [
 ]
 dependencies = [
     "tomtoolkit>=2.26.2",
-    "astropy>=5,<6",
+    "astropy>=5",
     "astroquery",
     "requests",
     "numpy<2",
