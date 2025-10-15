@@ -108,7 +108,7 @@ class EventSequenceGalaxiesTripletView(ListView, LoginRequiredMixin):
             for t in this_galaxy_existing_subtractions:
 
                 # The supernova folder tree is mounted with a different name scheme on the SNEx2 docker
-                diff_path = settings.FITS_DIR+t.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '')
+                diff_path = os.path.join(settings.FITS_DIR,t.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', ''))
                 diff_file = os.path.join(diff_path, t.filename)
 
                 if not os.path.isfile(diff_file):
@@ -130,7 +130,7 @@ class EventSequenceGalaxiesTripletView(ListView, LoginRequiredMixin):
 
                 # Looking for :temp_filename: in :existing_observations: and retrieving its corresponding :filepath:
                 temp_filepath = this_galaxy_existing_templates.filter(photlco.filename==temp_file)[0].filepath
-                temp_file = os.path.join(settings.FITS_DIR+temp_filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', ''), temp_file)
+                temp_file = os.path.join(settings.FITS_DIR,temp_filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', ''), temp_file)
                 
                 if not os.path.isfile(temp_file):
                     temp_file = temp_file+'.fz'

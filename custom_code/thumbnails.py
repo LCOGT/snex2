@@ -423,10 +423,10 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
         # make the thumbs
         if grow == 1.0 and not sig:
             newfile = filename.split('/')[-1].replace('.fits', '.webp')
-            outfile = settings.THUMB_DIR+newfile
+            outfile = os.path.join(settings.THUMB_DIR,newfile)
         else:
             newfile = filename.split('/')[-1].replace('.fits', 'grow{}sig{}.webp'.format(grow, sig))
-            outfile = settings.THUMB_DIR+newfile
+            outfile = os.path.join(settings.THUMB_DIR,newfile)
         f = open(outfile, 'wb')
         im.save(f, 'WEBP')
         f.close()
