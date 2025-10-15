@@ -1645,6 +1645,7 @@ def image_slideshow(context, target):
 
     ### Make the initial thumbnail
     if psfxs[0] < 9999 and psfys[0] < 9999:
+        print(os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits'))
         f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits')], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
     else:
         f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)

@@ -22,12 +22,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #only environment variables needed for bare metal install
 DATA_DIR = os.getenv('SNEX2_DATADIR','data/')
-SN_DIR = os.getenv('SUPERNOVA_DIR','/snex2/')
+SN_DIR = os.getenv('SUPERNOVA_DIR','/supernova/')
 
 THUMB_DIR = os.path.join(DATA_DIR,'thumbs')
-FITS_DIR = os.path.join(SN_DIR,'fits')
-LSC_DIR = os.path.join(FITS_DIR,'lsc')
-FLOYDS_DIR = os.path.join(FITS_DIR,'floyds')
+FITS_DIR = os.path.join(DATA_DIR,'fits')
+LSC_DIR = os.path.join(SN_DIR,'data','lsc')
+FLOYDS_DIR = os.path.join(DATA_DIR,'floyds')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.1/howto/deployment/checklist/
