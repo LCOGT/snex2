@@ -1645,9 +1645,9 @@ def image_slideshow(context, target):
 
     ### Make the initial thumbnail
     if psfxs[0] < 9999 and psfys[0] < 9999:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0],filenames[0]+'.fits')], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
+        f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits')], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
     else:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0],filenames[0]+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)
+        f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)
 
     with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:        
         b64_image = base64.b64encode(imagefile.read())
@@ -1922,9 +1922,9 @@ def test_display_thumbnail(context, target):
         else:
             # Generate the thumbnail and save the image
             if psfxs[i] < 9999 and psfys[i] < 9999:
-                f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[i],currentfile+'.fits')], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
+                f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[i].lstrip('/'),currentfile+'.fits')], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
             else:
-                f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[i],currentfile+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)
+                f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[i].lstrip('/'),currentfile+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)
             thumbfiles.append(f[0])
         
         thumbdates.append(dates[i])
