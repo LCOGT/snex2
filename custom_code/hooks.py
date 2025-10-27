@@ -177,33 +177,37 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
         
         ### Add the last nondetection and first detection from TNS, if it exists
         tns_results = _get_tns_params(target)
-        print(tns_results)
         if tns_results.get('success', ''):
-            nondet_date = tns_results['nondetection'].split()[0]
-            nondet_jd = tns_results['nondetection'].split()[1].replace('(', '').replace(')', '')
-            nondet_value = json.dumps({
-                'date': nondet_date,
-                'jd': nondet_jd,
-                'mag': tns_results['nondet_mag'],
-                'filt': tns_results['nondet_filt'],
-                'source': 'TNS'
-            })
+            if tns_results['nondetection'] == None:
+                print('No TNS last nondetection found for target',target)
+            else:
+                nondet_date = tns_results['nondetection'].split()[0]
+                nondet_jd = tns_results['nondetection'].split()[1].replace('(', '').replace(')', '')
+                nondet_value = json.dumps({
+                    'date': nondet_date,
+                    'jd': nondet_jd,
+                    'mag': tns_results['nondet_mag'],
+                    'filt': tns_results['nondet_filt'],
+                    'source': 'TNS'
+                })
 
-            target.last_nondetection = nondet_value
-            target.save()
-
-            det_date = tns_results['detection'].split()[0]
-            det_jd = tns_results['detection'].split()[1].replace('(', '').replace(')', '')
-            det_value = json.dumps({
-                'date': det_date,
-                'jd': det_jd,
-                'mag': tns_results['det_mag'],
-                'filt': tns_results['det_filt'],
-                'source': 'TNS'
-            })
-            
-            target.first_detection = det_value
-            target.save()
+                target.last_nondetection = nondet_value
+                target.save()
+            if tns_results['detection'] == None:
+                print('No TNS detection found for target',target)
+            else:
+                det_date = tns_results['detection'].split()[0]
+                det_jd = tns_results['detection'].split()[1].replace('(', '').replace(')', '')
+                det_value = json.dumps({
+                    'date': det_date,
+                    'jd': det_jd,
+                    'mag': tns_results['det_mag'],
+                    'filt': tns_results['det_filt'],
+                    'source': 'TNS'
+                })
+                
+                target.first_detection = det_value
+                target.save()
 
         ### Ingest ZTF data, if a ZTF target
         get_ztf_data(target)
