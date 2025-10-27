@@ -177,6 +177,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
         
         ### Add the last nondetection and first detection from TNS, if it exists
         tns_results = _get_tns_params(target)
+        print(tns_results)
         if tns_results.get('success', ''):
             nondet_date = tns_results['nondetection'].split()[0]
             nondet_jd = tns_results['nondetection'].split()[1].replace('(', '').replace(')', '')
