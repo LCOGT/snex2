@@ -16,11 +16,10 @@ from django_comments.models import Comment
 from django_comments.signals import comment_was_posted
 from django.dispatch import receiver
 
-from tom_targets.models import TargetList, Target, TargetExtra, TargetName
+from tom_targets.models import TargetList, Target, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
 from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
 from custom_code.forms import SNEx2UserCreationForm
-from tom_targets.templatetags.targets_extras import target_extra_field
 from guardian.mixins import PermissionListMixin
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
@@ -51,6 +50,7 @@ from tom_common.hooks import run_hook
 from tom_common.views import UserUpdateView
 from tom_dataproducts.views import DataProductUploadView, DataProductDeleteView
 from tom_dataproducts.exceptions import InvalidFileFormatException
+from tom_targets.base_models import TargetMatchManager
 
 from custom_code.processors.data_processor import run_custom_data_processor
 from guardian.shortcuts import assign_perm
@@ -1058,20 +1058,9 @@ class ReferenceStatusUpdateView(FormView):
         target_id = form.cleaned_data['target']
         target = Target.objects.get(id=target_id)
         status = form.cleaned_data['status']
-        old_status_query = TargetExtra.objects.filter(target=target, key='reference')
-        if not old_status_query:
-            reference = TargetExtra(
-                    target=target,
-                    key='reference',
-                    value=status
-                )
-            reference.save()
+        target.reference = status
+        target.save()
 
-        else:
-            old_status = old_status_query.first()
-            old_status.value = status
-            old_status.save()
-            
         return HttpResponseRedirect('/targets/{}/'.format(target.id))
 
 
@@ -1114,8 +1103,8 @@ def search_name_view(request):
         target_match_list = Target.objects.none()
 
     context['targets'] = target_match_list
-
-    if request.is_ajax():
+    
+    if request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest':
         html = render_to_string(
             template_name='custom_code/partials/name-search-results.html',
             context={'targets': target_match_list}
@@ -1165,23 +1154,24 @@ def async_scheduling_page_view(request):
 
 def add_target_to_group_view(request):
     target_name = request.GET.get('target_name')
-    target = Target.objects.get(name=target_name)
-    
+
+    target = Target.objects.filter(Q(name__icontains=target_name) | Q(aliases__name__icontains=target_name)).first()
+
     targetlist_id = request.GET.get('group_id')
     targetlist = TargetList.objects.get(id=targetlist_id)
 
     list_type = request.GET.get('list')
 
-    if request.user.has_perm('tom_targets.view_target', target) and target not in targetlist.targets.all():
+    if request.user.has_perm('custom_code.view_target', target) and target not in targetlist.targets.all():
 
         if list_type == 'observing_run':
             if len(targetlist.targets.all()) == 0:
                 target_priority = 1
             else:
-                target_priority = max([t.extra_fields['observing_run_priority'] for t in targetlist.targets.all()]) + 1
-
-            new_target_priority = TargetExtra(target=target, key='observing_run_priority', value=target_priority)
-            new_target_priority.save()
+                #currently targetlist.targets.all() is a list of basetargets, needs to be snextargets
+                target_priority = max([Target.objects.get(pk=t.pk).observing_run_priority for t in targetlist.targets.all()]) + 1
+            target.observing_run_priority = target_priority
+            target.save()
         
         targetlist.targets.add(target)
     
@@ -1202,22 +1192,16 @@ def remove_target_from_group_view(request):
         targetlist.targets.remove(target)
 
         if list_type == 'observing_run': 
-            old_priority = TargetExtra.objects.get(target=target, key='observing_run_priority')
-            try:
-                old_priority_value = int(old_priority.value)
-            except:
-                old_priority_value = int(float(old_priority.value))
- 
+            old_priority = target.observing_run_priority or 0
+
             if len(targetlist.targets.all()) > 0:
                 for t in targetlist.targets.all():
-                    this_target_priority_value = t.extra_fields['observing_run_priority']
-                    if this_target_priority_value > old_priority_value:
-                        this_target_new_priority = this_target_priority_value - 1
-                        this_target_priority = TargetExtra.objects.get(target=t, key='observing_run_priority')
-                        this_target_priority.value = this_target_new_priority
-                        this_target_priority.save()
+                    if t.observing_run_priority > old_priority:
+                        t.observing_run_priority -= 1
+                        t.save()
             
-            old_priority.delete()
+            target.observing_run_priority = None
+            target.save()
         
     response_data = {'success': 'Removed'}
     return HttpResponse(json.dumps(response_data), content_type='application/json') 
@@ -1235,21 +1219,15 @@ def change_observing_priority_view(request):
     except:
         new_priority = int(float(request.GET.get('priority')))
 
-    target_priority = TargetExtra.objects.get(target=target, key='observing_run_priority')
-    target_priority.value = new_priority
-    target_priority.save()
+    target.observing_run_priority = new_priority
+    target.save()
 
     for t in targetlist.targets.all():
         if t == target:
             continue
-        t_priority = TargetExtra.objects.get(target=t, key='observing_run_priority')
-        try:
-            this_obj_priority = int(t_priority.value)
-        except:
-            this_obj_priority = int(float(t_priority.value))
-        if this_obj_priority >= new_priority:
-            t_priority.value = this_obj_priority + 1
-            t_priority.save()
+        if t.observing_run_priority >= new_priority:
+            t.observing_run_priority += 1
+            t.save()
     return HttpResponseRedirect('/targets/targetgrouping/')
 
 
@@ -1512,11 +1490,6 @@ def save_lightcurve_params_view(request):
     target_id = request.GET.get('target_id', None)
     target = Target.objects.get(id=target_id)
     key = request.GET.get('key', None)
-    
-    # Delete any previously saved parameters for this target and keyword
-    old_params = TargetExtra.objects.filter(target=target, key=key)
-    for old_param in old_params:
-        old_param.delete()
 
     if key == 'target_description':
         value = request.GET.get('value', None)
@@ -1531,13 +1504,8 @@ def save_lightcurve_params_view(request):
                  'mag': request.GET.get('mag', None),
                  'filt': request.GET.get('filt', None),
                  'source': request.GET.get('source', None)})
-
-    te = TargetExtra(
-         target=target,
-         key=key,
-         value=value
-    )
-    te.save()
+    setattr(target, key, value)
+    target.save()
     logger.info('Saved {} for target {}'.format(key, target_id))
 
     return HttpResponse(json.dumps({'success': 'Saved'}), content_type='application/json')
@@ -1693,11 +1661,11 @@ def make_thumbnail_view(request):
     sigma = float(request.GET['sigma'])
 
     if filename_dict['psfx'] < 9999 and filename_dict['psfy'] < 9999:
-        f = make_thumb(['data/fits/'+filename_dict['filepath']+filename_dict['filename']+'.fits'], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
+        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'],filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
     else:
-        f = make_thumb(['data/fits/'+filename_dict['filepath']+filename_dict['filename']+'.fits'], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
+        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'],filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
 
-    with open('data/thumbs/'+f[0], 'rb') as imagefile:
+    with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:
         b64_image = base64.b64encode(imagefile.read())
         thumb = b64_image.decode('utf-8')
 
@@ -1733,9 +1701,9 @@ class InterestingTargetsView(ListView):
         active_target_ids = [c.observation_group.observation_records.first().target.id for c in active_cadences]
         for target in context['global_interesting_targets']:
             target.best_name = get_best_name(target)
-            target.classification = target_extra_field(target, 'classification')
-            target.redshift = target_extra_field(target, 'redshift')
-            target.description = target_extra_field(target, 'target_description')
+            target.classification = Target.objects.get(pk=target.pk).classification
+            target.redshift = Target.objects.get(pk=target.pk).redshift
+            target.description = Target.objects.get(pk=target.pk).target_description
             target.science_tags = ', '.join([s.tag for s in ScienceTags.objects.filter(id__in=[t.tag_id for t in TargetTags.objects.filter(target_id=target.id)])])
             if target.id in active_target_ids:
                 target.active_cadences = 'Yes'
@@ -1746,9 +1714,9 @@ class InterestingTargetsView(ListView):
         context['personal_interesting_targets'] = [q.target for q in InterestedPersons.objects.filter(user=self.request.user)] 
         for target in context['personal_interesting_targets']:
             target.best_name = get_best_name(target)
-            target.classification = target_extra_field(target, 'classification')
-            target.redshift = target_extra_field(target, 'redshift')
-            target.description = target_extra_field(target, 'target_description')
+            target.classification = Target.objects.get(pk=target.pk).classification
+            target.redshift = Target.objects.get(pk=target.pk).redshift
+            target.description = Target.objects.get(pk=target.pk).target_description
             target.science_tags = ', '.join([s.tag for s in ScienceTags.objects.filter(id__in=[t.tag_id for t in TargetTags.objects.filter(target_id=target.id)])])
             if target.id in active_target_ids:
                 target.active_cadences = 'Yes'
@@ -1761,16 +1729,19 @@ class InterestingTargetsView(ListView):
 
 def sync_targetextra_view(request):
     newdata = json.loads(request.GET.get('newdata'))
-    if newdata['key'] != 'name':
-        if newdata.get('id'):
-            te = TargetExtra.objects.get(id=newdata['id'])
-            run_hook('targetextra_post_save', te, False)
-        else:
-            te = TargetExtra.objects.get(key=newdata['key'], target_id=newdata['targetid'])
-            run_hook('targetextra_post_save', te, True)
-    else:
-        name = TargetName.objects.get(target_id=newdata['targetid'], name=newdata['value'])
-        run_hook('targetname_post_save', name, True)
+    target_id = newdata.get('targetid')
+    target = Target.objects.get(id=target_id)
+    if newdata['key'] == 'classification':
+        target.classification = newdata['value']
+    elif newdata['key'] == 'redshift':
+        target.redshift = newdata['value']
+    elif newdata['key'] == 'name':
+        print('When updating alias,the target.save() just needs to happen')
+    logger.info(f"Updated target {newdata['key']} to {newdata['value']}")
+    target.save()
+
+    run_hook('targetextra_post_save',target)
+    
     return HttpResponse(json.dumps({'success': 'Synced'}), content_type='application/json')
 
 

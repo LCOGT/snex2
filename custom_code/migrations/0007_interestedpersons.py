@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('tom_targets', '0018_auto_20200714_1832'),
+        ('tom_targets', '0021_rename_target_basetarget_alter_basetarget_options'),
         ('custom_code', '0006_auto_20201221_2047'),
     ]
 
@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
             name='InterestedPersons',
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('target', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tom_targets.target')),
+                ('target', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='tom_targets.basetarget')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
             ],
         ),

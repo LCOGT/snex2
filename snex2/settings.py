@@ -20,6 +20,14 @@ from lcogt_logging import LCOGTFormatter
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+#only environment variables needed for bare metal install
+DATA_DIR = os.getenv('SNEX2_DATADIR','data/')
+SN_DIR = os.getenv('SUPERNOVA_DIR','/supernova/')
+
+THUMB_DIR = os.path.join(DATA_DIR,'thumbs')
+FITS_DIR = os.path.join(DATA_DIR,'fits')
+LSC_DIR = os.path.join(SN_DIR,'data','lsc')
+FLOYDS_DIR = os.path.join(DATA_DIR,'floyds')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.1/howto/deployment/checklist/
@@ -79,12 +87,15 @@ SITE_ID = 2
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django_plotly_dash.middleware.BaseMiddleware',
+    'django_plotly_dash.middleware.ExternalRedirectionMiddleware',
     'tom_common.middleware.Raise403Middleware',
     'tom_common.middleware.ExternalServiceMiddleware',
     'tom_common.middleware.AuthStrategyMiddleware',
@@ -124,7 +135,6 @@ DATA_SHARING = {
         'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
         'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
-        # TODO: Set your proper filter mapping from datum filter to TNS filter name
         'FILTER_MAPPING': {
             'B': 'B-astrodon',
             'V': 'V-Johnson',
@@ -182,12 +192,6 @@ if os.environ.get('SNEX2_DB_BACKEND') == 'postgres':
 else:
     DATABASES = {
         'default': {
-            #'ENGINE': 'django.db.backends.sqlite3',
-            #'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-            #'USER': '',
-            #'PASSWORD': '',
-            #'HOST': '',
-            #'PORT': 5432,
             'ENGINE': 'django.db.backends.postgresql_psycopg2',
             'NAME': 'snex2',
             'USER': 'postgres',
@@ -249,42 +253,16 @@ DATE_FORMAT = 'Y-m-d'
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, '_static')
-STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static'), os.path.join(BASE_DIR, 'static', '.well-known')]
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    'django_plotly_dash.finders.DashAssetFinder',
+    'django_plotly_dash.finders.DashComponentFinder',
+    'django_plotly_dash.finders.DashAppDirectoryFinder',
+]
 MEDIA_ROOT = os.path.join(BASE_DIR, 'data')
 MEDIA_URL = '/data/'
-
-# Using AWS
-
-if not DEBUG:
-    #DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-    #STATICFILES_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-    STORAGES = {
-        "staticfiles": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-               "bucket_name": os.getenv('AWS_STORAGE_BUCKET_NAME', ''),
-               "region_name": os.getenv('AWS_S3_REGION_NAME', ''),
-               "default_acl": None,
-               "addressing_style": "virtual",
-            }
-        },
-        "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-               "bucket_name": os.getenv('AWS_STORAGE_BUCKET_NAME', ''),
-               "region_name": os.getenv('AWS_S3_REGION_NAME', ''),
-               "default_acl": None,
-               "addressing_style": "virtual",
-            }
-        }
-    }
-
-
-AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
-AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
-AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', '')
-AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', '')
-AWS_DEFAULT_ACL = None
 
 LOGGING = {
     'version': 1,
@@ -314,11 +292,11 @@ TARGET_TYPE = 'SIDEREAL'
 FACILITIES = {
     'LCO': {
         'portal_url': 'https://observe.lco.global',
-        'api_key': os.environ['LCO_APIKEY'],
+        'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
     },
     'SOAR': {
         'portal_url': 'https://observe.lco.global',
-        'api_key': os.environ['LCO_APIKEY'],
+        'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
     },
     'GEM': {
         'portal_url': {
@@ -364,7 +342,11 @@ FACILITIES = {
 #     {'name': 'eligible', 'type': 'boolean'},
 #     {'name': 'dicovery_date', 'type': 'datetime'}
 # ]
+
+TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
+
 EXTRA_FIELDS = [
+    {'name': 'gwfollowupgalaxy_id', 'type':'number', 'hidden':True},
     {'name': 'redshift', 'type': 'number'},
     {'name': 'classification', 'type': 'string'},
     {'name': 'tweet', 'type': 'boolean'},
@@ -379,14 +361,18 @@ EXTRA_FIELDS = [
 # Authentication strategy can either be LOCKED (required login for all views)
 # or READ_ONLY (read only access to views)
 AUTH_STRATEGY = 'LOCKED'
-#AUTH_STRATEGY = 'READ_ONLY'
+# AUTH_STRATEGY = 'READ_ONLY'
 
 TARGET_PERMISSIONS_ONLY = False
 
 # URLs that should be allowed access even with AUTH_STRATEGY = LOCKED
 # for example: OPEN_URLS = ['/', '/about']
-OPEN_URLS = ['/snex2/tnstargets/', '/pipeline-upload/photometry-upload/']
-
+OPEN_URLS = [
+    '/accounts/register/',
+    '/snex2/tnstargets/',
+    '/pipeline-upload/photometry-upload/',
+    '/static/tom_common/css/main_snexclone.css',
+]
 if DEBUG:
     HOOKS = {
         'target_post_save': '',
@@ -517,7 +503,7 @@ CSRF_TRUSTED_ORIGINS = ['https://test.supernova.exchange']
 TOM_REGISTRATION = {
     'REGISTRATION_AUTHENTICATION_BACKEND': 'django.contrib.auth.backends.AllowAllUsersModelBackend',
     'REGISTRATION_REDIRECT_PATTERN': 'home',
-    'REGISTRATION_STRATEGY': 'approval_required', 
+    'REGISTRATION_STRATEGY': 'approval_required',
     'SEND_APPROVAL_EMAILS': True,  
     'APPROVAL_SUBJECT': f'Your {TOM_NAME} registration has been approved!',  # Optional subject line of approval email, (Default Shown)
     'APPROVAL_MESSAGE': f'Your {TOM_NAME} registration has been approved. You can log in <a href="mytom.com/login">here</a>.'  # Optional html-enabled body for approval email, (Default Shown)
@@ -538,15 +524,30 @@ EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
-
-SNEX1_DB_URL = 'mysql://{}:{}@supernova.science.lco.global:3306/supernova?charset=utf8&use_unicode=1'
-SNEX1_DB_URL = SNEX1_DB_URL.format(os.getenv('SNEX1_DB_USER', ''), os.getenv('SNEX1_DB_PASSWORD', ''))
-
+SNEX1_DB_HOST = os.getenv('SNEX1_DB_HOST', 'supernova.science.lco.global')
+SNEX1_DB_PORT = os.getenv('SNEX1_DB_PORT', '3306')
+SNEX1_DB_NAME = os.getenv('SNEX1_DB_NAME', 'supernova')
+SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
+SNEX1_DB_PASSWORD = os.getenv('SNEX1_DB_PASSWORD', '')
+SNEX1_DB_URL = f'mysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
 
 PLOTLY_DASH = {
     'cache_arguments': False,
     #'cache_timeout_initial_arguments': 120,
 }
+
+PLOTLY_COMPONENTS = [
+
+    # Common components (ie within dash itself) are automatically added
+
+    # django-plotly-dash components
+    'dpd_components',
+    # static support if serving local assets
+    'dpd_static_support',
+
+    # Other components, as needed
+    'dash_bootstrap_components',
+]
 
 VUE_FRONTEND_DIR_TOM_NONLOCAL = os.path.join(STATIC_ROOT, 'tom_nonlocalizedevents/vue')
 WEBPACK_LOADER = {

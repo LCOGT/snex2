@@ -4,8 +4,7 @@ import logging
 from astropy.time import Time, TimezoneInfo
 from tom_dataproducts.models import ReducedDatum
 import json
-from tom_targets.templatetags.targets_extras import target_extra_field
-from tom_targets.models import TargetExtra
+from tom_targets.models import Target
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from requests_oauthlib import OAuth1
 from astropy.coordinates import SkyCoord
@@ -175,6 +174,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
     logger.info('Target post save hook: %s created: %s', target, created)
     
     if not created:
+        
         ### Add the last nondetection and first detection from TNS, if it exists
         tns_results = _get_tns_params(target)
         if tns_results.get('success', ''):
@@ -187,17 +187,9 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                 'filt': tns_results['nondet_filt'],
                 'source': 'TNS'
             })
-            
-            old_params = TargetExtra.objects.filter(target=target, key='last_nondetection')
-            for old_param in old_params:
-                old_param.delete()
-            
-            te = TargetExtra(
-                target=target,
-                key='last_nondetection',
-                value=nondet_value
-            )
-            te.save()
+
+            target.last_nondetection = nondet_value
+            target.save()
 
             det_date = tns_results['detection'].split()[0]
             det_jd = tns_results['detection'].split()[1].replace('(', '').replace(')', '')
@@ -209,16 +201,8 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                 'source': 'TNS'
             })
             
-            old_params = TargetExtra.objects.filter(target=target, key='first_detection')
-            for old_param in old_params:
-                old_param.delete()
-            
-            te = TargetExtra(
-                target=target,
-                key='first_detection',
-                value=det_value
-            )
-            te.save()
+            target.first_detection = det_value
+            target.save()
 
         ### Ingest ZTF data, if a ZTF target
         get_ztf_data(target)
@@ -289,7 +273,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
             db_session.flush()
 
 
-def targetextra_post_save(targetextra, created):
+def targetextra_post_save(target):
     '''
     Hook to sync target classifications and redshifts
     with SNEx1
@@ -298,20 +282,19 @@ def targetextra_post_save(targetextra, created):
         with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
             Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
             Classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
-
-            if targetextra.key == 'classification': # Update the classification in the targets table in the SNex 1 db
-                targetid = targetextra.target_id # Get the targetid of our saved entry
-                classification = targetextra.value # Get the new classification
+            targetid = target.id
+            if target.classfication != '': # Update the classification in the targets table in the SNex 1 db
+                classification = target.classification # Get the new classification
                 classification_query = db_session.query(Classifications).filter(Classifications.name==classification).first()
                 if classification_query:
                     # Get the corresponding id from the classifications table
                     classificationid = classification_query.id
                     db_session.query(Targets).filter(Targets.id==targetid).update({'classificationid': classificationid}) # Update the classificationid in the targets table
 
-            elif targetextra.key == 'redshift': # Now update the targets table with the redshift info
-                db_session.query(Targets).filter(Targets.id==targetextra.target_id).update({'redshift': targetextra.float_value})
+            elif target.redshift != '': # Now update the targets table with the redshift info
+                db_session.query(Targets).filter(Targets.id==targetid).update({'redshift': target.redshift})
             db_session.commit()
-    logger.info('targetextra post save hook: %s created: %s', targetextra, created)
+    logger.info('Classification and Redshift target post save hook: %s created: %s', target)
 
 
 def targetname_post_save(targetname, created):
@@ -690,7 +673,8 @@ def find_images_from_snex1(targetid, allimages=False):
             query = db_session.query(Photlco).filter(and_(Photlco.targetid==targetid, Photlco.filetype==1)).order_by(Photlco.id.desc()).limit(8)
         else:
             query = db_session.query(Photlco).filter(and_(Photlco.targetid==targetid, Photlco.filetype==1)).order_by(Photlco.id.desc())
-        filepaths = [q.filepath.replace('/supernova/data/lsc/', '').replace('/supernova/data/', '') for q in query]
+        filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
+        print(filepaths)
         filenames = [q.filename.replace('.fits', '') for q in query]
         dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
         teles = [q.telescope[:3] for q in query]
@@ -867,7 +851,7 @@ def get_unreduced_spectra(allspec=True):
         dateobs = [s.dateobs for s in unreduced_spectra]
         paths = [s.filepath for s in unreduced_spectra]
         filenames = [s.filename for s in unreduced_spectra]
-        imgpaths = [s.filepath.replace('/supernova/data/floyds', '/snex2/data/floyds') + s.filename.replace('.fits', '.png') for s in unreduced_spectra]
+        imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in unreduced_spectra]
 
     return targetids, propids, dateobs, paths, filenames, imgpaths
 
@@ -964,12 +948,12 @@ def download_test_image_from_archive():
     Returns the image parameters needed to display its thumbnail.
     """
     ### Check if thumbnail directory exists, and if not make it
-    thumbnail_directory = "data/fits/"
+    thumbnail_directory = settings.FITS_DIR
     if not os.path.isdir(thumbnail_directory):
         os.makedirs(os.path.join(settings.BASE_DIR, thumbnail_directory))
 
-    if not os.path.isdir("data/thumbs/"):
-        os.mkdir(os.path.join(settings.BASE_DIR, "data/thumbs/"))
+    if not os.path.isdir(settings.THUMB_DIR):
+        os.mkdir(os.path.join(settings.BASE_DIR, settings.THUMB_DIR))
 
     ### Check if test image already exists in thumbnail directory,
     ### and if not download it

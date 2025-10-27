@@ -41,7 +41,7 @@
 </table>
 <div class="row">
   <button class="btn" onclick="update_values()" style="background-color: white; color: #174460; border-color: #174460;">Refresh from TNS</button>
-  <button id="save-values-btn" class="btn" onclick="save_values()" style="background-color: white; color: #174460; border-color: #174460;">Save Values</button>
+  <button id="save-values-btn" class="btn" onclick="save_last_nondetection()" style="background-color: white; color: #174460; border-color: #174460;">Save Values</button>
 </div>
 <h4 style="margin-top: 10px;">Time of Maximum</h4>
 <div class="row" style="margin-left: 5px;">Enter a time of maximum from a source in the table below, or interactively fit the light curve:</div>
@@ -123,41 +123,53 @@ function display_fit_options() {
     fitDiv.style.display = "none";
   }
 }
-function save_values() {
+function save_last_nondetection() {
   var nonDetDate = document.getElementById('nondet-date').innerHTML;
   var nonDetMag = document.getElementById('nondet-mag').innerHTML;
   var nonDetFilt = document.getElementById('nondet-filt').innerHTML;
   var nonDetSource = document.getElementById('nondet-source').innerHTML;
   $.ajax({
     url: '{% url "save-lightcurve-params" %}',
-    data: {'target_id': {{ target.id }},
-           'key': 'last_nondetection',
-           'date': nonDetDate,
-           'mag': nonDetMag,
-           'filt': nonDetFilt,
-           'source': nonDetSource},
-    dataType: 'json'
-  })
+    data: {
+      'target_id': {{ target.id }},
+      'key': 'last_nondetection',
+      'date': nonDetDate,
+      'mag': nonDetMag,
+      'filt': nonDetFilt,
+      'source': nonDetSource
+    },
+    dataType: 'json',
+    success: function(response) {
+      save_firstdetection();
+    }
+  });
+}
+
+function save_firstdetection() {
   var detDate = document.getElementById('det-date').innerHTML;
   var detMag = document.getElementById('det-mag').innerHTML;
   var detFilt = document.getElementById('det-filt').innerHTML;
   var detSource = document.getElementById('det-source').innerHTML;
   $.ajax({
     url: '{% url "save-lightcurve-params" %}',
-    data: {'target_id': {{ target.id }},
-           'key': 'first_detection',
-           'date': detDate,
-           'mag': detMag,
-           'filt': detFilt,
-           'source': detSource},
+    data: {
+      'target_id': {{ target.id }},
+      'key': 'first_detection',
+      'date': detDate,
+      'mag': detMag,
+      'filt': detFilt,
+      'source': detSource
+    },
     dataType: 'json',
     success: function(response) {
       if (response.success === 'Saved') {
         document.getElementById('save-values-btn').innerHTML = 'Saved';
       }
     }
-  })
+  });
 }
+
+
 function save_max() {
   var maxDate = document.getElementById('max-date').innerHTML;
   var maxMag = document.getElementById('max-mag').innerHTML;

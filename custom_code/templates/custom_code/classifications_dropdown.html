@@ -52,45 +52,27 @@
 
   function edit_classification(classification) {
     var targetid = {{ target.id }};
-    var classid = {{ target|get_targetextra_id:"classification" }};
     var new_class = classification; //$('#classification--' + classification).val();
+    document.getElementById("class-display-btn").innerHTML=new_class;
+    console.log(targetid, new_class);
+    
     var newdata = {
       "key": "classification",
-      "value": new_class
+      "value": new_class,
+      "targetid": targetid
     };
-    if (classid != null) {
-      newdata = {
-        "id": classid,
-	"key": "classification",
-	"value": new_class
-      };
-    }
-    document.getElementById("class-display-btn").innerHTML=new_class;
-    console.log(targetid, classid, new_class);
     $.ajax({
-      url: '/api/targets/' + targetid + '/',
-      type: "PATCH",
-      headers: {"X-CSRFToken": '{{ csrf_token }}'}, 
-      data: JSON.stringify({
-        "targetextra_set": [
-          newdata
-        ]
-      }),
+      url: '{% url "sync_targetextra" %}',
+      type: "GET",
+      data: {"newdata": JSON.stringify(newdata)},
       contentType: "application/json",
       dataType: "json",
-      success: function() {
-	newdata['targetid'] = targetid;
-	$.ajax({
-	  url: '{% url "sync_targetextra" %}',
-	  type: "GET",
-	  data: {"newdata": JSON.stringify(newdata)},
-	  contentType: "application/json",
-	  dataType: "json",
-	})
+      success: function(response) {
+        console.log("Classification synced for target: ",targetid,new_class,response)
       },
       error: function(e) {
-        console.log(e);
+        console.log("Error syncing classification for target: ",targetid,new_class,e);
       }
     })
-  }
+    }
 </script>

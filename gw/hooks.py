@@ -1,7 +1,7 @@
 import os
 from gw.models import GWFollowupGalaxy
 from tom_common.hooks import run_hook
-from tom_targets.models import Target, TargetExtra
+from tom_targets.models import Target
 from tom_observations.models import ObservationRecord
 from tom_nonlocalizedevents.models import EventSequence
 from custom_code.views import cancel_observation, Snex1ConnectionError
@@ -31,8 +31,7 @@ def cancel_gw_obs(galaxy_ids=[], sequence_id=None, wrapped_session=None):
         # Get galaxies associated with this sequence
         galaxies = GWFollowupGalaxy.objects.filter(eventlocalization=sequence.localization)
 
-    targetextras = TargetExtra.objects.filter(key='gwfollowupgalaxy_id', value__in=[g.id for g in galaxies])
-    targets = [t.target for t in targetextras]
+    targets = Target.objects.filter(key='gwfollowupgalaxy_id', value__in=[g.id for g in galaxies])
 
     if wrapped_session:
         db_session = wrapped_session
