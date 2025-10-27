@@ -3,6 +3,7 @@ services:
     snex2-db:
         image: postgis/postgis:15-3.3-alpine
 #        image: postgres:11.1
+        container_name: snex2-snex2-db-1
         network_mode: bridge
         environment:
             POSTGRES_DB: "snex2"
@@ -15,6 +16,7 @@ services:
         #platform: linux/amd64
     snex2:
         image: lcogt/snex2:latest
+        container_name: snex2-snex2-1
         network_mode: bridge
         links:
             - "snex2-db:snex2-db"
