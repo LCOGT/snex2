@@ -24,6 +24,12 @@
       <img id="form-img" style="width: 70%; height: 70%; margin-left: 5px; margin-top: 5px;" src="data:image/png;base64,{{ thumb }}" alt="img">
       <button class="btn" id="next-img" style="font-size: 20px; display: none;" onclick="nextImg()">Next &raquo;</button>
     </div>
+    <div class="row justify-content-center mt-3">
+      <form method="get" action="{% url 'download-fits' %}">
+      <input type="hidden" id="download-filename" name="filename" value="">
+      <button type="submit" class="btn btn-primary" style="width: 200px;" onclick="downloadFile()">Download Fits</button>
+      </form>
+    </div>
   </div>
   <div class="col-md-2">
     <form>
@@ -63,7 +69,7 @@
     var zoomVal = document.getElementById("id_zoom").value;
     var sigmaVal = document.getElementById("id_sigma").value;
     var filenameVal = document.getElementById("id_filenames").value;
-
+    document.getElementById("download-filename").value = filenameVal;
     $.ajax({
       url: '{% url "make-thumbnail" %}',
       data: {'zoom': zoomVal,
@@ -87,6 +93,7 @@
     if (select.selectedIndex === select.options.length - 2) {
       select.selectedIndex++;
       document.getElementById("previous-img").style.display = "none";
+      document.getElementById("next-img").style.display = "block";
     } else {
       select.selectedIndex++;
       document.getElementById("next-img").style.display = "block";
@@ -98,10 +105,41 @@
     if (select.selectedIndex === 1) {
       select.selectedIndex--;
       document.getElementById("next-img").style.display = "none";
+      document.getElementById("previous-img").style.display = "block";
     } else {
       select.selectedIndex--;
       document.getElementById("previous-img").style.display = "block";
     }
     makeThumbnail();
   };
+  async function downloadFile() {
+    const downloadButton = document.querySelector("button[onclick='downloadFile()']");
+    const filenameVal = document.getElementById("download-filename").value;
+
+    const fileData = JSON.parse(filenameVal);
+    const finalFilename = fileData.filename + '.fits';
+
+    const originalButtonText = downloadButton.innerHTML;
+    downloadButton.innerHTML = "Downloading...";
+    downloadButton.disabled = true;
+
+    const response = await fetch(`{% url 'download-fits' %}?filename=${encodeURIComponent(filenameVal)}`);
+    const blob = await response.blob();
+    
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = finalFilename; 
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    downloadButton.innerHTML = originalButtonText;
+    downloadButton.disabled = false;
+  }
+  document.addEventListener("DOMContentLoaded", function() {
+    makeThumbnail();
+  });
 </script>
