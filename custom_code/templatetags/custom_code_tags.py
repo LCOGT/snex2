@@ -575,10 +575,8 @@ def target_data_with_user(context, target):
     Displays the data of a target.
     """
     user = context['request'].user
-    extras = {k['name']: target.extra_fields.get(k['name'], '') for k in settings.EXTRA_FIELDS if not k.get('hidden')}
     return {
         'target': target,
-        'extras': extras,
         'user': user
     }
 
