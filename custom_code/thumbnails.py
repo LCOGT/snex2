@@ -63,6 +63,7 @@ class ImageThumb:
         # normalize the sky background?
         self.fixscale = fixscale
 
+        logger.info(f'image path! {imagepath}')
         # open the image
         hlist = fits.open(imagepath)
 
@@ -398,68 +399,49 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
     outfiles = []
     for filename in files:
         # See if fits file needs to be funpacked
-        unpacked = False
-        tmpdir = None
-        write_access = os.access(os.path.dirname(filename), os.W_OK)
-        logger.info(f'1 filename {filename}')
-        logger.info(f'2 filename exists? {os.path.exists(filename)}, if False should see 4-7')
-        logger.info(f'3 access file? {write_access}, if True and 2 is False, should see 4, 8, and 9')
-
-        if not os.path.exists(filename):
-            filepath = os.path.dirname(filename)
-            logger.info(f'4 filepath {filepath}')
-
-            if not write_access:
-                tmpdir = tempfile.mkdtemp(prefix='unpacked_fits_')
-                tmpfile = os.path.join(tmpdir,os.path.basename(filename))
-                logger.info(f'5 tmpfile for unpacking file {tmpfile} into temp dir {tmpdir}')
-                r = os.system(f'funpack -O "{tmpfile}" "{filename}.fz"')
-                filename = tmpfile
-                logger.info(f'6 tmpfile now unpacked {filename}')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpfile = os.path.join(tmpdir, os.path.basename(filename))
+            if os.path.exists(filename):
+                tmpfile = filename
             else:
-                r = os.system(f'funpack -D {filename}.fz')
-                logger.info(f'8 unpacked file {filename} from read/write directory')
-                unpacked = True
+                r = os.system(f'funpack -O "{tmpfile}" "{filename}.fz"')
+                logger.info(f'1 tempfile {tmpfile}')
 
-        # load in the image data
-        thumb = ImageThumb(filename, skip=skip, grow=grow, verbose=True, region=region)
-        data = thumb.datacube[0][1].copy()
-        data = make_depth_256(data, sky=thumb.sky, sig=thumb.sig, zerosig=0, spansig=spansig)
+            # load in the image data
+            thumb = ImageThumb(tmpfile, skip=skip, grow=grow, verbose=True, region=region)
+            data = thumb.datacube[0][1].copy()
+            data = make_depth_256(data, sky=thumb.sky, sig=thumb.sig, zerosig=0, spansig=spansig)
 
-        im = thumb.prepare_image(data).convert('RGB')
+            im = thumb.prepare_image(data).convert('RGB')
 
-        ### Do rotations and reflections here
+            ### Do rotations and reflections here
 
-        ### Add crosshair
-        if ticks:
-            x1, x2, y1, y2 = region
-            xoff = -0.5
-            yoff = 1.0
+            ### Add crosshair
+            if ticks:
+                x1, x2, y1, y2 = region
+                xoff = -0.5
+                yoff = 1.0
 
-            x_new = int(round((x + xoff - max([0, x1])) * grow))
-            y_new = int(round((min([y2, 4096]) - y + yoff) * grow))
-            
-            draw = ImageDraw.Draw(im)
-            draw.line((x_new,y_new+7,x_new,y_new+25), fill='white')
-            draw.line((x_new-7,y_new,x_new-25,y_new), fill='white')
+                x_new = int(round((x + xoff - max([0, x1])) * grow))
+                y_new = int(round((min([y2, 4096]) - y + yoff) * grow))
+                
+                draw = ImageDraw.Draw(im)
+                draw.line((x_new,y_new+7,x_new,y_new+25), fill='white')
+                draw.line((x_new-7,y_new,x_new-25,y_new), fill='white')
 
-        # make the thumbs
-        if grow == 1.0 and not sig:
-            newfile = filename.split('/')[-1].replace('.fits', '.webp')
-        else:
-            newfile = filename.split('/')[-1].replace('.fits', 'grow{}sig{}.webp'.format(grow, sig))
-        outfile = os.path.join(settings.THUMB_DIR,newfile)
-        f = open(outfile, 'wb')
-        im.save(f, 'WEBP')
-        f.close()
-
-        if unpacked and write_access:
-            r = os.system('fpack -D -Y '+filename)
-            logger.info(f'9 delete unpacked file {filename} from read/write directory')
-        if tmpdir != None:
-            shutil.rmtree(tmpdir)
-            logger.info(f'7 remove tmpdir {tmpdir}')
+            # make the thumbs
+            if grow == 1.0 and not sig:
+                newfile = tmpfile.split('/')[-1].replace('.fits', '.webp')
+            else:
+                newfile = tmpfile.split('/')[-1].replace('.fits', 'grow{}sig{}.webp'.format(grow, sig))
+            logger.info(f'new file {tmpfile}')
+            outfile = os.path.join(settings.THUMB_DIR,newfile)
+            logger.info(f'out file {outfile}')
+            f = open(outfile, 'wb')
+            im.save(f, 'WEBP')
+            f.close()
 
         outfiles.append(newfile)
+        logger.info(f'out files all {outfiles}')
 
     return outfiles
