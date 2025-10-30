@@ -63,7 +63,6 @@ class ImageThumb:
         # normalize the sky background?
         self.fixscale = fixscale
 
-        logger.info(f'image path! {imagepath}')
         # open the image
         hlist = fits.open(imagepath)
 
@@ -405,7 +404,6 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
                 tmpfile = filename
             else:
                 r = os.system(f'funpack -O "{tmpfile}" "{filename}.fz"')
-                logger.info(f'1 tempfile {tmpfile}')
 
             # load in the image data
             thumb = ImageThumb(tmpfile, skip=skip, grow=grow, verbose=True, region=region)
@@ -434,7 +432,7 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
                 newfile = tmpfile.split('/')[-1].replace('.fits', '.webp')
             else:
                 newfile = tmpfile.split('/')[-1].replace('.fits', 'grow{}sig{}.webp'.format(grow, sig))
-            logger.info(f'new file {tmpfile}')
+            logger.info(f'file to make image {tmpfile}')
             outfile = os.path.join(settings.THUMB_DIR,newfile)
             logger.info(f'out file {outfile}')
             f = open(outfile, 'wb')
@@ -442,6 +440,5 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
             f.close()
 
         outfiles.append(newfile)
-        logger.info(f'out files all {outfiles}')
 
     return outfiles
