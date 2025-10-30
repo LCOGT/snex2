@@ -11,6 +11,11 @@ from astropy.io import fits
 from PIL import Image, ImageDraw
 from struct import pack, unpack
 from django.conf import settings
+import tempfile
+import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ************************************************************
@@ -394,9 +399,27 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
     for filename in files:
         # See if fits file needs to be funpacked
         unpacked = False
+        tmpdir = None
+        write_access = os.access(os.path.dirname(filename), os.W_OK)
+        logger.info(f'1 filename {filename}')
+        logger.info(f'2 filename exists? {os.path.exists(filename)}, if False should see 4-7')
+        logger.info(f'3 access file? {write_access}, if True should see 8 and 9.')
+
         if not os.path.exists(filename):
-            r = os.system('funpack -D '+filename+'.fz')
-            unpacked = True
+            filepath = os.path.dirname(filename)
+            logger.info(f'4 filepath {filepath}')
+
+            if not write_access:
+                tmpdir = tempfile.mkdtemp(prefix='unpacked_fits_')
+                tmpfile = os.path.join(tmpdir,os.path.basename(filename))
+                logger.info(f'5 tmpfile for unpacking file {tmpfile} into temp dir {tmpdir}')
+                r = os.system(f'funpack -O "{tmpfile}" "{filename}.fz"')
+                filename = tmpfile
+                logger.info(f'6 tmpfile now unpacked {filename}')
+            else:
+                r = os.system(f'funpack -D {filename}.fz')
+                logger.info(f'8 unpacked file {filename} from read/write directory')
+                unpacked = True
 
         # load in the image data
         thumb = ImageThumb(filename, skip=skip, grow=grow, verbose=True, region=region)
@@ -423,16 +446,19 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
         # make the thumbs
         if grow == 1.0 and not sig:
             newfile = filename.split('/')[-1].replace('.fits', '.webp')
-            outfile = os.path.join(settings.THUMB_DIR,newfile)
         else:
             newfile = filename.split('/')[-1].replace('.fits', 'grow{}sig{}.webp'.format(grow, sig))
-            outfile = os.path.join(settings.THUMB_DIR,newfile)
+        outfile = os.path.join(settings.THUMB_DIR,newfile)
         f = open(outfile, 'wb')
         im.save(f, 'WEBP')
         f.close()
 
-        if unpacked:
+        if unpacked and write_access:
             r = os.system('fpack -D -Y '+filename)
+            logger.info(f'9 delete unpacked file {filename} from read/write directory')
+        if tmpdir != None:
+            shutil.rmtree(tmpdir)
+            logger.info(f'7 remove tmpdir {tmpdir}')
 
         outfiles.append(newfile)
 
