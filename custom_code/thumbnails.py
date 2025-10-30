@@ -12,7 +12,6 @@ from PIL import Image, ImageDraw
 from struct import pack, unpack
 from django.conf import settings
 import tempfile
-import shutil
 import logging
 
 logger = logging.getLogger(__name__)
