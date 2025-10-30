@@ -575,9 +575,6 @@ def target_data_with_user(context, target):
     Displays the data of a target.
     """
     user = context['request'].user
-    logger.info(f'test target is {target}, {target.pk}')
-    logger.info(f'user is {user}')
-    extras = {'redshift': target.redshift, 'classification': target.classification}    
     return {
         'target': target,
         'user': user
