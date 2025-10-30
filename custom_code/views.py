@@ -66,6 +66,7 @@ import base64
 import requests
 import logging
 from io import BytesIO
+import os
 
 logger = logging.getLogger(__name__)
 
