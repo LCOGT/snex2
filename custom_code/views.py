@@ -4,7 +4,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper
 from django.db.models.functions import Cast
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView
@@ -32,6 +32,7 @@ from django.db.models.fields.json import KeyTextTransform
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 from astropy.time import Time
+import time
 from datetime import datetime, date, timedelta
 import json
 from io import StringIO
@@ -43,7 +44,7 @@ from custom_code.templatetags.custom_code_tags import airmass_collapse, lightcur
 from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
 from custom_code.thumbnails import make_thumb
 
-from .forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm
+from .forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm,ThumbnailForm
 from tom_targets.views import TargetCreateView
 from tom_common.hooks import run_hook
 
@@ -62,8 +63,10 @@ from tom_observations.facilities.lco import LCOSettings
 from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_registration.registration_flows.approval_required.views import UserApprovalView
 import base64
-
+import requests
 import logging
+from io import BytesIO
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -1679,7 +1682,20 @@ def make_thumbnail_view(request):
 
     return HttpResponse(json.dumps(content_response), content_type='application/json')
 
+def download_fits_view(request):
+    token = settings.FACILITIES['LCO']['api_key']
+    url = settings.FACILITIES['LCO']['archive_url']
+    
+    object_basename = json.loads(request.GET.get('filename'))['filename']
 
+    results = requests.get(url,
+                           headers={'Authorization': f'Token {token}'}, 
+                           params={'basename_exact': object_basename, 'include_related_frames': False}).json()["results"]
+    
+    data = requests.get(results[0]["url"]).content
+
+    return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
+    
 class InterestingTargetsView(ListView):
 
     template_name = 'custom_code/interesting_targets.html'
