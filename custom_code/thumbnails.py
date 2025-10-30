@@ -403,7 +403,7 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
         write_access = os.access(os.path.dirname(filename), os.W_OK)
         logger.info(f'1 filename {filename}')
         logger.info(f'2 filename exists? {os.path.exists(filename)}, if False should see 4-7')
-        logger.info(f'3 access file? {write_access}, if True should see 8 and 9.')
+        logger.info(f'3 access file? {write_access}, if True and 2 is False, should see 4, 8, and 9')
 
         if not os.path.exists(filename):
             filepath = os.path.dirname(filename)
