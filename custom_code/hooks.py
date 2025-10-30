@@ -679,7 +679,6 @@ def find_images_from_snex1(targetid, allimages=False):
         else:
             query = db_session.query(Photlco).filter(and_(Photlco.targetid==targetid, Photlco.filetype==1)).order_by(Photlco.id.desc())
         filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
-        logger.info('filepaths for target {} {}'.format(targetid,filepaths))
         if len(filepaths)==0:
             raise IndexError(f"No images found for target {targetid}") 
         filenames = [q.filename.replace('.fits', '') for q in query]
