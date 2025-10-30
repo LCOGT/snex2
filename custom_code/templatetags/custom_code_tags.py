@@ -575,10 +575,11 @@ def target_data_with_user(context, target):
     Displays the data of a target.
     """
     user = context['request'].user
-    extras = {k['name']: target.extra_fields.get(k['name'], '') for k in settings.EXTRA_FIELDS if not k.get('hidden')}
+    logger.info(f'test target is {target}, {target.pk}')
+    logger.info(f'user is {user}')
+    extras = {'redshift': target.redshift, 'classification': target.classification}    
     return {
         'target': target,
-        'extras': extras,
         'user': user
     }
 
