@@ -535,7 +535,7 @@ def save_comments(comment, object_id, user, tablename='observationgroup'):
             content_type_id = ContentType.objects.get(model='observationgroup').id
         else:
             tablename_dict = {'spec': 'reduceddatum',
-                              'target': 'snextarget'}
+                              'targets': 'snextarget'}
             snex2_model = tablename_dict[tablename]
             content_type_id = ContentType.objects.get(model=snex2_model).id
 
