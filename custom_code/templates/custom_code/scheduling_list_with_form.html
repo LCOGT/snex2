@@ -69,12 +69,10 @@ input[type=number]::-webkit-outer-spin-button {
       <td><a class="btn btn-success" href="{% url 'custom_code:observationgroup-detail' parameter.obsgroup_id %}" target="_blank">Details</a></td>
       <td><a href="{% url 'tom_targets:detail' parameter.target.id %}" title="{{ parameter.target.id }}" target="_blank">{{ parameter.names|join:", " }}</a></td>
       <td>
-      {% with parameter.target as target %}
-          {{ target.classification }}
+      {{ parameter.classification }}
       </td>
       <td>
-	      {{ target.redshift|strip_trailing_zeros }}
-      {% endwith %}
+	    {{ parameter.redshift|strip_trailing_zeros }}
       </td>
       <td>
 	<div class="row">{{ parameter.facility }}</div>
