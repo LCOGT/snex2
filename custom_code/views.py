@@ -535,7 +535,7 @@ def save_comments(comment, object_id, user, tablename='observationgroup'):
             content_type_id = ContentType.objects.get(model='observationgroup').id
         else:
             tablename_dict = {'spec': 'reduceddatum',
-                              'target': 'targets'}
+                              'target': 'snextarget'}
             snex2_model = tablename_dict[tablename]
             content_type_id = ContentType.objects.get(model=snex2_model).id
 
@@ -1664,9 +1664,9 @@ def make_thumbnail_view(request):
     sigma = float(request.GET['sigma'])
 
     if filename_dict['psfx'] < 9999 and filename_dict['psfy'] < 9999:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'],filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
+        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'].lstrip('/'),filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
     else:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'],filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
+        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'].lstrip('/'),filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
 
     with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:
         b64_image = base64.b64encode(imagefile.read())

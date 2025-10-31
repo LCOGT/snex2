@@ -334,30 +334,20 @@ FACILITIES = {
     }
 }
 
-# Define extra target fields here. Types can be any of "number", "st    ring", "boolean" or "datetime"
-# See https://tomtoolkit.github.io/docs/target_fields for documentat    ion on this feature
-# For example:
-# EXTRA_FIELDS = [
-#     {'name': 'redshift', 'type': 'number'},
-#     {'name': 'discoverer', 'type': 'string'}
-#     {'name': 'eligible', 'type': 'boolean'},
-#     {'name': 'dicovery_date', 'type': 'datetime'}
-# ]
-
 TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
 
-EXTRA_FIELDS = [
-    {'name': 'gwfollowupgalaxy_id', 'type':'number', 'hidden':True},
-    {'name': 'redshift', 'type': 'number'},
-    {'name': 'classification', 'type': 'string'},
-    {'name': 'tweet', 'type': 'boolean'},
-    {'name': 'reference', 'type': 'string', 'hidden': True},
-    {'name': 'observing_run_priority', 'type': 'number', 'hidden': True},
-    {'name': 'last_nondetection', 'type': 'string', 'hidden': True},
-    {'name': 'first_detection', 'type': 'string', 'hidden': True},
-    {'name': 'maximum', 'type': 'string', 'hidden': True},
-    {'name': 'target_description', 'type': 'string', 'hidden': True}
-]
+# EXTRA_FIELDS = [
+#     {'name': 'gwfollowupgalaxy_id', 'type':'number', 'hidden':True},
+#     {'name': 'redshift', 'type': 'number'},
+#     {'name': 'classification', 'type': 'string'},
+#     {'name': 'tweet', 'type': 'boolean'},
+#     {'name': 'reference', 'type': 'string', 'hidden': True},
+#     {'name': 'observing_run_priority', 'type': 'number', 'hidden': True},
+#     {'name': 'last_nondetection', 'type': 'string', 'hidden': True},
+#     {'name': 'first_detection', 'type': 'string', 'hidden': True},
+#     {'name': 'maximum', 'type': 'string', 'hidden': True},
+#     {'name': 'target_description', 'type': 'string', 'hidden': True}
+# ]
 
 # Authentication strategy can either be LOCKED (required login for all views)
 # or READ_ONLY (read only access to views)

@@ -25,7 +25,7 @@ engine1 = create_engine(settings.SNEX1_DB_URL)
 
 def get_comments(targetid, tablename, notes, users, days_ago):
     
-    content_dict = {'targets': ContentType.objects.get(model='basetarget').id,
+    content_dict = {'targets': ContentType.objects.get(model='snextarget').id,
                     'obsrequests': ContentType.objects.get(model='observationgroup').id,
                     'spec': ContentType.objects.get(model='reduceddatum').id}
     
