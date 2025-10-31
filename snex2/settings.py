@@ -27,7 +27,7 @@ SN_DIR = os.getenv('SUPERNOVA_DIR','/supernova/')
 THUMB_DIR = os.path.join(DATA_DIR,'thumbs')
 FITS_DIR = os.path.join(DATA_DIR,'fits')
 LSC_DIR = os.path.join(SN_DIR,'data','lsc')
-FLOYDS_DIR = os.path.join(DATA_DIR,'floyds')
+FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.1/howto/deployment/checklist/
