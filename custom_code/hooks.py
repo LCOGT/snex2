@@ -857,7 +857,6 @@ def get_unreduced_spectra(allspec=True):
         dateobs = [s.dateobs for s in unreduced_spectra]
         paths = [s.filepath for s in unreduced_spectra]
         filenames = [s.filename for s in unreduced_spectra]
-        logger.info(f'filepath {unreduced_spectra[0].filepath} filename {unreduced_spectra[0].filename} new filename {os.path.join(unreduced_spectra[0].filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), unreduced_spectra[0].filename.replace('.fits', '.png'))}')
         imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in unreduced_spectra]
 
     return targetids, propids, dateobs, paths, filenames, imgpaths
