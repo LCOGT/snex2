@@ -1047,7 +1047,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
     parameters = []
     facility = observation.facility 
     obsgroup = observation.observationgroup_set.first()
-    target = observation.target
+    target = Target.objects.get(pk=observation.target.id)
     target_names = smart_name_list(observation.target)
 
     content_type_id = ContentType.objects.get(model='observationgroup').id
@@ -1120,6 +1120,8 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
         parameters.append({'observation_id': observation.id,
                            'obsgroup_id': obsgroup.id,
                            'target': target,
+                           'classification': target.classification,
+                           'redshift': target.redshift,
                            'names': target_names,
                            'facility': facility,
                            'proposal': parameter.get('proposal', ''),
