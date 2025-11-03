@@ -291,7 +291,7 @@ def targetextra_post_save(target):
             Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
             Classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
             targetid = target.id
-            if target.classfication != '': # Update the classification in the targets table in the SNex 1 db
+            if target.classification != '': # Update the classification in the targets table in the SNex 1 db
                 classification = target.classification # Get the new classification
                 classification_query = db_session.query(Classifications).filter(Classifications.name==classification).first()
                 if classification_query:
