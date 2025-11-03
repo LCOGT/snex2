@@ -92,7 +92,7 @@ def _str_to_jd(datestring):
 
 
 def _get_tns_params(target):
-
+    logger.info(f'Target sent for TNS parameters, {target}')
     names = [target.name] + [t.name for t in target.aliases.all()]
 
     tns_name = False
@@ -115,6 +115,7 @@ def _get_tns_params(target):
     json_file = OrderedDict(json_list)
 
     try:
+        logger.info(f'Querying TNS for target {target} to url {tns_url} and json file {json_file}')
         response = requests.post(tns_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(json_file)})
 
         parsed = json.loads(response.text, object_pairs_hook=OrderedDict)
@@ -192,6 +193,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                 })
 
                 target.last_nondetection = nondet_value
+                logger.info(f'Saving target {target} after TNS nondetection ingestion')
                 target.save()
             if tns_results['detection'] == None:
                 print('No TNS detection found for target',target)
@@ -207,6 +209,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                 })
                 
                 target.first_detection = det_value
+                logger.info(f'Target {target} first detection saved from TNS.')
                 target.save()
 
         ### Ingest ZTF data, if a ZTF target
