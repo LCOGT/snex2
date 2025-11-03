@@ -300,7 +300,7 @@ def targetextra_post_save(target):
             elif target.redshift != '': # Now update the targets table with the redshift info
                 db_session.query(Targets).filter(Targets.id==targetid).update({'redshift': target.redshift})
             db_session.commit()
-    logger.info('Classification and Redshift target post save hook: %s created: %s', target)
+    logger.info('Classification and Redshift target post save hook: %s', target)
 
 
 def targetname_post_save(targetname, created):
