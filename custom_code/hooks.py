@@ -192,9 +192,8 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                     'source': 'TNS'
                 })
 
-                target.last_nondetection = nondet_value
                 logger.info(f'Saving target {target} after TNS nondetection ingestion')
-                target.save()
+                Target.objects.filter(pk=target.pk).update(last_nondetection=nondet_value)
             if tns_results['detection'] == None:
                 print('No TNS detection found for target',target)
             else:
@@ -208,9 +207,8 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                     'source': 'TNS'
                 })
                 
-                target.first_detection = det_value
                 logger.info(f'Target {target} first detection saved from TNS.')
-                target.save()
+                Target.objects.filter(pk=target.pk).update(first_detection=det_value)
 
         ### Ingest ZTF data, if a ZTF target
         get_ztf_data(target)
