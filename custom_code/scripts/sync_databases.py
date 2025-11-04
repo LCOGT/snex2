@@ -15,6 +15,9 @@ from tom_dataproducts.models import DataProduct, data_product_path, ReducedDatum
 from custom_code.utils import powers_of_two
 from custom_code.utils import update_permissions
 
+import logging
+logger = logging.getLogger(__name__)
+
 _SNEX2_DB = 'postgresql://{}:{}@{}:{}/snex2'.format(
     os.environ.get('SNEX2_DB_USER'),
     os.getenv('SNEX2_DB_PASSWORD'),
@@ -260,13 +263,17 @@ def update_phot(action, db_address=_SNEX2_DB):
                             target__pk=targetid,
                             data_type='photometry',
                         ).all()
+                        logger.info(f'Updating Photometry for target {targetid}, ReducedDatum rows: {all_rows}')
                         for snex2_row in all_rows:
                             value = snex2_row.value
+                            logger.info(f'snex_id {value} from ReducedDatum table, snex1id from sndb: {id_}')
                             if type(value) == str: #Some rows are still strings for some reason
+                                logger.info(f'ids match, but still string.')
                                 value = json.loads(snex2_row.value)
                             if int(id_) == value.get('snex_id', ''):
                                 snex2_id = snex2_row.id
-                                data_point = ReducedDatum.objects.get(id=snex2_id)
+                                data_point = snex2_row #ReducedDatum.objects.get(id=snex2_id), the row is the ReducedDatum object
+                                logger.info(f'ids match, getting ReducedDatum data_point {data_point}')
                                 break
                         data_point.value = phot
                         data_point.timestamp = time
