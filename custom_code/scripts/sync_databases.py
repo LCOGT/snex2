@@ -323,7 +323,7 @@ def update_spec(action, db_address=_SNEX2_DB):
     for result in spec_result:
         try:
             id_ = result.rowid # The ID of the row in the spec table
-            target_id = result.targetid
+            # target_id = result.targetid
             if action=='delete':
                 #Look up the dataproductid from the datum_extra table
                 with get_session(db_address=db_address) as db_session:
