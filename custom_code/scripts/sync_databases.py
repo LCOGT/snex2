@@ -263,27 +263,24 @@ def update_phot(action, db_address=_SNEX2_DB):
                             target__pk=targetid,
                             data_type='photometry',
                         ).all()
-                        logger.info(f'Updating Photometry for target {targetid}, ReducedDatum rows: {all_rows}')
                         for snex2_row in all_rows:
                             value = snex2_row.value
-                            logger.info(f'snex_id {value} from ReducedDatum table, snex1id from sndb: {id_}')
                             if type(value) == str: #Some rows are still strings for some reason
-                                logger.info(f'ids match, but still string.')
                                 value = json.loads(snex2_row.value)
                             if int(id_) == value.get('snex_id', ''):
-                                snex2_id = snex2_row.id
                                 data_point = snex2_row #ReducedDatum.objects.get(id=snex2_id), the row is the ReducedDatum object
-                                logger.info(f'ids match, getting ReducedDatum data_point {data_point}')
+                                data_point.value = phot
+                                data_point.timestamp = time
+                                data_point.data_type = 'photometry'
+                                data_point.source_name = ''
+                                data_point.source_location = ''
+                                data_point.target_id = targetid
+                                data_point.save()
+                                if phot_groupid is not None:
+                                    update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
+                                
                                 break
-                        data_point.value = phot
-                        data_point.timestamp = time
-                        data_point.data_type = 'photometry'
-                        data_point.source_name = ''
-                        data_point.source_location = ''
-                        data_point.target_id = targetid
-                        data_point.save()
-                        if phot_groupid is not None:
-                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
+
                     elif action == 'insert':
                         data_point, created = ReducedDatum.objects.get_or_create(
                             target=Target.objects.get(pk=targetid),
