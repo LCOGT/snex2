@@ -268,15 +268,15 @@ def update_phot(action, db_address=_SNEX2_DB):
                             if type(value) == str: #Some rows are still strings for some reason
                                 value = json.loads(snex2_row.value)
                             if int(id_) == value.get('snex_id', ''):
-                                data_point = snex2_row #ReducedDatum.objects.get(id=snex2_id), the row is the ReducedDatum object
-                                data_point.value = phot
-                                data_point.timestamp = time
-                                data_point.data_type = 'photometry'
-                                data_point.source_name = ''
-                                data_point.source_location = ''
-                                data_point.target_id = targetid
-                                data_point.save()
+                                logger.info(f'found phot with snexid match: {id_}, to {value.get("snex_id", "")} for target {targetid}')
+                                ReducedDatum.objects.filter(id=snex2_row.id).update(value = phot,
+                                                                                    timestamp = time,
+                                                                                    data_type = 'photometry',
+                                                                                    source_name = '',
+                                                                                    source_location = '',
+                                                                                    target_id = targetid)
                                 if phot_groupid is not None:
+                                    data_point = ReducedDatum.objects.get(id=snex2_row.id)
                                     update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
                                 
                                 break
