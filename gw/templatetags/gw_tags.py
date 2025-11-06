@@ -168,13 +168,14 @@ def get_target_from_galaxy(galaxy):
     return target.first()   
 
 
-@register.filter
-def has_images(galaxy):
+@register.filter(takes_context=True)
+def has_images(context, galaxy):
+    username = context['request'].user
     targ = get_target_from_galaxy(galaxy)
     if not targ:
         return False
     try:
-        filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', targ.id)
+        filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', targ.id, username)
     except:
         return False
 

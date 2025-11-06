@@ -15,6 +15,11 @@ from astropy import units as u
 from astropy.coordinates import get_moon, get_sun, SkyCoord, AltAz
 import numpy as np
 import time
+from django.contrib.auth.models import User
+from guardian.shortcuts import get_objects_for_user
+import logging
+
+logger = logging.getLogger(__name__)
 
 register = template.Library()
 
