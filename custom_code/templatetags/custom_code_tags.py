@@ -325,8 +325,12 @@ def lightcurve(context, target):
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_collapse(target, user):
     
-    plot_data = generic_lightcurve_plot(target, user)     
-    spec = ReducedDatum.objects.filter(target=target, data_type='spectroscopy')
+    plot_data = generic_lightcurve_plot(target, user)   
+
+    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                klass=ReducedDatum.objects.filter(
+                                    target=target,
+                                    data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0])) 
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -434,10 +438,14 @@ def bin_spectra(waves, fluxes, b):
     return binned_waves, binned_flux
 
 
-@register.inclusion_tag('custom_code/spectra.html')
-def spectra_plot(target, dataproduct=None):
+@register.inclusion_tag('custom_code/spectra.html',takes_context=True)
+def spectra_plot(context, target, dataproduct=None):
+    user = context['request'].user
     spectra = []
-    spectral_dataproducts = ReducedDatum.objects.filter(target=target, data_type='spectroscopy').order_by('timestamp')
+    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                                 klass=ReducedDatum.objects.filter(
+                                                     target=target, data_type='spectroscopy')).order_by('timestamp')
+    
     if dataproduct:
         spectral_dataproducts = DataProduct.objects.get(dataproduct=dataproduct)
     
@@ -509,9 +517,11 @@ def spectra_plot(target, dataproduct=None):
         }
 
 @register.inclusion_tag('custom_code/spectra_collapse.html')
-def spectra_collapse(target):
+def spectra_collapse(target,user):
     spectra = []
-    spectral_dataproducts = ReducedDatum.objects.filter(target=target, data_type='spectroscopy').order_by('-timestamp')
+    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                                 klass=ReducedDatum.objects.filter(
+                                                     target=target, data_type='spectroscopy')).order_by('-timestamp')
     for spectrum in spectral_dataproducts:
         datum = spectrum.value
         wavelength = []
@@ -666,8 +676,18 @@ def dash_lightcurve(context, target, width, height):
     papers_used_in = []
     final_reduction = False
     background_subtracted = False
+    user = User.objects.get(username=request.user)
 
-    datumquery = ReducedDatum.objects.filter(target=target, data_type='photometry')
+    if settings.TARGET_PERMISSIONS_ONLY:
+        datumquery = ReducedDatum.objects.filter(target=target, 
+                                                 data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
+    
+    else:
+        datumquery = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                          klass=ReducedDatum.objects.filter(
+                                              target=target,
+                                              data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+
     for i in datumquery:
         datum_value = i.value
         if isinstance(datum_value, str):
@@ -677,7 +697,9 @@ def dash_lightcurve(context, target, width, height):
             break
 
     final_background_subtracted = False
-    for de in ReducedDatumExtra.objects.filter(target=target, key='upload_extras', data_type='photometry'):
+    for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                   klass=ReducedDatumExtra.objects.filter(
+                                       target=target,key='upload_extras',data_type='photometry')):
         de_value = json.loads(de.value)
         inst = de_value.get('instrument', '')
         used_in = de_value.get('used_in', '')
@@ -700,7 +722,12 @@ def dash_lightcurve(context, target, width, height):
             final_reduction = True
             final_reduction_datumid = de_value.get('data_product_id', '')
 
-            datum = ReducedDatum.objects.filter(target=target, data_type='photometry', data_product_id=final_reduction_datumid)
+            datum = get_objects_for_user(user,
+                                'tom_dataproducts.view_reduceddatum',
+                                klass=ReducedDatum.objects.filter(
+                                    target=target,
+                                    data_type='photometry',
+                                    data_product_id=final_reduction_datumid))
             datum_value = datum.first().value
             if isinstance(datum_value, str):
                 datum_value = json.loads(datum_value)
@@ -715,6 +742,7 @@ def dash_lightcurve(context, target, width, height):
     paper_options.extend([{'label': k, 'value': k} for k in papers_used_in])
 
     dash_context = {'target_id': {'value': target.id},
+                    'user_id': {'value': user.id},
                     'plot-width': {'value': width},
                     'plot-height': {'value': height},
                     'telescopes-checklist': {'options': [{'label': k, 'value': k} for k in telescopes]},
@@ -754,8 +782,10 @@ def dash_spectra(context, target):
         z = 0
 
     ### Send the min and max flux values 
-    target_id = target.id
-    spectral_dataproducts = ReducedDatum.objects.filter(target_id=target_id, data_type='spectroscopy')
+    user = User.objects.get(username=request.user)
+    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                                 klass=ReducedDatum.objects.filter(
+                                                     target=target, data_type='spectroscopy'))
     if not spectral_dataproducts:
         return {'dash_context': {},
                 'request': request
@@ -790,6 +820,7 @@ def dash_spectra(context, target):
         if min(flux) < min_flux: min_flux = min(flux)
 
     dash_context = {'target_id': {'value': target.id},
+                    'user_id': {'value': user.id},
                     'target_redshift': {'value': z},
                     'min-flux': {'value': min_flux},
                     'max-flux': {'value': max_flux}
@@ -1291,8 +1322,11 @@ def dash_spectra_page(context, target):
     hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
 
     ### Send the min and max flux values
-    target_id = target.id
-    spectral_dataproducts = ReducedDatum.objects.filter(target_id=target_id, data_type='spectroscopy').order_by('timestamp')
+    user = User.objects.get(username=request.user)
+    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                                 klass=ReducedDatum.objects.filter(
+                                                     target=target, data_type='spectroscopy')).order_by('timestamp')
+    
 
     plot_list = []
     for i in range(len(spectral_dataproducts)):
@@ -1318,10 +1352,16 @@ def dash_spectra_page(context, target):
         if max(flux) > max_flux: max_flux = max(flux)
         if min(flux) < min_flux: min_flux = min(flux)
 
-        snex_id_row = ReducedDatumExtra.objects.filter(data_type='spectroscopy', target_id=target_id, key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)).first()
+        snex_id_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                           klass=ReducedDatumExtra.objects.filter(
+                                               data_type='spectroscopy', target=target, 
+                                               key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id))).first()
+        spec_extras = {}
         if snex_id_row:
             snex1_id = json.loads(snex_id_row.value)['snex_id']
-            spec_extras_row = ReducedDatumExtra.objects.filter(data_type='spectroscopy', key='spec_extras', value__icontains='"snex_id": {}'.format(snex1_id)).first()
+            spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                                   klass=ReducedDatumExtra.objects.filter(
+                                                       data_type='spectroscopy', key='spec_extras', value__icontains='"snex_id": {}'.format(snex1_id))).first()
             if spec_extras_row:
                 spec_extras = json.loads(spec_extras_row.value)
                 if spec_extras.get('instrument', '') == 'en06':
@@ -1339,7 +1379,10 @@ def dash_spectra_page(context, target):
             else:
                 spec_extras = {}
         elif spectrum.data_product_id:
-            spec_extras_row = ReducedDatumExtra.objects.filter(data_type='spectroscopy', key='upload_extras', value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)).first()
+            spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                                   klass=ReducedDatumExtra.objects.filter(
+                                                       data_type='spectroscopy', key='upload_extras',
+                                                       value__icontains='"data_product_id": {}'.format(spectrum.data_product_id))).first()
             if spec_extras_row:
                 spec_extras = json.loads(spec_extras_row.value)
                 if spec_extras.get('instrument', '') == 'en06':
@@ -1595,14 +1638,14 @@ def target_details(context, target):
 
 @register.inclusion_tag('custom_code/image_slideshow.html', takes_context=True)
 def image_slideshow(context, target):
-
+    username = context['request'].user
     ### Get a list of all the image filenames for this target
     if not settings.DEBUG:
         #NOTE: Production
         try:
-            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, allimages=True)
-        except:
-            logger.info('Finding images in snex1 failed')
+            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
+        except Exception as e:
+            logger.exception(f'Finding images in snex1 failed {e}')
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
@@ -1816,7 +1859,10 @@ def lightcurve_with_extras(target, user):
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
         'UVW1': 'UVW1'}
     plot_data = generic_lightcurve_plot(target, user)         
-    spec = ReducedDatum.objects.filter(target=target, data_type='spectroscopy')
+    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                klass=ReducedDatum.objects.filter(
+                                    target=target,
+                                    data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0]))
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -1874,11 +1920,13 @@ def test_display_thumbnail(context, target):
     
     from os import listdir
     from os.path import isfile, join
+
+    username = context['request'].user
     
     if not settings.DEBUG:
         #NOTE: Production
         try:
-            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id)
+            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
         except:
             logger.info('Finding images in snex1 failed')
             return {'top_images': [],
