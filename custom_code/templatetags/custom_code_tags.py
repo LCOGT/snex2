@@ -666,8 +666,18 @@ def dash_lightcurve(context, target, width, height):
     papers_used_in = []
     final_reduction = False
     background_subtracted = False
+    user = User.objects.get(username=request.user)
 
-    datumquery = ReducedDatum.objects.filter(target=target, data_type='photometry')
+    if settings.TARGET_PERMISSIONS_ONLY:
+        datumquery = ReducedDatum.objects.filter(target=target, 
+                                                 data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
+    
+    else:
+        datumquery = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                          klass=ReducedDatum.objects.filter(
+                                              target=target,
+                                              data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+
     for i in datumquery:
         datum_value = i.value
         if isinstance(datum_value, str):
@@ -677,7 +687,9 @@ def dash_lightcurve(context, target, width, height):
             break
 
     final_background_subtracted = False
-    for de in ReducedDatumExtra.objects.filter(target=target, key='upload_extras', data_type='photometry'):
+    for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                   klass=ReducedDatumExtra.objects.filter(
+                                       target=target,key='upload_extras',data_type='photometry')):
         de_value = json.loads(de.value)
         inst = de_value.get('instrument', '')
         used_in = de_value.get('used_in', '')
@@ -700,7 +712,12 @@ def dash_lightcurve(context, target, width, height):
             final_reduction = True
             final_reduction_datumid = de_value.get('data_product_id', '')
 
-            datum = ReducedDatum.objects.filter(target=target, data_type='photometry', data_product_id=final_reduction_datumid)
+            datum = get_objects_for_user(user,
+                                'tom_dataproducts.view_reduceddatum',
+                                klass=ReducedDatum.objects.filter(
+                                    target=target,
+                                    data_type='photometry',
+                                    data_product_id=final_reduction_datumid))
             datum_value = datum.first().value
             if isinstance(datum_value, str):
                 datum_value = json.loads(datum_value)
@@ -715,6 +732,7 @@ def dash_lightcurve(context, target, width, height):
     paper_options.extend([{'label': k, 'value': k} for k in papers_used_in])
 
     dash_context = {'target_id': {'value': target.id},
+                    'user_id': {'value': user.id},
                     'plot-width': {'value': width},
                     'plot-height': {'value': height},
                     'telescopes-checklist': {'options': [{'label': k, 'value': k} for k in telescopes]},
@@ -1816,7 +1834,11 @@ def lightcurve_with_extras(target, user):
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
         'UVW1': 'UVW1'}
     plot_data = generic_lightcurve_plot(target, user)         
-    spec = ReducedDatum.objects.filter(target=target, data_type='spectroscopy')
+    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                klass=ReducedDatum.objects.filter(
+                                    target=target,
+                                    data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0]))
+    # spec = ReducedDatum.objects.filter(target=target, data_type='spectroscopy')
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
