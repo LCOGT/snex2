@@ -40,19 +40,9 @@
               <li class="nav-item {% if request.resolver_match.namespace == 'targets' %}active{% endif %}">
                 <a class="nav-link" href="{% url 'targets:targetgrouping' %}"><font color="black">Observing Runs</font></a>
 		<a class="nav-link" href="{% url 'interesting-targets' %}"><font color="black">Interesting Targets</font></a>
-      </li>
-        <li class="nav-item {% if request.resolver_match.url_name == 'target_filter' %}active{% endif %}">
-          <a
-            class="nav-link text-dark"
-            href="{% url 'custom_code:target_filter' %}"
-          >
-            Target Filtering
-          </a>
-        </li>
-
+              </li>
             </ul>
           </li>
-
 	  <li class="nav-item dropdown">
 	    <a class="nav-link dropdown-toggle" data-toggle="dropdown" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">Alerts</a>
 	    <ul class="dropdown-menu">
