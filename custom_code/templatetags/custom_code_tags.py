@@ -8,6 +8,7 @@ from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
 from django_comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 
 from tom_targets.models import Target, TargetList, BaseTarget
 from tom_targets.forms import TargetVisibilityForm
@@ -595,18 +596,23 @@ def classifications_dropdown(target):
 
 @register.inclusion_tag('custom_code/science_tags_dropdown.html')
 def science_tags_dropdown(target):
-    tag_query = ScienceTags.objects.all().order_by(Lower('tag'))
-    tags = [i.tag for i in tag_query]
+    # Cache science tags for 1 hour since they rarely change
+    tags = cache.get('all_science_tags')
+    if tags is None:
+        tag_query = ScienceTags.objects.all().order_by(Lower('tag'))
+        tags = [i.tag for i in tag_query]
+        cache.set('all_science_tags', tags, 3600)
     return{'target': target,
            'sciencetags': tags}
 
 @register.filter
 def get_target_tags(target):
     #try:
-    target_tag_query = TargetTags.objects.filter(target_id=target.id)
+    # Optimize query with select_related to avoid N+1 queries
+    target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
     tags = ''
     for i in target_tag_query:
-        tag_name = ScienceTags.objects.filter(id=i.tag_id).first().tag
+        tag_name = i.tag.tag
         tags+=(str(tag_name) + ',')
     return json.dumps(tags)
     #except:
@@ -1400,7 +1406,11 @@ def get_best_name(target):
 
 @register.inclusion_tag('custom_code/display_group_list.html')
 def display_group_list(target):
-    groups = Group.objects.all()
+    # Cache all groups for 1 hour since they rarely change
+    groups = cache.get('all_groups')
+    if groups is None:
+        groups = list(Group.objects.all())
+        cache.set('all_groups', groups, 3600)
     return {'target': target,
             'groups': groups
         }
@@ -1428,7 +1438,8 @@ def reference_status(target):
 
 @register.inclusion_tag('custom_code/interested_persons.html')
 def interested_persons(target, user, page):
-    interested_persons_query = InterestedPersons.objects.filter(target=target)
+    # Optimize query with select_related to reduce database hits
+    interested_persons_query = InterestedPersons.objects.filter(target=target).select_related('user')
     interested_persons = [u.user.get_full_name() for u in interested_persons_query]
     try:
         current_user_name = user.get_full_name()

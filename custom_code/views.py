@@ -40,7 +40,7 @@ import random
 
 import plotly.graph_objs as go
 from tom_dataproducts.models import ReducedDatum, DataProduct
-from custom_code.templatetags.custom_code_tags import airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits, lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form, smart_name_list
+from custom_code.templatetags.custom_code_tags import airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits, lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form, smart_name_list, dash_lightcurve, spectra_plot, test_display_thumbnail, airmass_plot
 from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
 from custom_code.thumbnails import make_thumb
 
@@ -1458,6 +1458,78 @@ def load_lightcurve_view(request):
                'lightcurve_plot': lightcurve
     }
     return HttpResponse(json.dumps(context), content_type='application/json')
+
+
+def load_dash_lightcurve_view(request):
+    """Lazy-load the dash lightcurve plot for the overview tab"""
+    target_id = request.GET.get('target_id')
+    width = int(request.GET.get('width', 600))
+    height = int(request.GET.get('height', 400))
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        # Create a context dict with request, as expected by dash_lightcurve
+        context_dict = {'request': request}
+        context = dash_lightcurve(context_dict, target, width, height)
+        html = render_to_string(
+            template_name='custom_code/dash_lightcurve.html',
+            context=context,
+            request=request
+        )
+        return JsonResponse({'plot_html': html}, safe=False)
+    return JsonResponse({'plot_html': '<div>Error loading plot</div>'}, safe=False)
+
+
+def load_spectra_plot_view(request):
+    """Lazy-load the spectra plot for the overview tab"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        context = spectra_plot(target)
+        html = render_to_string(
+            template_name='custom_code/spectra.html',
+            context=context,
+            request=request
+        )
+        return JsonResponse({'plot_html': html}, safe=False)
+    return JsonResponse({'plot_html': '<div>Error loading plot</div>'}, safe=False)
+
+
+def load_thumbnail_view(request):
+    """Lazy-load the thumbnail for the overview tab"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        # Create a context dict with request, as expected by test_display_thumbnail
+        context_dict = {'request': request}
+        context = test_display_thumbnail(context_dict, target)
+        html = render_to_string(
+            template_name='custom_code/thumbnail.html',
+            context=context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading thumbnail</div>'}, safe=False)
+
+
+def load_airmass_plot_view(request):
+    """Lazy-load the airmass plot for the overview tab"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        # Create a context dict with object (not request), as expected by airmass_plot
+        context_dict = {'object': target}
+        context = airmass_plot(context_dict)
+        html = render_to_string(
+            template_name='custom_code/airmass.html',
+            context=context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading airmass plot</div>'}, safe=False)
 
 
 def fit_lightcurve_view(request):

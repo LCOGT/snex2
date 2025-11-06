@@ -143,7 +143,7 @@
         </div>
         <div class="col-md-6">
           <h4>Latest Visibility at LCO</h4>
-          {% airmass_plot %}
+          <div id="airmass-plot-container"><div style="text-align: center; padding: 50px;">Loading visibility plot...</div></div>
         </div>
         </div>
         <hr/>
@@ -152,8 +152,8 @@
 	  <h4>Aladin Viewer</h4>
           {% aladin_finderchart object %}
         </div>
-	<div class="col-md-9">
-	  {% test_display_thumbnail object %}
+	<div class="col-md-9" id="thumbnail-container">
+	  <div style="text-align: center; padding: 50px;">Loading thumbnail...</div>
 	</div>
 	</div>
         <hr/>
@@ -162,12 +162,12 @@
 	   <h4>Photometry</h4>
           {#% lightcurve object %#}
           <div id="plotly-lc-div" style="position: relative; padding-bottom: 200.0% !important; height: 0; overflow: hidden;">
-	  {% dash_lightcurve object 600 400 %}
+	  <div style="text-align: center; padding: 50px;">Loading photometry plot...</div>
           </div>
         </div>
         <div class="col-md-6">
           <h4>Spectroscopy</h4>
-          {% spectra_plot object %}
+          <div id="overview-spectra-plot"><div style="text-align: center; padding: 50px;">Loading spectroscopy plot...</div></div>
         </div>
         </div>
       </div>
@@ -305,10 +305,82 @@ function loadStandardTable() {
     }
   })
 }
+// Lazy load heavy components
+function load_overview_lightcurve() {
+  $.ajax({
+    url: '{% url "load-dash-lightcurve" %}',
+    data: {
+      'target_id': {{ target.id }},
+      'width': 600,
+      'height': 400
+    },
+    dataType: 'json',
+    success: function(response) {
+      $('#plotly-lc-div').html(response.plot_html);
+      // Adjust padding after loading
+      var parentElt = document.getElementById("plotly-lc-div");
+      var childElt = parentElt.firstElementChild;
+      if (childElt) {
+        childElt.style.padding = "0% 0% 250.0% 0%";
+      }
+    },
+    error: function() {
+      $('#plotly-lc-div').html('<div style="text-align: center; padding: 50px; color: red;">Error loading photometry plot</div>');
+    }
+  });
+}
+
+function load_overview_spectra() {
+  $.ajax({
+    url: '{% url "load-spectra-plot" %}',
+    data: {'target_id': {{ target.id }}},
+    dataType: 'json',
+    success: function(response) {
+      $('#overview-spectra-plot').html(response.plot_html);
+    },
+    error: function() {
+      $('#overview-spectra-plot').html('<div style="text-align: center; padding: 50px; color: red;">Error loading spectroscopy plot</div>');
+    }
+  });
+}
+
+function load_overview_thumbnail() {
+  $.ajax({
+    url: '{% url "load-thumbnail" %}',
+    data: {'target_id': {{ target.id }}},
+    dataType: 'json',
+    success: function(response) {
+      $('#thumbnail-container').html(response.html);
+    },
+    error: function() {
+      $('#thumbnail-container').html('<div style="text-align: center; padding: 50px; color: red;">Error loading thumbnail</div>');
+    }
+  });
+}
+
+function load_overview_airmass() {
+  $.ajax({
+    url: '{% url "load-airmass-plot" %}',
+    data: {'target_id': {{ target.id }}},
+    dataType: 'json',
+    success: function(response) {
+      $('#airmass-plot-container').html(response.html);
+    },
+    error: function() {
+      $('#airmass-plot-container').html('<div style="text-align: center; padding: 50px; color: red;">Error loading airmass plot</div>');
+    }
+  });
+}
+
 $(document).ready (function() {
-  var parentElt = document.getElementById("plotly-lc-div");
-  var childElt = parentElt.firstElementChild;
-  childElt.style.padding = "0% 0% 250.0% 0%";
+  // Load heavy components after the page has loaded
+  // Airmass plot is very expensive, so load it last
+  setTimeout(function() {
+    load_overview_lightcurve();
+    load_overview_spectra();
+    load_overview_thumbnail();
+    load_overview_airmass();
+  }, 100);
 })
 </script>
 {% endblock %}
