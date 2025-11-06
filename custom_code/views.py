@@ -2283,10 +2283,22 @@ class TargetFilteringView(FormView):
         photometry_q = Q(reduceddatum__data_type='photometry') & Q(reduceddatum__value__has_key='magnitude')
         spectroscopy_q = Q(reduceddatum__data_type='spectroscopy')
 
-        qs = Target.objects.annotate(
-            phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
-            spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
-        )
+        # Start with only targets the user has permission to view
+        if self.request.user.is_authenticated:
+            qs = get_objects_for_user(
+                self.request.user,
+                'tom_targets.view_target',
+                accept_global_perms=True
+            ).annotate(
+                phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
+                spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
+            )
+        else:
+            # Anonymous users get empty queryset
+            qs = Target.objects.none().annotate(
+                phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
+                spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
+            )
 
         # name filter
         if cd.get('apply_name_filter'):
