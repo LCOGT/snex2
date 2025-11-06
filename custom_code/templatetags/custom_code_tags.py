@@ -1638,14 +1638,14 @@ def target_details(context, target):
 
 @register.inclusion_tag('custom_code/image_slideshow.html', takes_context=True)
 def image_slideshow(context, target):
-
+    username = context['request'].user
     ### Get a list of all the image filenames for this target
     if not settings.DEBUG:
         #NOTE: Production
         try:
-            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, allimages=True)
-        except:
-            logger.info('Finding images in snex1 failed')
+            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
+        except Exception as e:
+            logger.exception(f'Finding images in snex1 failed {e}')
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
@@ -1920,11 +1920,13 @@ def test_display_thumbnail(context, target):
     
     from os import listdir
     from os.path import isfile, join
+
+    username = context['request'].user
     
     if not settings.DEBUG:
         #NOTE: Production
         try:
-            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id)
+            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
         except:
             logger.info('Finding images in snex1 failed')
             return {'top_images': [],
