@@ -246,7 +246,7 @@ def targetlist_collapse_view(request):
     user = User.objects.get(id=user_id)
 
     lightcurve_plot = lightcurve_collapse(target, user)['plot']
-    spectra_plot = spectra_collapse(target)['plot']
+    spectra_plot = spectra_collapse(target, user)['plot']
     airmass_plot = airmass_collapse(target)['figure']
 
     context = {

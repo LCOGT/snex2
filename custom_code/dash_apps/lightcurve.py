@@ -8,7 +8,7 @@ import numpy as np
 from django_plotly_dash import DjangoDash
 from tom_dataproducts.models import ReducedDatum
 from django.conf import settings
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra, Papers
 import logging
@@ -16,7 +16,7 @@ from django.templatetags.static import static
 from datetime import datetime, timedelta, timezone
 from astropy.time import Time
 from dash import no_update
-from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
+from guardian.shortcuts import get_objects_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -303,7 +303,6 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
     subtracted_photometry_data = {}
     target = Target.objects.get(id=target_id)
     user = User.objects.get(id=user_id)
-    logger.info(f'user to see stuff {user} for user id {1}')
     datumextras = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
                                        klass=ReducedDatumExtra.objects.filter(
                                            target=target,key='upload_extras',
@@ -318,7 +317,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         final_reduction = False
 
     ### Get papers for this target
-    papers_for_target = [p.id for p in Papers.objects.filter(target_id=target_id)]
+    papers_for_target = [p.id for p in Papers.objects.filter(target=target)]
 
     ### If both 'Aperture' and 'PSF' are selected photometry types,
     ### add 'Mixed' and 'Unsure' as well
@@ -328,14 +327,12 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
     ### Get the data for the selected telescope
     if not selected_telescope:
         if settings.TARGET_PERMISSIONS_ONLY:
-            datums.append(ReducedDatum.objects.filter(target_id=target_id, data_type='photometry', value__has_key='filter'))
-            logger.info(f'not selected_telescope is true, datum for target_permission_only, {datums}')
+            datums.append(ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='filter'))
         else:
             datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                klass=ReducedDatum.objects.filter(
-                                                   target_id=target_id, data_type='photometry', 
+                                                   target=target, data_type='photometry', 
                                                    value__has_key='filter')))
-            logger.info(f'not selected_telescope is true, {datums}')
     else:
         for de in datumextras:
             de_value = json.loads(de.value)
@@ -349,14 +346,14 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                 dp_id = de_value.get('data_product_id', '')
                 datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                    klass=ReducedDatum.objects.filter(
-                                                       target_id=target_id, data_type='photometry', 
+                                                       target=target, data_type='photometry', 
                                                        data_product_id=dp_id, value__has_key='filter')))
         
         ### Finally, get the data that was automatically uploaded from snex1 db
         if 'LCO' in selected_telescope and not final_reduction:
             datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                klass=ReducedDatum.objects.filter(
-                                                   target_id=target_id, data_type='photometry', 
+                                                   target=target, data_type='photometry', 
                                                    data_product_id__isnull=True, value__has_key='filter')))
     
     ### Plot the data
@@ -365,7 +362,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
     
     spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                 klass=ReducedDatum.objects.filter(
-                                    target_id=target_id, data_type='spectroscopy'))
+                                    target=target, data_type='spectroscopy'))
         
     for data in datums:
         for rd in data:
