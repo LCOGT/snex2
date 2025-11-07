@@ -10,6 +10,9 @@ import json
 from guardian.shortcuts import get_objects_for_user
 from tom_targets.models import Target
 from django.contrib.auth.models import User
+import logging
+
+logger = logging.getLogger(__name__)
 
 ### Jamie's Dash spectra plotting, currently a WIP
 ### Jamie: "lots of help from https://community.plot.ly/t/django-and-dash-eads-method/7717"
@@ -330,7 +333,7 @@ def display_output(selected_rows,
     user = User.objects.get(id=user_id)
     target = Target.objects.get(id=target_id)
 
-    if fig_data:
+    if isinstance(fig_data, dict):
         graph_data = {'data': fig_data['data'],
                       'layout': fig_data['layout']}
     else:
@@ -338,12 +341,12 @@ def display_output(selected_rows,
                       'layout': []}
 
     # If the page just loaded, plot all the spectra
-    if not fig_data['data']:
-        spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                     klass=ReducedDatum.objects.filter(
+    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=ReducedDatum.objects.filter(
                                                          target=target, data_type='spectroscopy')).order_by('timestamp')
-        if not spectral_dataproducts:
-            return 'No spectra yet'
+    if not spectral_dataproducts:
+        return 'No spectra yet'
+
+    if not fig_data['data']:
         colormap = plt.cm.gist_rainbow
         colors = [colormap(i) for i in np.linspace(0.99, 0., len(spectral_dataproducts))]
         rgb_colors = ['rgb({r}, {g}, {b})'.format(

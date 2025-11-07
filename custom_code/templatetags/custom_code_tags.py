@@ -441,6 +441,7 @@ def bin_spectra(waves, fluxes, b):
 
 @register.inclusion_tag('custom_code/spectra.html',takes_context=True)
 def spectra_plot(context, target, dataproduct=None):
+    print('user from context request', context['request'], context['request'].user)
     user = context['request'].user
     spectra = []
     spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
@@ -792,8 +793,15 @@ def dash_spectra(context, target):
     spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                  klass=ReducedDatum.objects.filter(
                                                      target=target, data_type='spectroscopy'))
+    dash_context = {'target_id': {'value': target.id},
+                    'user_id': {'value': user.id},
+                    'target_redshift': {'value': z},
+                    'min-flux': {'value': 0},
+                    'max-flux': {'value': 0}
+                    }
+
     if not spectral_dataproducts:
-        return {'dash_context': {},
+        return {'dash_context': dash_context,
                 'request': request
             }
     colormap = plt.cm.gist_rainbow
@@ -1654,7 +1662,7 @@ def image_slideshow(context, target):
     if not settings.DEBUG:
         #NOTE: Production
         try:
-            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
+            filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
         except Exception as e:
             logger.exception(f'Finding images in snex1 failed {e}')
             return {'target': target,
@@ -1663,7 +1671,7 @@ def image_slideshow(context, target):
         #NOTE: Development
         if settings.DOWNLOAD_TEST_THUMBNAIL:
             try:
-                filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
+                filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
             except Exception as e:
                 logger.warning("Downloading test image from archive failed", exc_info=e)
                 return {
@@ -1681,6 +1689,7 @@ def image_slideshow(context, target):
                    'filepath': filepaths[i],
                    'date': dates[i],
                    'tele': teles[i],
+                   'instr': instr[i],
                    'filter': filters[i],
                    'exptime': exptimes[i],
                    'psfx': psfxs[i],
@@ -1712,7 +1721,7 @@ def image_slideshow(context, target):
             'form': thumbnailform,
             'thumb': b64_image.decode('utf-8'),
             'telescope': teles[0],
-            'instrument': filenames[0].split('-')[1][:2],
+            'instrument': instr[0],
             'filter': filters[0],
             'exptime': exptimes[0]}
 
@@ -1937,7 +1946,7 @@ def test_display_thumbnail(context, target):
     if not settings.DEBUG:
         #NOTE: Production
         try:
-            filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
+            filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
         except:
             logger.info('Finding images in snex1 failed')
             return {'top_images': [],
@@ -1947,7 +1956,7 @@ def test_display_thumbnail(context, target):
         #NOTE: Development
         if settings.DOWNLOAD_TEST_THUMBNAIL:
             try:
-                filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
+                filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
             except Exception as e:
                 logger.warning("Downloading test image from archive failed", exc_info=e)
                 return {

@@ -1745,6 +1745,7 @@ def query_swift_observations_view(request):
 def make_thumbnail_view(request):
 
     filename_dict = json.loads(request.GET['filenamedict'])
+    logger.info(f'filename_dict: {filename_dict}')
     zoom = float(request.GET['zoom'])
     sigma = float(request.GET['sigma'])
 
@@ -1760,7 +1761,7 @@ def make_thumbnail_view(request):
     content_response = {'success': 'Yes',
                         'thumb': 'data:image/png;base64,{}'.format(thumb),
                         'telescope': filename_dict['tele'],
-                        'instrument': filename_dict['filename'].split('-')[1][:2],
+                        'instrument': filename_dict['instr'],
                         'filter': filename_dict['filter'],
                         'exptime': filename_dict['exptime']
                     }
