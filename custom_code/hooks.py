@@ -15,7 +15,7 @@ from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
 
-from sqlalchemy import create_engine, pool, and_, or_, not_
+from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
 from sqlalchemy.ext.automap import automap_base
 from contextlib import contextmanager
@@ -665,26 +665,39 @@ def update_reminder_in_snex1(snex_id, next_reminder, wrapped_session=None):
 
     logger.info('Update reminder in SNEx1 hook: Sequence with SNEx1 ID {} synced'.format(snex_id))
 
-
-def find_images_from_snex1(targetid, allimages=False):
+def find_images_from_snex1(targetid, username, allimages=False):
     '''
     Hook to find filenames of images in SNEx1,
     given a target ID
     '''
     
     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        Photlco = _load_table('photlco', db_address=settings.SNEX1_DB_URL)
+        # now queries the snex1 database directly as .execute instead of .query, so don't need to load in Photlco as a table
+        # Photlco = _load_table('photlco', db_address=settings.SNEX1_DB_URL)
+        Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
+        Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
+        
+        this_user = db_session.query(Users).filter(Users.name==username).first()
+        this_target = db_session.query(Targets).filter(Targets.id==targetid).first()
 
         if not allimages:
-            query = db_session.query(Photlco).filter(and_(Photlco.targetid==targetid, Photlco.filetype==1)).order_by(Photlco.id.desc()).limit(8)
+            query = db_session.execute(
+                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 "
+                                "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
+                                {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
         else:
-            query = db_session.query(Photlco).filter(and_(Photlco.targetid==targetid, Photlco.filetype==1)).order_by(Photlco.id.desc())
+            query = db_session.execute(
+                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 "
+                                "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
+                                {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+        
         filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
         if len(filepaths)==0:
             raise IndexError(f"No images found for target {targetid}") 
         filenames = [q.filename.replace('.fits', '') for q in query]
         dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
         teles = [q.telescope[:3] for q in query]
+        instr = [q.instrument for q in query]
         filters = [q.filter for q in query]
         exptimes = [str(round(float(q.exptime))) + 's' for q in query]
         psfxs = [int(round(q.psfx)) for q in query]
@@ -692,7 +705,7 @@ def find_images_from_snex1(targetid, allimages=False):
 
     logger.info('Found file names for target {}'.format(targetid))
 
-    return filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys
+    return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
 
 
 def change_interest_in_snex1(targetid, username, status):
@@ -985,6 +998,7 @@ def download_test_image_from_archive():
     filenames = test_thumbnail_basenames
     dates = ["2025-07-25","2025-07-13","2025-07-12","2025-07-11"]
     teles = ["1m","0m4","0m4","0m4"]
+    instr = ["kb78","kb78","kb78","kb78"]
     filters = ["B","r","g","V"]
     exptimes = ["300s","180s","120s","90s"]
     psfxs = [9999,9999,9999,9999]
@@ -995,6 +1009,7 @@ def download_test_image_from_archive():
         filenames, 
         dates, 
         teles, 
+        instr,
         filters, 
         exptimes, 
         psfxs, 
