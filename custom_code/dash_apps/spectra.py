@@ -7,6 +7,9 @@ import dash_html_components as html
 import plotly.graph_objs as go
 import numpy as np
 import json
+from guardian.shortcuts import get_objects_for_user
+from tom_targets.models import Target
+from django.contrib.auth.models import User
 
 ### Jamie's Dash spectra plotting, currently a WIP
 ### Jamie: "lots of help from https://community.plot.ly/t/django-and-dash-eads-method/7717"
@@ -145,6 +148,7 @@ app.layout = html.Div([
     ),
     html.Div([
         dcc.Input(id='target_id', type='hidden', value=0),
+        dcc.Input(id='user_id', type='hidden', value=0),
         dcc.Input(id='target_redshift', type='hidden', value=0),
         dcc.Input(id='min-flux', type='hidden', value=0),
         dcc.Input(id='max-flux', type='hidden', value=0),
@@ -312,17 +316,20 @@ def change_redshift(z, *args, **kwargs):
     Output('table-editing-simple-output', 'figure'),
     [Input('checked-rows', 'children'),
      Input('target_id', 'value'),
+     Input('user_id', 'value'),
      Input('min-flux', 'value'),
      Input('max-flux', 'value'),
      State('table-editing-simple-output', 'figure')])
 def display_output(selected_rows,
                    #selected_row_ids, columns, 
-                   value, min_flux, max_flux, fig_data, *args, **kwargs):
+                   target_id, user_id, min_flux, max_flux, fig_data, *args, **kwargs):
     # Improvements:
     #   Fix dataproducts so they're correctly serialized
     #   Correctly display message when there are no spectra
     
-    target_id = value
+    user = User.objects.get(id=user_id)
+    target = Target.objects.get(id=target_id)
+
     if fig_data:
         graph_data = {'data': fig_data['data'],
                       'layout': fig_data['layout']}
@@ -332,7 +339,9 @@ def display_output(selected_rows,
 
     # If the page just loaded, plot all the spectra
     if not fig_data['data']:
-        spectral_dataproducts = ReducedDatum.objects.filter(target_id=target_id, data_type='spectroscopy').order_by('timestamp')
+        spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                                     klass=ReducedDatum.objects.filter(
+                                                         target=target, data_type='spectroscopy')).order_by('timestamp')
         if not spectral_dataproducts:
             return 'No spectra yet'
         colormap = plt.cm.gist_rainbow

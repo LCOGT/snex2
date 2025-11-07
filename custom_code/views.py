@@ -257,7 +257,7 @@ def targetlist_collapse_view(request):
     user = User.objects.get(id=user_id)
 
     lightcurve_plot = lightcurve_collapse(target, user)['plot']
-    spectra_plot = spectra_collapse(target)['plot']
+    spectra_plot = spectra_collapse(target, user)['plot']
     airmass_plot = airmass_collapse(target)['figure']
 
     context = {
@@ -1982,139 +1982,6 @@ def get_target_standards_view(request):
     return JsonResponse(data=data_dict, safe=False)
 
 
-# ## Target filtering ##
-# class TargetFilterForm(forms.Form):
-#     # define all fields
-
-#     # name contains
-#     apply_name_filter = forms.BooleanField(required=False)
-#     target_name = forms.CharField(required=False)
-
-#     # RA range
-#     apply_ra_filter = forms.BooleanField(required=False)
-#     min_ra = forms.FloatField(required=False)
-#     max_ra = forms.FloatField(required=False)
-
-#     # Dec range
-#     apply_dec_filter = forms.BooleanField(required=False)
-#     min_dec = forms.FloatField(required=False)
-#     max_dec = forms.FloatField(required=False)
-
-#     # Classification contains
-#     apply_class_filter = forms.BooleanField(required=False)
-#     class_name = forms.CharField(required=False)
-
-#     # Classification doesn't contain
-#     apply_class_exclude_filter = forms.BooleanField(required=False)
-#     class_exclude_name = forms.CharField(required=False)
-
-#     # Dec range
-#     apply_redshift_filter = forms.BooleanField(required=False)
-#     min_red = forms.FloatField(required=False)
-#     max_red = forms.FloatField(required=False)
-
-#     # date created range YYYY-MM-DD
-#     apply_date_created_filter = forms.BooleanField(required=False)
-#     date_created_min = forms.CharField(required=False)
-#     date_created_max = forms.CharField(required=False)
-
-
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-
-#         self.helper = FormHelper()
-#         # self.helper.layout = self.get_layout()
-
-#     # def get_layout(self):
-#     #     pass
-
-
-
-# class TargetFilterForm(forms.Form):
-
-#     # create fields 
-#     apply_name_filter       = forms.BooleanField(required=False)
-#     target_name             = forms.CharField(required=False)
-#     apply_ra_filter         = forms.BooleanField(required=False)
-#     min_ra                  = forms.FloatField(required=False)
-#     max_ra                  = forms.FloatField(required=False)
-#     apply_dec_filter        = forms.BooleanField(required=False)
-#     min_dec                 = forms.FloatField(required=False)
-#     max_dec                 = forms.FloatField(required=False)
-#     apply_class_filter      = forms.BooleanField(required=False)
-#     class_name              = forms.CharField(required=False)
-#     apply_class_exclude_filter = forms.BooleanField(required=False)
-#     class_exclude_name      = forms.CharField(required=False)
-#     apply_redshift_filter   = forms.BooleanField(required=False)
-#     min_red                 = forms.FloatField(required=False)
-#     max_red                 = forms.FloatField(required=False)
-#     apply_date_created_filter = forms.BooleanField(required=False)
-#     date_created_min        = forms.CharField(required=False)
-#     date_created_max        = forms.CharField(required=False)
-
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-
-#         self.helper = FormHelper(self)
-#         self.helper.form_method = 'post'
-#         self.helper.form_class   = 'px-3 py-2 border rounded'
-#         self.helper.label_class  = 'font-weight-bold'
-#         self.helper.field_class  = 'mb-2'
-
-#         # crispy layout
-#         self.helper.layout = Layout(
-#             Fieldset(
-#                 'Name filter',
-#                 Row(
-#                     Column('apply_name_filter', css_class='col-auto'),
-#                     Column('target_name', css_class='col'),
-#                 ),
-#             ),
-#             Fieldset(
-#                 'Position filters',
-#                 Row(
-#                     Column('apply_ra_filter', css_class='col-auto'),
-#                     Column('min_ra', css_class='col'),
-#                     Column('max_ra', css_class='col'),
-#                 ),
-#                 Row(
-#                     Column('apply_dec_filter', css_class='col-auto'),
-#                     Column('min_dec', css_class='col'),
-#                     Column('max_dec', css_class='col'),
-#                 ),
-#             ),
-#             Fieldset(
-#                 'Classification',
-#                 Row(
-#                     Column('apply_class_filter', css_class='col-auto'),
-#                     Column('class_name', css_class='col'),
-#                 ),
-#                 Row(
-#                     Column('apply_class_exclude_filter', css_class='col-auto'),
-#                     Column('class_exclude_name', css_class='col'),
-#                 ),
-#             ),
-#             Fieldset(
-#                 'Redshift',
-#                 Row(
-#                     Column('apply_redshift_filter', css_class='col-auto'),
-#                     Column('min_redshift', css_class='col'),
-#                     Column('max_redshift', css_class='col'),
-#                 ),
-#             ),
-#             Fieldset(
-#                 'Date created (YYYY-MM-DD)',
-#                 Row(
-#                     Column('apply_date_created_filter', css_class='col-auto'),
-#                     Column('date_created_min', css_class='col'),
-#                     Column('date_created_max', css_class='col'),
-#                 ),
-#             ),
-#             Div(Submit('filter', 'Filter', css_class='btn-primary'), css_class='text-right mt-3')
-#         )
-
-
-
 class TargetFilterForm(forms.Form):
     apply_name_filter        = forms.BooleanField(required=False)
     target_name              = forms.CharField(required=False, widget=forms.TextInput(attrs={'placeholder': 'Name contains'}))
@@ -2397,9 +2264,9 @@ class TargetFilteringView(FormView):
         if cd.get('apply_dec_filter'):
             d_min = cd.get('min_dec'); d_max = cd.get('max_dec')
             if d_min is not None:
-                filters &= Q(ra__gte=d_min * 15.0)
+                filters &= Q(dec__gte=d_min)
             if d_max is not None:
-                filters &= Q(ra__lte=d_max * 15.0)
+                filters &= Q(dec__lte=d_max)
 
         # Date-created filter
         if cd.get('apply_date_created_filter'):
@@ -2415,21 +2282,21 @@ class TargetFilteringView(FormView):
         if cd.get('apply_class_filter'):
             cls = cd.get('class_name','').strip()
             if cls:
-                filters &= Q(classification__icontains=cls)
+                filters &= Q(snextarget__classification__icontains=cls)
 
         # Classification doesn't contain
         if cd.get('apply_class_exclude_filter'):
             excl = cd.get('class_exclude_name','').strip()
             if excl:
-                filters &= ~Q(classification__icontains=excl)
+                filters &= ~Q(snextarget__classification__icontains=excl)
 
         # Redshift range
         if cd.get('apply_redshift_filter'):
             min_z = cd.get('min_red'); max_z = cd.get('max_red')
             if min_z is not None:
-                filters &= Q(redshift__gte=min_z)
+                filters &= Q(snextarget__redshift__gte=min_z)
             if max_z is not None:
-                filters &= Q(redshift__lte=max_z)
+                filters &= Q(snextarget__redshift__lte=max_z)
 
         # Photometry count threshold
         if cd.get('apply_photometry_count_filter'):
