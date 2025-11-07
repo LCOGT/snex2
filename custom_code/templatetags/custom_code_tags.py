@@ -1468,7 +1468,7 @@ def reference_status(target):
     if not old_status_query:
         old_status = 'Undetermined'
     else:
-        old_status = old_status_query.first().value
+        old_status = old_status_query
 
     reference_form = ReferenceStatusForm(initial={'target': target.id,
                                                   'status': old_status})
