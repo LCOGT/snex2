@@ -696,6 +696,7 @@ def find_images_from_snex1(targetid, username, allimages=False):
         filenames = [q.filename.replace('.fits', '') for q in query]
         dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
         teles = [q.telescope[:3] for q in query]
+        instr = [q.instrument for q in query]
         filters = [q.filter for q in query]
         exptimes = [str(round(float(q.exptime))) + 's' for q in query]
         psfxs = [int(round(q.psfx)) for q in query]
@@ -703,7 +704,7 @@ def find_images_from_snex1(targetid, username, allimages=False):
 
     logger.info('Found file names for target {}'.format(targetid))
 
-    return filepaths, filenames, dates, teles, filters, exptimes, psfxs, psfys
+    return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
 
 
 def change_interest_in_snex1(targetid, username, status):
@@ -996,6 +997,7 @@ def download_test_image_from_archive():
     filenames = test_thumbnail_basenames
     dates = ["2025-07-25","2025-07-13","2025-07-12","2025-07-11"]
     teles = ["1m","0m4","0m4","0m4"]
+    instr = ["kb78","kb78","kb78","kb78"]
     filters = ["B","r","g","V"]
     exptimes = ["300s","180s","120s","90s"]
     psfxs = [9999,9999,9999,9999]
@@ -1006,6 +1008,7 @@ def download_test_image_from_archive():
         filenames, 
         dates, 
         teles, 
+        instr,
         filters, 
         exptimes, 
         psfxs, 
