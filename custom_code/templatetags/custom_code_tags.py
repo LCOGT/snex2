@@ -440,6 +440,7 @@ def bin_spectra(waves, fluxes, b):
 
 @register.inclusion_tag('custom_code/spectra.html',takes_context=True)
 def spectra_plot(context, target, dataproduct=None):
+    print('user from context request', context['request'], context['request'].user)
     user = context['request'].user
     spectra = []
     spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
@@ -786,8 +787,15 @@ def dash_spectra(context, target):
     spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                  klass=ReducedDatum.objects.filter(
                                                      target=target, data_type='spectroscopy'))
+    dash_context = {'target_id': {'value': target.id},
+                    'user_id': {'value': user.id},
+                    'target_redshift': {'value': z},
+                    'min-flux': {'value': 0},
+                    'max-flux': {'value': 0}
+                    }
+                    
     if not spectral_dataproducts:
-        return {'dash_context': {},
+        return {'dash_context': dash_context,
                 'request': request
             }
     colormap = plt.cm.gist_rainbow
@@ -1696,7 +1704,7 @@ def image_slideshow(context, target):
     with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:        
         b64_image = base64.b64encode(imagefile.read())
         thumb = b64_image
-
+    print(filenames[0])
     return {'target': target,
             'form': thumbnailform,
             'thumb': b64_image.decode('utf-8'),
