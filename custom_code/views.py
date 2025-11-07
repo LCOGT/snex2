@@ -1486,7 +1486,9 @@ def load_spectra_plot_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        context = spectra_plot(target)
+        # Create a context dict with request, as expected by spectra_plot
+        context_dict = {'request': request}
+        context = spectra_plot(context_dict, target)
         html = render_to_string(
             template_name='custom_code/spectra.html',
             context=context,
