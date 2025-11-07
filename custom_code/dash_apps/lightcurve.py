@@ -7,6 +7,8 @@ import json
 import numpy as np
 from django_plotly_dash import DjangoDash
 from tom_dataproducts.models import ReducedDatum
+from django.conf import settings
+from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra, Papers
 import logging
@@ -14,6 +16,7 @@ from django.templatetags.static import static
 from datetime import datetime, timedelta, timezone
 from astropy.time import Time
 from dash import no_update
+from guardian.shortcuts import get_objects_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +31,11 @@ app.layout = html.Div([
     ),
     dcc.Input(
         id='target_id',
+        type='hidden',
+        value=0
+    ),
+    dcc.Input(
+        id='user_id',
         type='hidden',
         value=0
     ),
@@ -262,9 +270,10 @@ def update_template_value(selected_subtraction):
          Input('papers-dropdown', 'value'),
          Input('reducer-group-checklist', 'value'),
          Input('target_id', 'value'),
+         Input('user_id', 'value'),
          Input('plot-width', 'value'),
          Input('plot-height', 'value')])
-def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, value, width, height):
+def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, target_id, user_id, width, height):
     def get_color(filter_name, filter_translate):
         colors = {'U': 'rgb(59,0,113)',
             'u': 'rgb(59,0,113)',
@@ -284,8 +293,8 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         except: color = colors['other']
         return color
 
-    logger.info('Plotting dash lightcurve for target %s', value)
-    target_id = value
+    logger.info('Plotting dash lightcurve for target %s', target_id)
+
     filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
         'up': 'u', 'u': 'u', 'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2',
@@ -293,7 +302,11 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
     photometry_data = {}
     subtracted_photometry_data = {}
     target = Target.objects.get(id=target_id)
-    datumextras = ReducedDatumExtra.objects.filter(target_id=target_id, key='upload_extras', data_type='photometry')
+    user = User.objects.get(id=user_id)
+    datumextras = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                       klass=ReducedDatumExtra.objects.filter(
+                                           target=target,key='upload_extras',
+                                           data_type='photometry'))
     
     datums = []
     
@@ -304,7 +317,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         final_reduction = False
 
     ### Get papers for this target
-    papers_for_target = [p.id for p in Papers.objects.filter(target_id=target_id)]
+    papers_for_target = [p.id for p in Papers.objects.filter(target=target)]
 
     ### If both 'Aperture' and 'PSF' are selected photometry types,
     ### add 'Mixed' and 'Unsure' as well
@@ -313,8 +326,13 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
     
     ### Get the data for the selected telescope
     if not selected_telescope:
-        datums.append(ReducedDatum.objects.filter(target_id=target_id, data_type='photometry', value__has_key='filter'))
-    
+        if settings.TARGET_PERMISSIONS_ONLY:
+            datums.append(ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='filter'))
+        else:
+            datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                               klass=ReducedDatum.objects.filter(
+                                                   target=target, data_type='photometry', 
+                                                   value__has_key='filter')))
     else:
         for de in datumextras:
             de_value = json.loads(de.value)
@@ -326,18 +344,26 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                     de_value.get('reducer_group', '') in selected_groups,
                     (not selected_paper or de_value.get('used_in', '')==selected_paper or de_value.get('used_in', '') in papers_for_target)]):
                 dp_id = de_value.get('data_product_id', '')
-                datums.append(ReducedDatum.objects.filter(target_id=target_id, data_type='photometry', data_product_id=dp_id, value__has_key='filter'))
+                datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                                   klass=ReducedDatum.objects.filter(
+                                                       target=target, data_type='photometry', 
+                                                       data_product_id=dp_id, value__has_key='filter')))
         
         ### Finally, get the data that was automatically uploaded from snex1 db
         if 'LCO' in selected_telescope and not final_reduction:
-            datums.append(ReducedDatum.objects.filter(target_id=target_id, data_type='photometry', data_product_id__isnull=True, value__has_key='filter'))
+            datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                               klass=ReducedDatum.objects.filter(
+                                                   target=target, data_type='photometry', 
+                                                   data_product_id__isnull=True, value__has_key='filter')))
     
     ### Plot the data
     if not datums:
         return 'No photometry yet'
     
-    spec = ReducedDatum.objects.filter(target_id=target_id, data_type='spectroscopy')
-
+    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                klass=ReducedDatum.objects.filter(
+                                    target=target, data_type='spectroscopy'))
+        
     for data in datums:
         for rd in data:
             value = rd.value
