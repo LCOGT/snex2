@@ -89,8 +89,8 @@ document.addEventListener('DOMContentLoaded', function() {
         <td>{{ t.ra }}</td>
         <td>{{ t.dec }}</td>
 
-        <td>{{ t.redshift|default:"—" }}</td>
-        <td>{{ t.classification|default:"—" }}</td>
+        <td>{{ t.snextarget.redshift|default:"—" }}</td>
+        <td>{{ t.snextarget.classification|default:"—" }}</td>
 
         <td>{{ t.created|date:"Y-m-d" }}</td>
 
