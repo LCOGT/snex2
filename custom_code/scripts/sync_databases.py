@@ -264,40 +264,6 @@ def update_phot(action, db_address=_SNEX2_DB):
                     #insert
                     else:
                         data_point = ReducedDatum.objects.create(target_id=targetid, timestamp=time, data_type='photometry', value=phot, source_name='', source_location='')
-                    # if action == 'update':
-                    #     #snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.snex_id==id_, Datum_Extra.data_type=='photometry')).first()
-                    #     #if snex2_id_query is not None:
-                    #     #snex2_id = snex2_id_query.reduced_datum_id
-                    #     all_rows = ReducedDatum.objects.filter(
-                    #         target__pk=targetid,
-                    #         data_type='photometry',
-                    #     ).all()
-                    #     for snex2_row in all_rows:
-                    #         value = snex2_row.value
-                    #         if type(value) == str: #Some rows are still strings for some reason
-                    #             value = json.loads(snex2_row.value)
-                    #         if int(id_) == value.get('snex_id', ''):
-                    #             snex2_id = snex2_row.id
-                    #             data_point = ReducedDatum.objects.get(id=snex2_id)
-                    #             break
-                    #     data_point.value = phot
-                    #     data_point.timestamp = time
-                    #     data_point.data_type = 'photometry'
-                    #     data_point.source_name = ''
-                    #     data_point.source_location = ''
-                    #     data_point.target_id = targetid
-                    #     data_point.save()
-                    #     if phot_groupid is not None:
-                    #         update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
-                    # elif action == 'insert':
-                    #     data_point, created = ReducedDatum.objects.get_or_create(
-                    #         target=Target.objects.get(pk=targetid),
-                    #         timestamp=time,
-                    #         value=phot,
-                    #         data_type='photometry',
-                    #         source_name='',
-                    #         source_location=''
-                    #     )
 
                     if phot_groupid is not None:
                         update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
