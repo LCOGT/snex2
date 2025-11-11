@@ -947,7 +947,7 @@ def sync_users_with_snex1(user, created=False, old_username=''):
 
         else:
             db_session.query(Users).filter(
-                Users.username==old_username
+                Users.name==old_username
             ).update(
                 {'name': user.username,
                 # 'pw': 'crypt$$'+user.password,
