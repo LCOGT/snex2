@@ -25,6 +25,15 @@
   ::placeholder {
     color: white;
   }
+  /* Gray out unloaded tabs */
+  .nav-link.tab-loading {
+    color: #999999 !important;
+    pointer-events: none;
+    cursor: default;
+  }
+  .nav-link.tab-loaded {
+    color: #174460 !important;
+  }
 </style>
 <script>
 // This script maintains the selected tab upon reload
@@ -95,31 +104,31 @@
 </table>
 <ul class="nav nav-tabs" role="tablist" id="tabs">
   <li class="nav-item">
-    <a class="nav-link active" id="observe-tab" href="#observe" role="tab" data-toggle="tab" style="color: #174460;">Overview</a>
+    <a class="nav-link active tab-loaded" id="observe-tab" href="#observe" role="tab" data-toggle="tab" style="color: #174460;">Overview</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="detail-tab" href="#detail" role="tab" data-toggle="tab" style="color: #174460;" onclick='load_lightcurve_details(); this.onclick=null;'>Details</a>
+    <a class="nav-link tab-loading" id="detail-tab" href="#detail" role="tab" data-toggle="tab" data-tab-name="details">Details</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="observations-tab" href="#observations" role="tab" data-toggle="tab" style="color: #174460;">Observations</a>
+    <a class="nav-link tab-loading" id="observations-tab" href="#observations" role="tab" data-toggle="tab" data-tab-name="observations">Observations</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="manage-data-tab" href="#manage-data" role="tab" data-toggle="tab" style="color: #174460;">Manage Data</a>
+    <a class="nav-link tab-loading" id="manage-data-tab" href="#manage-data" role="tab" data-toggle="tab" data-tab-name="manage-data">Manage Data</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="manage-sharing-tab" href="#manage-sharing" role="tab" data-toggle="tab" style="color: #174460;">Manage Sharing</a>
+    <a class="nav-link tab-loading" id="manage-sharing-tab" href="#manage-sharing" role="tab" data-toggle="tab" data-tab-name="manage-sharing">Manage Sharing</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="manage-groups-tab" href="#manage-groups" role="tab" data-toggle="tab" style="color: #174460;">Observing Runs</a>
+    <a class="nav-link tab-loading" id="manage-groups-tab" href="#manage-groups" role="tab" data-toggle="tab" data-tab-name="observing-runs">Observing Runs</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="images-tab" href="#images" role="tab" data-toggle="tab" style="color: #174460;">Images</a>
+    <a class="nav-link tab-loading" id="images-tab" href="#images" role="tab" data-toggle="tab" data-tab-name="images">Images</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="photometry-tab" href="#photometry" role="tab" data-toggle="tab" style="color: #174460;">Photometry</a>
+    <a class="nav-link tab-loading" id="photometry-tab" href="#photometry" role="tab" data-toggle="tab" data-tab-name="photometry">Photometry</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="spectroscopy-tab" href="#spectroscopy" role="tab" data-toggle="tab" style="color: #174460;" onclick='load_spectra_page(); this.onclick=null;'>Spectroscopy</a>
+    <a class="nav-link tab-loading" id="spectroscopy-tab" href="#spectroscopy" role="tab" data-toggle="tab" data-tab-name="spectroscopy">Spectroscopy</a>
   </li>
 </ul>
 <div class="row" style="padding-top: 10px;">
@@ -172,55 +181,113 @@
         </div>
       </div>
       <div class="tab-pane" id="detail">
-        {% target_details object %}
+        <div style="text-align: center; padding: 50px;">Loading details...</div>
       </div>
       <div class="tab-pane" id="observations">
-        <h4>Schedule Observations</h4>
-        {% observing_buttons object %}
-        <hr/>
-	<button onclick="display_obs()" class="btn" style="background-color: white; color: black; font-size: 16px; border: none; outline: none; box-shadow: none;">Show Previous Observations</button>
-        <!--a href="{% url 'targets:detail' pk=target.id %}?update_status=True" title="Update status of observations for target" class="btn btn-primary">Update Observations Status</a-->
-	<div class="row" id="previous-obs" style="display: none; color: gray;">
-          {% observation_summary object 'previous' %}
-	</div>
-	<div class="row" id="ongoing-obs" style="display: block";>
-          {% observation_summary object 'ongoing' %}
-	</div>
-	<div class="row" id="pending-obs" style="display: block; color: orange;";>
-          {% observation_summary object 'pending' %}
-	</div>
-	{% submit_lco_observations object %}
+        <div style="text-align: center; padding: 50px;">Loading observations...</div>
       </div>
       <div class="tab-pane" id="manage-data">
-	{% if user.is_authenticated %}
-	  {% custom_upload_dataproduct object %}
-	{% endif %}
-        {% dataproduct_list_for_target object %}
+        <div style="text-align: center; padding: 50px;">Loading manage data...</div>
       </div>
-      
+      <div class="tab-pane" id="manage-sharing">
+        <div style="text-align: center; padding: 50px;">Manage Sharing functionality coming soon...</div>
+      </div>
       <div class="tab-pane" id="manage-groups">
-        {% target_groups target %}
+        <div style="text-align: center; padding: 50px;">Loading observing runs...</div>
       </div>
       <div class="tab-pane" id="images">
-        {% image_slideshow object %}
+        <div style="text-align: center; padding: 50px;">Loading images...</div>
       </div>
       <div class="tab-pane" id="photometry">
-        {#% lightcurve object %#}
-	{% snex2_get_photometry_data object %}
-	<div align="center">
-          <u><span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:10pt; color:#ff9900;"><a href="{% url 'custom_code:download-photometry' target.id %}">Download Photometry for this Target</a></span></u><br>
-          <u><span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size: 10pt; cursor: pointer;"><div style="text-decoration: underline;" id="standard-div" onclick="loadStandardTable(); this.onclick=null;">View Standard Info for this Target</div></span></u>
-  </div>
-	{% dash_lightcurve object 1000 600 %}
+        <div style="text-align: center; padding: 50px;">Loading photometry...</div>
       </div>
       <div class="tab-pane" id="spectroscopy">
-        {% dash_spectra object %}
-        {#% dash_spectra_page object %#}
+        <div style="text-align: center; padding: 50px;">Loading spectroscopy...</div>
       </div>
     </div>
   </div>
 </div>
 <script>
+// Track which tabs have been loaded
+var loadedTabs = {
+  'observe': true  // Overview is loaded by default
+};
+
+// Function to load a tab's content
+function loadTab(tabName, targetId) {
+  if (loadedTabs[tabName]) {
+    return;  // Tab already loaded
+  }
+  
+  var urlMap = {
+    'details': '{% url "load-details-tab" %}',
+    'observations': '{% url "load-observations-tab" %}',
+    'manage-data': '{% url "load-manage-data-tab" %}',
+    'observing-runs': '{% url "load-observing-runs-tab" %}',
+    'images': '{% url "load-images-tab" %}',
+    'photometry': '{% url "load-photometry-tab" %}',
+    'spectroscopy': '{% url "load-spectroscopy-tab" %}'
+  };
+  
+  var divMap = {
+    'details': 'detail',
+    'observations': 'observations',
+    'manage-data': 'manage-data',
+    'observing-runs': 'manage-groups',
+    'images': 'images',
+    'photometry': 'photometry',
+    'spectroscopy': 'spectroscopy'
+  };
+  
+  if (!urlMap[tabName]) {
+    return;  // No URL for this tab (e.g., manage-sharing)
+  }
+  
+  $.ajax({
+    url: urlMap[tabName],
+    data: {'target_id': targetId},
+    dataType: 'json',
+    success: function(response) {
+      $('#' + divMap[tabName]).html(response.html);
+      loadedTabs[tabName] = true;
+    },
+    error: function() {
+      $('#' + divMap[tabName]).html('<div style="text-align: center; padding: 50px; color: red;">Error loading ' + tabName + '</div>');
+    }
+  });
+}
+
+// Set up tab click handlers
+$(document).ready(function() {
+  $('a[data-toggle="tab"]').on('show.bs.tab', function(e) {
+    var tabName = $(e.target).data('tab-name');
+    var targetId = {{ target.id }};
+    
+    if (tabName && !loadedTabs[tabName]) {
+      // Mark tab as loaded (change from gray to blue) immediately when clicked
+      $(e.target).removeClass('tab-loading').addClass('tab-loaded');
+      loadTab(tabName, targetId);
+    }
+  });
+  
+  // Load all tabs in background after a short delay
+  setTimeout(function() {
+    var targetId = {{ target.id }};
+    var tabsToLoad = ['details', 'observations', 'manage-data', 'observing-runs', 'images', 'photometry', 'spectroscopy'];
+    
+    tabsToLoad.forEach(function(tabName, index) {
+      // Stagger the loading to avoid overwhelming the server
+      setTimeout(function() {
+        if (!loadedTabs[tabName]) {
+          // Mark tab as loaded (ungray it)
+          $('a[data-tab-name="' + tabName + '"]').removeClass('tab-loading').addClass('tab-loaded');
+          loadTab(tabName, targetId);
+        }
+      }, index * 500);  // Load one tab every 500ms
+    });
+  }, 1000);  // Start loading tabs 1 second after page load
+});
+
 function load_lightcurve_details() {
   $.ajax({
     url: '{% url "load-lc" %}',
@@ -231,17 +298,6 @@ function load_lightcurve_details() {
     success: function(response) {
       var plot = response.lightcurve_plot;
       $('#lc-primary').html(plot);
-    }
-  });
-}
-function load_spectra_page() {
-  $.ajax({
-    url: '{% url "load-spectra-page" %}',
-    data: {'target_id': {{ target.id }}},
-    dataType: 'json',
-    success: function(response) {
-      var spectra_page = document.getElementById('spectroscopy');
-      spectra_page.insertAdjacentHTML('beforeend', response['html_from_view'])
     }
   });
 }

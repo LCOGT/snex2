@@ -1534,6 +1534,186 @@ def load_airmass_plot_view(request):
     return JsonResponse({'html': '<div>Error loading airmass plot</div>'}, safe=False)
 
 
+def load_details_tab_view(request):
+    """Lazy-load the details tab content"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        # Import the template tag function
+        from custom_code.templatetags.custom_code_tags import target_details
+        context_dict = {'request': request, 'user': request.user}
+        context = target_details(context_dict, target)
+        html = render_to_string(
+            template_name='custom_code/target_details.html',
+            context=context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading details</div>'}, safe=False)
+
+
+def load_observations_tab_view(request):
+    """Lazy-load the observations tab content"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        from custom_code.templatetags.custom_code_tags import observation_summary, submit_lco_observations
+        from tom_observations.templatetags.observation_extras import observing_buttons
+        
+        context_dict = {'request': request, 'user': request.user}
+        
+        # Get all the template tag contexts
+        observing_buttons_context = observing_buttons(target)
+        previous_obs_context = observation_summary(context_dict, target, 'previous')
+        ongoing_obs_context = observation_summary(context_dict, target, 'ongoing')
+        pending_obs_context = observation_summary(context_dict, target, 'pending')
+        submit_obs_context = submit_lco_observations(target)
+        
+        # Combine all contexts
+        combined_context = {
+            'target': target,
+            'object': target,
+            'observing_buttons_html': render_to_string('tom_observations/partials/observing_buttons.html', observing_buttons_context, request=request),
+            'previous_obs_html': render_to_string('custom_code/observation_summary.html', previous_obs_context, request=request),
+            'ongoing_obs_html': render_to_string('custom_code/observation_summary.html', ongoing_obs_context, request=request),
+            'pending_obs_html': render_to_string('custom_code/observation_summary.html', pending_obs_context, request=request),
+            'submit_obs_html': render_to_string('custom_code/submit_lco_observations.html', submit_obs_context, request=request),
+        }
+        
+        # Render the combined template
+        html = render_to_string(
+            template_name='custom_code/observations_tab.html',
+            context=combined_context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading observations</div>'}, safe=False)
+
+
+def load_manage_data_tab_view(request):
+    """Lazy-load the manage data tab content"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        from custom_code.templatetags.custom_code_tags import custom_upload_dataproduct
+        from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
+        
+        context_dict = {'request': request, 'user': request.user}
+        
+        # Get the template tag contexts
+        upload_context = custom_upload_dataproduct(context_dict, target) if request.user.is_authenticated else None
+        dataproduct_context = dataproduct_list_for_target(context_dict, target)
+        
+        # Render the components
+        upload_html = render_to_string('custom_code/custom_upload_dataproduct.html', upload_context, request=request) if upload_context else ''
+        dataproduct_html = render_to_string('tom_dataproducts/partials/dataproduct_list_for_target.html', dataproduct_context, request=request)
+        
+        combined_context = {
+            'upload_html': upload_html,
+            'dataproduct_html': dataproduct_html,
+        }
+        
+        html = render_to_string(
+            template_name='custom_code/manage_data_tab.html',
+            context=combined_context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading manage data</div>'}, safe=False)
+
+
+def load_observing_runs_tab_view(request):
+    """Lazy-load the observing runs tab content"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        from tom_targets.templatetags.targets_extras import target_groups
+        
+        context = target_groups(target)
+        html = render_to_string(
+            template_name='tom_targets/partials/target_groups.html',
+            context=context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading observing runs</div>'}, safe=False)
+
+
+def load_images_tab_view(request):
+    """Lazy-load the images tab content"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        from custom_code.templatetags.custom_code_tags import image_slideshow
+        
+        context_dict = {'request': request, 'user': request.user}
+        context = image_slideshow(context_dict, target)
+        html = render_to_string(
+            template_name='custom_code/image_slideshow.html',
+            context=context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading images</div>'}, safe=False)
+
+
+def load_photometry_tab_view(request):
+    """Lazy-load the photometry tab content"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        from custom_code.templatetags.custom_code_tags import snex2_get_photometry_data, dash_lightcurve
+        
+        context_dict = {'request': request, 'user': request.user}
+        
+        # Get photometry data
+        photometry_context = snex2_get_photometry_data(context_dict, target)
+        photometry_html = render_to_string('tom_dataproducts/partials/photometry_datalist_for_target.html', photometry_context, request=request)
+        
+        # Get dash lightcurve
+        lightcurve_context = dash_lightcurve(context_dict, target, 1000, 600)
+        lightcurve_html = render_to_string('custom_code/dash_lightcurve.html', lightcurve_context, request=request)
+        
+        combined_context = {
+            'target': target,
+            'photometry_html': photometry_html,
+            'lightcurve_html': lightcurve_html,
+        }
+        
+        html = render_to_string(
+            template_name='custom_code/photometry_tab.html',
+            context=combined_context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading photometry</div>'}, safe=False)
+
+
+def load_spectroscopy_tab_view(request):
+    """Lazy-load the spectroscopy tab content"""
+    target_id = request.GET.get('target_id')
+    
+    if target_id:
+        target = Target.objects.get(id=target_id)
+        from custom_code.templatetags.custom_code_tags import dash_spectra
+        
+        context_dict = {'request': request, 'user': request.user}
+        context = dash_spectra(context_dict, target)
+        html = render_to_string(
+            template_name='custom_code/dash_spectra.html',
+            context=context,
+            request=request
+        )
+        return JsonResponse({'html': html}, safe=False)
+    return JsonResponse({'html': '<div>Error loading spectroscopy</div>'}, safe=False)
+
+
 def fit_lightcurve_view(request):
 
     target_id = request.GET.get('target_id', None)
