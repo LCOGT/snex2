@@ -1701,16 +1701,30 @@ def load_spectroscopy_tab_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        from custom_code.templatetags.custom_code_tags import dash_spectra
+        from custom_code.templatetags.custom_code_tags import dash_spectra, dash_spectra_page
         
         context_dict = {'request': request, 'user': request.user}
-        context = dash_spectra(context_dict, target)
-        html = render_to_string(
+        
+        # Load the overview plot
+        overview_context = dash_spectra(context_dict, target)
+        overview_html = render_to_string(
             template_name='custom_code/dash_spectra.html',
-            context=context,
+            context=overview_context,
             request=request
         )
-        return JsonResponse({'html': html}, safe=False)
+        
+        # Load the individual spectra details
+        details_context = dash_spectra_page(RequestContext(request), target)
+        details_html = render_to_string(
+            template_name='custom_code/dash_spectra_page.html',
+            context=details_context,
+            request=request
+        )
+        
+        # Combine both
+        combined_html = overview_html + details_html
+        
+        return JsonResponse({'html': combined_html}, safe=False)
     return JsonResponse({'html': '<div>Error loading spectroscopy</div>'}, safe=False)
 
 
