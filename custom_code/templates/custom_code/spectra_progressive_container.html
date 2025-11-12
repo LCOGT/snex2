@@ -1,0 +1,114 @@
+{% load bootstrap4 custom_code_tags %}
+
+<form method="POST" action="{% url 'tom_dataproducts:share_all' tg_pk=target.id %}" enctype="multipart/form-data" id="spectroscopy-data-share-form">
+  {% csrf_token %}
+  {% for hidden in target_data_share_form.hidden_fields %}
+    {{ hidden }}
+  {% endfor %}
+  <table class="table">
+  <tbody id="spectra-tbody">
+  {% for spectrum_meta in spectra_metadata %}
+    <tr id="spectrum-row-{{ spectrum_meta.spectrum_id }}" class="spectrum-placeholder">
+      <td colspan="2" style="text-align: center; padding: 30px; color: #999;">
+        <div class="spinner-border spinner-border-sm" role="status" style="margin-right: 10px;">
+          <span class="sr-only">Loading...</span>
+        </div>
+        Loading spectrum for {{ spectrum_meta.time }} ({{ spectrum_meta.telescope }} - {{ spectrum_meta.instrument }})...
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  </table>
+  <div class="card">
+    <div class="card-header">
+        Share Selected Data
+    </div>
+    {% if sharing_destinations %}
+        <div class="form-row" style="padding-inline:1rem">
+            <div class="col-sm-12">
+                {% bootstrap_field target_data_share_form.share_title %}
+            </div>
+        </div>
+        <div class="form-row" style="padding-inline:1rem">
+            <div class="col-sm-12">
+                {% bootstrap_field target_data_share_form.share_message %}
+            </div>
+        </div>
+        <div class="form-row" style="padding-inline:1rem">
+            <div class="col-sm-4">
+                {% bootstrap_field target_data_share_form.share_destination %}
+            </div>
+            <div class="col-sm-2 offset-sm-1">
+                <input type="submit" class="btn btn-primary" id="submit_selected_spectra" value="Submit" name="share_targetdata_form" style="position:absolute; bottom:1rem" disabled onclick="setTargetOnSpectroscopyForm('')">
+            </div>
+            {% if hermes_sharing %}
+            <div class="col-sm-1">
+                <b style="position:absolute; bottom:1.2rem">or</b>
+            </div>
+            <div class="col-sm-4">
+                <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnSpectroscopyForm('_blank')" style="position:absolute; bottom:1rem">Open in Hermes &#x1F5D7;</button>
+            </div>
+            {% endif %}
+        </div>
+    {% else %}
+        <em style="padding-inline:1rem">Sharing Not Configured. See
+            <a href="https://tom-toolkit.readthedocs.io/en/stable/managing_data/tom_direct_sharing.html"
+               target="_blank">Documentation</a>.</em>
+    {% endif %}
+  </div>
+</form>
+
+<script>
+// Progressive loading of individual spectra
+$(document).ready(function() {
+  var spectraToLoad = [
+    {% for spectrum_meta in spectra_metadata %}
+    {
+      spectrum_id: {{ spectrum_meta.spectrum_id }},
+      target_id: {{ target.id }}
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  ];
+  
+  function loadSpectrum(index) {
+    if (index >= spectraToLoad.length) {
+      return; // All done!
+    }
+    
+    var spectrum = spectraToLoad[index];
+    
+    $.ajax({
+      url: '{% url "load-single-spectrum" %}',
+      data: {
+        'spectrum_id': spectrum.spectrum_id,
+        'target_id': spectrum.target_id
+      },
+      dataType: 'json',
+      success: function(response) {
+        // Replace the placeholder row with the actual spectrum
+        $('#spectrum-row-' + spectrum.spectrum_id).replaceWith(response.html);
+        
+        // Load the next spectrum after a short delay
+        setTimeout(function() {
+          loadSpectrum(index + 1);
+        }, 300); // 300ms delay between loads
+      },
+      error: function() {
+        // Show error but continue with next spectrum
+        $('#spectrum-row-' + spectrum.spectrum_id).html(
+          '<td colspan="2" style="text-align: center; padding: 30px; color: red;">Error loading spectrum</td>'
+        );
+        setTimeout(function() {
+          loadSpectrum(index + 1);
+        }, 300);
+      }
+    });
+  }
+  
+  // Start loading spectra after a short delay
+  setTimeout(function() {
+    loadSpectrum(0);
+  }, 500);
+});
+</script>
+

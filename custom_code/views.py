@@ -1713,19 +1713,142 @@ def load_spectroscopy_tab_view(request):
             request=request
         )
         
-        # Load the individual spectra details
+        # Get the list of spectra metadata without rendering the plots
         details_context = dash_spectra_page(RequestContext(request), target)
-        details_html = render_to_string(
-            template_name='custom_code/dash_spectra_page.html',
-            context=details_context,
+        
+        # Build the spectra list metadata for progressive loading
+        spectra_metadata = []
+        for entry in details_context.get('plot_list', []):
+            spectra_metadata.append({
+                'spectrum_id': entry['spectrum'].id,
+                'time': entry['time'],
+                'telescope': entry['spec_extras'].get('telescope', 'Unknown'),
+                'instrument': entry['spec_extras'].get('instrument', 'Unknown')
+            })
+        
+        # Render the spectra container with placeholders
+        spectra_container_html = render_to_string(
+            template_name='custom_code/spectra_progressive_container.html',
+            context={
+                'spectra_metadata': spectra_metadata,
+                'target': target,
+                'target_data_share_form': details_context.get('target_data_share_form'),
+                'sharing_destinations': details_context.get('sharing_destinations'),
+                'hermes_sharing': details_context.get('hermes_sharing'),
+            },
             request=request
         )
         
         # Combine both
-        combined_html = overview_html + details_html
+        combined_html = overview_html + spectra_container_html
         
         return JsonResponse({'html': combined_html}, safe=False)
     return JsonResponse({'html': '<div>Error loading spectroscopy</div>'}, safe=False)
+
+
+def load_single_spectrum_view(request):
+    """Lazy-load a single spectrum"""
+    spectrum_id = request.GET.get('spectrum_id')
+    target_id = request.GET.get('target_id')
+    
+    if spectrum_id and target_id:
+        try:
+            target = Target.objects.get(id=target_id)
+            spectrum = ReducedDatum.objects.get(id=spectrum_id)
+            
+            # Get spectrum extras
+            from django.contrib.contenttypes.models import ContentType
+            from django_comments.models import Comment
+            
+            user = request.user
+            
+            try:
+                z = target.redshift
+            except:
+                z = 0
+                
+            # Get spectrum extras (same logic as in dash_spectra_page)
+            snex_id_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                               klass=ReducedDatumExtra.objects.filter(
+                                                   data_type='spectroscopy', target=target, 
+                                                   key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id))).first()
+            spec_extras = {}
+            if snex_id_row:
+                snex1_id = json.loads(snex_id_row.value)['snex_id']
+                spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                                       klass=ReducedDatumExtra.objects.filter(
+                                                           data_type='spectroscopy', key='spec_extras', 
+                                                           value__icontains='"snex_id": {}'.format(snex1_id))).first()
+                if spec_extras_row:
+                    spec_extras = json.loads(spec_extras_row.value)
+                    if spec_extras.get('instrument', '') == 'en06':
+                        spec_extras['site'] = '(OGG 2m)'
+                        spec_extras['instrument'] += ' (FLOYDS)'
+                    elif spec_extras.get('instrument', '') == 'en12':
+                        spec_extras['site'] = '(COJ 2m)'
+                        spec_extras['instrument'] += ' (FLOYDS)'
+                    
+                    content_type_id = ContentType.objects.get(model='reduceddatum').id
+                    comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+                    comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+                    spec_extras['comments'] = comment_list
+            elif spectrum.data_product_id:
+                spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
+                                                       klass=ReducedDatumExtra.objects.filter(
+                                                           data_type='spectroscopy', key='upload_extras',
+                                                           value__icontains='"data_product_id": {}'.format(spectrum.data_product_id))).first()
+                if spec_extras_row:
+                    spec_extras = json.loads(spec_extras_row.value)
+                    if spec_extras.get('instrument', '') == 'en06':
+                        spec_extras['site'] = '(OGG 2m)'
+                        spec_extras['instrument'] += ' (FLOYDS)'
+                    elif spec_extras.get('instrument', '') == 'en12':
+                        spec_extras['site'] = '(COJ 2m)'
+                        spec_extras['instrument'] += ' (FLOYDS)'
+                    
+                    content_type_id = ContentType.objects.get(model='reduceddatum').id
+                    comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+                    comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+                    spec_extras['comments'] = comment_list
+            
+            # Calculate min/max flux
+            datum = spectrum.value
+            flux = []
+            if datum.get('photon_flux'):
+                flux = datum.get('photon_flux')
+            elif datum.get('flux'):
+                flux = datum.get('flux')
+            else:
+                for key, value in datum.items():
+                    flux.append(float(value['flux']))
+            
+            max_flux = max(flux) if flux else 0
+            min_flux = min(flux) if flux else 0
+            
+            entry = {
+                'dash_context': {
+                    'spectrum_id': {'value': spectrum.id},
+                    'target_redshift': {'value': z},
+                    'min-flux': {'value': min_flux},
+                    'max-flux': {'value': max_flux}
+                },
+                'time': str(spectrum.timestamp).split('+')[0],
+                'spec_extras': spec_extras,
+                'spectrum': spectrum
+            }
+            
+            html = render_to_string(
+                template_name='custom_code/single_spectrum.html',
+                context={'entry': entry, 'target': target},
+                request=request
+            )
+            
+            return JsonResponse({'html': html}, safe=False)
+        except Exception as e:
+            logger.error(f"Error loading spectrum {spectrum_id}: {e}")
+            return JsonResponse({'html': f'<div>Error loading spectrum: {e}</div>'}, safe=False)
+    
+    return JsonResponse({'html': '<div>Error: Missing parameters</div>'}, safe=False)
 
 
 def fit_lightcurve_view(request):

@@ -64,6 +64,7 @@ urlpatterns = [
     path('load-images-tab/', load_images_tab_view, name='load-images-tab'),
     path('load-photometry-tab/', load_photometry_tab_view, name='load-photometry-tab'),
     path('load-spectroscopy-tab/', load_spectroscopy_tab_view, name='load-spectroscopy-tab'),
+    path('load-single-spectrum/', load_single_spectrum_view, name='load-single-spectrum'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),
     path('interesting-targets/', InterestingTargetsView.as_view(), name='interesting-targets'),
