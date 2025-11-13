@@ -438,5 +438,269 @@ $(document).ready (function() {
     load_overview_airmass();
   }, 100);
 })
+
+// Monitor Dash app iframes for loading errors and auto-reload
+function setupDashErrorMonitoring() {
+  // Keep track of which iframes we've already set up monitoring for
+  var monitoredIframes = new Set();
+  
+  function checkIframeForErrors($iframe) {
+    try {
+      var iframeDoc = $iframe[0].contentDocument || $iframe[0].contentWindow.document;
+      if (!iframeDoc) {
+        console.log('No iframe document available yet');
+        return false;
+      }
+      
+      var bodyText = $(iframeDoc.body).text();
+      // Check for the specific error text
+      if (bodyText.includes('Error loading layout')) {
+        console.log('Found error text in iframe body:', bodyText.substring(0, 100));
+        return true;
+      }
+    } catch(e) {
+      // Can't access iframe content (cross-origin), ignore
+      console.log('Cannot access iframe content:', e.message);
+    }
+    return false;
+  }
+  
+  function handleIframeError($iframe, iframeSrc) {
+    // Determine which app type this is and reload appropriately
+    var appName = null;
+    if (iframeSrc.includes('/app/Spectra_Individual/')) {
+      appName = 'Spectra_Individual';
+    } else if (iframeSrc.includes('/app/Spectra/')) {
+      appName = 'Spectra';
+    } else if (iframeSrc.includes('/app/Lightcurve/')) {
+      appName = 'Lightcurve';
+    }
+    
+    console.log('Handling error for app type:', appName);
+    
+    // Handle Spectra_Individual (individual spectrum plots)
+    if (appName === 'Spectra_Individual') {
+      // Find the spectrum row (tr element)
+      var $row = $iframe.closest('tr');
+      if ($row.length > 0) {
+        // Extract spectrum_id from the row ID or checkbox
+        var rowId = $row.attr('id');
+        var spectrumId = null;
+        
+        if (rowId && rowId.startsWith('spectrum-row-')) {
+          spectrumId = rowId.replace('spectrum-row-', '');
+        } else {
+          // Try to find from checkbox
+          var $checkbox = $row.find('input[type="checkbox"][name="share-box"]');
+          if ($checkbox.length > 0) {
+            spectrumId = $checkbox.val();
+          }
+        }
+        
+        if (spectrumId) {
+          console.log('Reloading individual spectrum:', spectrumId);
+          
+          // Show loading message in the plot cell
+          var $plotCell = $iframe.closest('td');
+          $plotCell.html('<div style="text-align: center; padding: 50px; color: #666;">' +
+            '<div style="margin-bottom: 10px;">Reloading spectrum...</div>' +
+            '<div class="spinner-border spinner-border-sm" role="status"></div>' +
+            '</div>');
+          
+          // Reload the entire spectrum row from the server
+          $.ajax({
+            url: '{% url "load-single-spectrum" %}',
+            data: {
+              'spectrum_id': spectrumId,
+              'target_id': {{ target.id }}
+            },
+            dataType: 'json',
+            success: function(response) {
+              $row.replaceWith(response.html);
+              console.log('Spectrum row reloaded successfully');
+            },
+            error: function() {
+              $plotCell.html('<div style="text-align: center; padding: 20px; color: #dc3545;">Error reloading spectrum</div>');
+            }
+          });
+        }
+      }
+    }
+    // Handle Spectra app (could be on overview or spectroscopy tab)
+    else if (appName === 'Spectra') {
+      // First check if it's the overview tab static plot
+      var $overviewContainer = $iframe.closest('#overview-spectra-plot');
+      if ($overviewContainer.length > 0) {
+        console.log('Reloading overview spectra plot');
+        $overviewContainer.html('<div style="text-align: center; padding: 50px; color: #666;">' +
+          '<div style="margin-bottom: 10px;">Reloading spectroscopy plot...</div>' +
+          '<div class="spinner-border spinner-border-sm" role="status"></div>' +
+          '</div>');
+        
+        $.ajax({
+          url: '{% url "load-spectra-plot" %}',
+          data: {'target_id': {{ target.id }}},
+          dataType: 'json',
+          success: function(response) {
+            $overviewContainer.html(response.plot_html);
+            console.log('Overview spectra reloaded successfully');
+          },
+          error: function() {
+            $overviewContainer.html('<div style="text-align: center; padding: 20px; color: #dc3545;">Error reloading plot</div>');
+          }
+        });
+      } else {
+        // It's on the spectroscopy tab - need to reload that tab's content
+        console.log('Reloading spectroscopy tab Spectra app');
+        
+        // Find the containing table or div
+        var $container = $iframe.closest('table, div[id], td');
+        if ($container.length === 0) {
+          $container = $iframe.parent();
+        }
+        
+        $container.html('<div style="text-align: center; padding: 50px; color: #666;">' +
+          '<div style="margin-bottom: 10px;">Reloading spectroscopy overview...</div>' +
+          '<div class="spinner-border spinner-border-sm" role="status"></div>' +
+          '</div>');
+        
+        // Reload the entire spectroscopy tab to get fresh Dash app
+        $.ajax({
+          url: '{% url "load-spectroscopy-tab" %}',
+          data: {'target_id': {{ target.id }}},
+          dataType: 'json',
+          success: function(response) {
+            $('#spectroscopy').html(response.html);
+            console.log('Spectroscopy tab reloaded successfully');
+          },
+          error: function() {
+            $container.html('<div style="text-align: center; padding: 20px; color: #dc3545;">Error reloading spectroscopy</div>');
+          }
+        });
+      }
+    }
+    // Handle overview Lightcurve app
+    else if (appName === 'Lightcurve') {
+      var $container = $iframe.closest('#plotly-lc-div');
+      if ($container.length > 0) {
+        console.log('Reloading overview lightcurve');
+        $container.html('<div style="text-align: center; padding: 50px; color: #666;">' +
+          '<div style="margin-bottom: 10px;">Reloading photometry plot...</div>' +
+          '<div class="spinner-border spinner-border-sm" role="status"></div>' +
+          '</div>');
+        
+        $.ajax({
+          url: '{% url "load-dash-lightcurve" %}',
+          data: {
+            'target_id': {{ target.id }},
+            'width': 600,
+            'height': 400
+          },
+          dataType: 'json',
+          success: function(response) {
+            $container.html(response.plot_html);
+            // Adjust padding after loading
+            var parentElt = document.getElementById("plotly-lc-div");
+            var childElt = parentElt.firstElementChild;
+            if (childElt) {
+              childElt.style.padding = "0% 0% 250.0% 0%";
+            }
+            console.log('Overview lightcurve reloaded successfully');
+          },
+          error: function() {
+            $container.html('<div style="text-align: center; padding: 20px; color: #dc3545;">Error reloading plot</div>');
+          }
+        });
+      }
+    }
+  }
+  
+  function monitorIframe($iframe) {
+    var iframeSrc = $iframe.attr('src');
+    if (!iframeSrc || !iframeSrc.includes('/django_plotly_dash/')) {
+      return;
+    }
+    
+    // Generate a unique ID for this iframe
+    var iframeId = $iframe.attr('id') || ('dash-iframe-' + Math.random().toString(36).substr(2, 9));
+    if (!$iframe.attr('id')) {
+      $iframe.attr('id', iframeId);
+    }
+    
+    if (monitoredIframes.has(iframeId)) {
+      return; // Already monitoring this iframe
+    }
+    monitoredIframes.add(iframeId);
+    
+    console.log('Setting up monitoring for Dash iframe:', iframeId);
+    
+    // Check immediately in case iframe already loaded with error
+    setTimeout(function() {
+      if (checkIframeForErrors($iframe)) {
+        console.warn('Dash app error detected immediately:', iframeId);
+        handleIframeError($iframe, iframeSrc);
+      }
+    }, 100);
+    
+    // Monitor after iframe loads
+    $iframe.on('load', function() {
+      // Check multiple times to catch errors that appear at different timings
+      var checksPerformed = 0;
+      var maxChecks = 5;
+      var checkIntervalId = setInterval(function() {
+        checksPerformed++;
+        
+        if (checkIframeForErrors($iframe)) {
+          clearInterval(checkIntervalId);
+          console.warn('Dash app error detected in iframe (check #' + checksPerformed + '), reloading:', iframeId);
+          handleIframeError($iframe, iframeSrc);
+        } else if (checksPerformed >= maxChecks) {
+          // Stop checking after max checks
+          clearInterval(checkIntervalId);
+        }
+      }, 500); // Check every 500ms, up to 5 times (2.5 seconds total)
+    });
+  }
+  
+  // Monitor existing iframes
+  function scanForDashIframes() {
+    $('iframe').each(function() {
+      monitorIframe($(this));
+    });
+  }
+  
+  // Initial scan
+  scanForDashIframes();
+  
+  // Periodically check for new iframes (for dynamically loaded content)
+  setInterval(scanForDashIframes, 2000);
+  
+  // Also use MutationObserver to catch iframes as they're added
+  if (typeof MutationObserver !== 'undefined') {
+    var observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(mutation) {
+        mutation.addedNodes.forEach(function(node) {
+          if (node.nodeName === 'IFRAME') {
+            monitorIframe($(node));
+          }
+          // Check descendants
+          $(node).find('iframe').each(function() {
+            monitorIframe($(this));
+          });
+        });
+      });
+    });
+    
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+}
+
+// Start monitoring when page is ready
+$(document).ready(function() {
+  setupDashErrorMonitoring();
+});
 </script>
 {% endblock %}
