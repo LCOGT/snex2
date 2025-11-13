@@ -1625,6 +1625,7 @@ def load_manage_data_tab_view(request):
     return JsonResponse({'html': '<div>Error loading manage data</div>'}, safe=False)
 
 
+
 def load_observing_runs_tab_view(request):
     """Lazy-load the observing runs tab content"""
     target_id = request.GET.get('target_id')
