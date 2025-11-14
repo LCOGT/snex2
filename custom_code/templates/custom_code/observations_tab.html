@@ -1,0 +1,26 @@
+<h4>Schedule Observations</h4>
+{{ observing_buttons_html|safe }}
+<hr/>
+<button onclick="display_obs()" class="btn" style="background-color: white; color: black; font-size: 16px; border: none; outline: none; box-shadow: none;">Show Previous Observations</button>
+<div class="row" id="previous-obs" style="display: none; color: gray;">
+  {{ previous_obs_html|safe }}
+</div>
+<div class="row" id="ongoing-obs" style="display: block">
+  {{ ongoing_obs_html|safe }}
+</div>
+<div class="row" id="pending-obs" style="display: block; color: orange;">
+  {{ pending_obs_html|safe }}
+</div>
+{{ submit_obs_html|safe }}
+
+<script>
+function display_obs() {
+  var x = document.getElementById("previous-obs");
+  if (x.style.display === "none") {
+    x.style.display = "block";
+  } else {
+    x.style.display = "none";
+  }
+}
+</script>
+
