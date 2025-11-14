@@ -12,6 +12,8 @@ class CompactDashSessionErrors(logging.Filter):
     gracefully by the frontend JavaScript which automatically reloads
     the component with a fresh session. Instead of a multi-line traceback,
     we log a single informative line with the key details.
+
+    TODO: in the future we should address the Dash issue at the source, and not filter out the errors. 
     """
     
     def filter(self, record):
