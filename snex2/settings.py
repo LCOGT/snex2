@@ -516,7 +516,7 @@ EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
-SNEX1_DB_HOST = os.getenv('SNEX1_DB_HOST', 'supernova.science.lco.global')
+SNEX1_DB_HOST = os.getenv('SNEX1_DB_HOST', 'supernova.sci.lco.gtn')
 SNEX1_DB_PORT = os.getenv('SNEX1_DB_PORT', '3306')
 SNEX1_DB_NAME = os.getenv('SNEX1_DB_NAME', 'supernova')
 SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
