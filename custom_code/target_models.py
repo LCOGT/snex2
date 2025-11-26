@@ -12,7 +12,7 @@ class SNExTarget(BaseTarget):
     '''
     Custom target modeling from BaseTarget for SNEx2 with attributes relating to the target details not included in BaseTarget.
     '''
-    redshift = models.FloatField(default=0)
+    redshift = models.FloatField(null=True, blank=True)
     classification = models.CharField(max_length=30, default='', null=True, blank=True)
     reference = models.CharField(max_length=200, default='', null=True, blank=True)
     reference.hidden = True
