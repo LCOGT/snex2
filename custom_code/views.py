@@ -1564,6 +1564,10 @@ class ObservationGroupDetailView(DetailView):
             }
             first_filt = []
             other_filts = []
+            acq_radius = []
+            if obs.parameters['observation_type'] == 'SPECTRA':
+                acq_radius = obs.parameters['acquisition_radius']
+                p['acq_radius'] = acq_radius
             for f in ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']:
                 if f in obs.parameters.keys() and not obs.parameters[f]:
                     continue
@@ -1762,7 +1766,10 @@ def sync_targetextra_view(request):
     if newdata['key'] == 'classification':
         target.classification = newdata['value']
     elif newdata['key'] == 'redshift':
-        target.redshift = newdata['value']
+        newz = newdata['value']
+        if newdata['value'] == '':
+            newz = None
+        target.redshift = newz
     elif newdata['key'] == 'name':
         print('When updating alias,the target.save() just needs to happen')
     logger.info(f"Updated target {newdata['key']} to {newdata['value']}")

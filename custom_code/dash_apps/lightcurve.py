@@ -418,7 +418,10 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             text=['{} (MJD {})'.format(t.strftime('%m/%d/%Y'), str(round(Time(t).mjd, 2))) for t in filter_values['time']],
         ) for filter_name, filter_values in selected_photometry.items()]
 
-    if target.redshift > 0.01:
+    redshift = target.redshift
+    if redshift == None:
+        redshift = 0
+    if redshift > 0.01:
         ydata = []
         for filter_name, filter_values in selected_photometry.items():
             if filter_name is not None:
