@@ -92,7 +92,7 @@ def _str_to_jd(datestring):
 
 
 def _get_tns_params(target):
-
+    logger.info(f'Target sent for TNS parameters, {target}')
     names = [target.name] + [t.name for t in target.aliases.all()]
 
     tns_name = False
@@ -115,6 +115,7 @@ def _get_tns_params(target):
     json_file = OrderedDict(json_list)
 
     try:
+        logger.info(f'Querying TNS for target {target} to url {tns_url} and json file {json_file}')
         response = requests.post(tns_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(json_file)})
 
         parsed = json.loads(response.text, object_pairs_hook=OrderedDict)
@@ -191,8 +192,8 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                     'source': 'TNS'
                 })
 
-                target.last_nondetection = nondet_value
-                target.save()
+                logger.info(f'Saving target {target} after TNS nondetection ingestion')
+                Target.objects.filter(pk=target.pk).update(last_nondetection=nondet_value)
             if tns_results['detection'] == None:
                 print('No TNS detection found for target',target)
             else:
@@ -206,8 +207,8 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                     'source': 'TNS'
                 })
                 
-                target.first_detection = det_value
-                target.save()
+                logger.info(f'Target {target} first detection saved from TNS.')
+                Target.objects.filter(pk=target.pk).update(first_detection=det_value)
 
         ### Ingest ZTF data, if a ZTF target
         get_ztf_data(target)
@@ -288,7 +289,7 @@ def targetextra_post_save(target):
             Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
             Classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
             targetid = target.id
-            if target.classfication != '': # Update the classification in the targets table in the SNex 1 db
+            if target.classification != '': # Update the classification in the targets table in the SNex 1 db
                 classification = target.classification # Get the new classification
                 classification_query = db_session.query(Classifications).filter(Classifications.name==classification).first()
                 if classification_query:
@@ -299,7 +300,7 @@ def targetextra_post_save(target):
             elif target.redshift != '': # Now update the targets table with the redshift info
                 db_session.query(Targets).filter(Targets.id==targetid).update({'redshift': target.redshift})
             db_session.commit()
-    logger.info('Classification and Redshift target post save hook: %s created: %s', target)
+    logger.info(f'Classification and Redshift target post save hook: {target}')
 
 
 def targetname_post_save(targetname, created):
@@ -946,7 +947,7 @@ def sync_users_with_snex1(user, created=False, old_username=''):
 
         else:
             db_session.query(Users).filter(
-                Users.username==old_username
+                Users.name==old_username
             ).update(
                 {'name': user.username,
                 # 'pw': 'crypt$$'+user.password,

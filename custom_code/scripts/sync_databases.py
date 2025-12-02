@@ -15,6 +15,9 @@ from tom_dataproducts.models import DataProduct, data_product_path, ReducedDatum
 from custom_code.utils import powers_of_two
 from custom_code.utils import update_permissions
 
+import logging
+logger = logging.getLogger(__name__)
+
 _SNEX2_DB = 'postgresql://{}:{}@{}:{}/snex2'.format(
     os.environ.get('SNEX2_DB_USER'),
     os.getenv('SNEX2_DB_PASSWORD'),
@@ -252,44 +255,22 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
-                    if action == 'update':
-                        #snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.snex_id==id_, Datum_Extra.data_type=='photometry')).first()
-                        #if snex2_id_query is not None:
-                        #snex2_id = snex2_id_query.reduced_datum_id
-                        all_rows = ReducedDatum.objects.filter(
-                            target__pk=targetid,
-                            data_type='photometry',
-                        ).all()
-                        for snex2_row in all_rows:
-                            value = snex2_row.value
-                            if type(value) == str: #Some rows are still strings for some reason
-                                value = json.loads(snex2_row.value)
-                            if int(id_) == value.get('snex_id', ''):
-                                snex2_id = snex2_row.id
-                                data_point = ReducedDatum.objects.get(id=snex2_id)
-                                break
+                    data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first()
+                    
+                    #update
+                    if data_point:
                         data_point.value = phot
-                        data_point.timestamp = time
-                        data_point.data_type = 'photometry'
                         data_point.source_name = ''
                         data_point.source_location = ''
-                        data_point.target_id = targetid
                         data_point.save()
-                        if phot_groupid is not None:
-                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
-                    elif action == 'insert':
-                        data_point, created = ReducedDatum.objects.get_or_create(
-                            target=Target.objects.get(pk=targetid),
-                            timestamp=time,
-                            value=phot,
-                            data_type='photometry',
-                            source_name='',
-                            source_location=''
-                        )
 
-                        if phot_groupid is not None:
-                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
-                        db_session.commit()
+                    #insert
+                    else:
+                        data_point = ReducedDatum.objects.create(target_id=targetid, timestamp=time, data_type='photometry', value=phot, source_name='', source_location='')
+
+                    if phot_groupid is not None:
+                        update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
+                    db_session.commit()
                 delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except:
@@ -323,7 +304,7 @@ def update_spec(action, db_address=_SNEX2_DB):
     for result in spec_result:
         try:
             id_ = result.rowid # The ID of the row in the spec table
-            target_id = result.targetid
+            # target_id = result.targetid
             if action=='delete':
                 #Look up the dataproductid from the datum_extra table
                 with get_session(db_address=db_address) as db_session:
@@ -498,8 +479,16 @@ def update_target(action, db_address=_SNEX2_DB):
 
             with get_session(db_address=db_address) as db_session:
                 if action=='update':
-                    target = Target.objects.get(id=target_id)
-                    target.update(ra=t_ra, dec=t_dec, modified=t_modified, created=t_created, type='SIDEREAL', epoch=2000, scheme='')
+                    target = Target.objects.get(pk=target_id)
+                    # the following could be the same as the insert action, not sure if necessary to have
+                    #   as a separate code block
+                    Target.objects.filter(pk=target_id).update(ra=t_ra,
+                                                               dec=t_dec,
+                                                               modified=t_modified,
+                                                               created=t_created,
+                                                               type='SIDEREAL',
+                                                               epoch=2000,
+                                                               scheme='')
                     update_permissions(t_groupid, 'change_target', target, snex1_groups)
                     update_permissions(t_groupid, 'delete_target', target, snex1_groups)
                     update_permissions(t_groupid, 'view_target', target, snex1_groups)
