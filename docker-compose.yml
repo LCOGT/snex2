@@ -87,7 +87,7 @@ services:
         links:
             - "snex2:snex2"
         ports:
-            - 8888:8080
+            - 8898:8080
         restart: "always"
         entrypoint: [ "bash", "-c", "python manage.py readstreams"]
         environment:
