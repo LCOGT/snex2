@@ -440,7 +440,6 @@ def bin_spectra(waves, fluxes, b):
 
 @register.inclusion_tag('custom_code/spectra.html',takes_context=True)
 def spectra_plot(context, target, dataproduct=None):
-    print('user from context request', context['request'], context['request'].user)
     user = context['request'].user
     spectra = []
     spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
