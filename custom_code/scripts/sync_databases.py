@@ -255,45 +255,22 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
-                    if action == 'update':
-                        #snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.snex_id==id_, Datum_Extra.data_type=='photometry')).first()
-                        #if snex2_id_query is not None:
-                        #snex2_id = snex2_id_query.reduced_datum_id
-                        all_rows = ReducedDatum.objects.filter(
-                            target__pk=targetid,
-                            data_type='photometry',
-                        ).all()
-                        for snex2_row in all_rows:
-                            value = snex2_row.value
-                            if type(value) == str: #Some rows are still strings for some reason
-                                value = json.loads(snex2_row.value)
-                            if int(id_) == value.get('snex_id', ''):
-                                logger.info(f'found phot with snexid match: {id_}, to {value.get("snex_id", "")} for target {targetid}')
-                                ReducedDatum.objects.filter(id=snex2_row.id).update(value = phot,
-                                                                                    timestamp = time,
-                                                                                    data_type = 'photometry',
-                                                                                    source_name = '',
-                                                                                    source_location = '',
-                                                                                    target_id = targetid)
-                                if phot_groupid is not None:
-                                    data_point = ReducedDatum.objects.get(id=snex2_row.id)
-                                    update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
-                                
-                                break
+                    data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first()
+                    
+                    #update
+                    if data_point:
+                        data_point.value = phot
+                        data_point.source_name = ''
+                        data_point.source_location = ''
+                        data_point.save()
 
-                    elif action == 'insert':
-                        data_point, created = ReducedDatum.objects.get_or_create(
-                            target=Target.objects.get(pk=targetid),
-                            timestamp=time,
-                            value=phot,
-                            data_type='photometry',
-                            source_name='',
-                            source_location=''
-                        )
+                    #insert
+                    else:
+                        data_point = ReducedDatum.objects.create(target_id=targetid, timestamp=time, data_type='photometry', value=phot, source_name='', source_location='')
 
-                        if phot_groupid is not None:
-                            update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
-                        db_session.commit()
+                    if phot_groupid is not None:
+                        update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
+                    db_session.commit()
                 delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except:
