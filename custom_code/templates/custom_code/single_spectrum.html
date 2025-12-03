@@ -7,7 +7,7 @@
       <input type="checkbox" class="spectrum-row" id="spectrum-row-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
       <label class="form-check-label" for="spectrum-row-{{ entry.spectrum.id }}">Share</label>
     </div>
-    <div class="row"><b>{{ entry.time }}</b></div>
+        <div class="row"><b>{{ entry.time }}</b></div>
     <div class="row">Telescope: {{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</div>
     <div class="row">Instrument: {{ entry.spec_extras.instrument }}</div>
     <div class="row">Exposure Time: {{ entry.spec_extras.exptime|floatformat:0 }}s</div>

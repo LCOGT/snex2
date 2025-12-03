@@ -1315,7 +1315,14 @@ def order_by_reminder_upcoming(queryset, pagenumber):
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
 def dash_spectra_page(context, target):
-    request = context.request
+    # Support both dict-style access (from views) and attribute access (from templates)
+    if isinstance(context, dict):
+        request = context['request']
+    else:
+        try:
+            request = context['request']
+        except (KeyError, TypeError):
+            request = context.request
     try:
         z = target.redshift
     except:
@@ -1323,7 +1330,7 @@ def dash_spectra_page(context, target):
 
     # Setup the data share form for this spectra page
     initial = {
-        'submitter': context.request.user,
+        'submitter': request.user,
         'target': target,
         'data_type': 'spectroscopy',
         'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'SNEx2')}."
@@ -1365,16 +1372,19 @@ def dash_spectra_page(context, target):
         if max(flux) > max_flux: max_flux = max(flux)
         if min(flux) < min_flux: min_flux = min(flux)
 
-        snex_id_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                           klass=ReducedDatumExtra.objects.filter(
-                                               data_type='spectroscopy', target=target, 
-                                               key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id))).first()
+        # Query ReducedDatumExtra directly - no object-level permissions needed
+        # (user already has target access if they can view this page)
+        snex_id_row = ReducedDatumExtra.objects.filter(
+            data_type='spectroscopy', target=target, 
+            key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
+        ).first()
         spec_extras = {}
         if snex_id_row:
             snex1_id = json.loads(snex_id_row.value)['snex_id']
-            spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                                   klass=ReducedDatumExtra.objects.filter(
-                                                       data_type='spectroscopy', key='spec_extras', value__icontains='"snex_id": {}'.format(snex1_id))).first()
+            spec_extras_row = ReducedDatumExtra.objects.filter(
+                data_type='spectroscopy', key='spec_extras', 
+                value__icontains='"snex_id": {}'.format(snex1_id)
+            ).first()
             if spec_extras_row:
                 spec_extras = json.loads(spec_extras_row.value)
                 if spec_extras.get('instrument', '') == 'en06':
@@ -1392,10 +1402,10 @@ def dash_spectra_page(context, target):
             else:
                 spec_extras = {}
         elif spectrum.data_product_id:
-            spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                                   klass=ReducedDatumExtra.objects.filter(
-                                                       data_type='spectroscopy', key='upload_extras',
-                                                       value__icontains='"data_product_id": {}'.format(spectrum.data_product_id))).first()
+            spec_extras_row = ReducedDatumExtra.objects.filter(
+                data_type='spectroscopy', key='upload_extras',
+                value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
+            ).first()
             if spec_extras_row:
                 spec_extras = json.loads(spec_extras_row.value)
                 if spec_extras.get('instrument', '') == 'en06':

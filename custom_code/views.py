@@ -1718,7 +1718,8 @@ def load_spectroscopy_tab_view(request):
         )
         
         # Get the list of spectra metadata without rendering the plots
-        details_context = dash_spectra_page(RequestContext(request), target)
+        # Pass dict with request for compatibility (dash_spectra_page now supports both)
+        details_context = dash_spectra_page(context_dict, target)
         
         # Build the spectra list metadata for progressive loading
         spectra_metadata = []
@@ -1764,25 +1765,27 @@ def load_single_spectrum_view(request):
             from django.contrib.contenttypes.models import ContentType
             from django_comments.models import Comment
             
-            user = request.user
+            user = User.objects.get(username=request.user)
             
             try:
                 z = target.redshift
             except:
                 z = 0
-                
-            # Get spectrum extras (same logic as in dash_spectra_page)
-            snex_id_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                               klass=ReducedDatumExtra.objects.filter(
-                                                   data_type='spectroscopy', target=target, 
-                                                   key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id))).first()
+            
+            # Get spectrum extras - query directly since user already has target access
+            # (ReducedDatumExtra doesn't need separate object-level permissions)
+            snex_id_row = ReducedDatumExtra.objects.filter(
+                data_type='spectroscopy', target=target, 
+                key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
+            ).first()
+            
             spec_extras = {}
             if snex_id_row:
                 snex1_id = json.loads(snex_id_row.value)['snex_id']
-                spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                                       klass=ReducedDatumExtra.objects.filter(
-                                                           data_type='spectroscopy', key='spec_extras', 
-                                                           value__icontains='"snex_id": {}'.format(snex1_id))).first()
+                spec_extras_row = ReducedDatumExtra.objects.filter(
+                    data_type='spectroscopy', key='spec_extras', 
+                    value__icontains='"snex_id": {}'.format(snex1_id)
+                ).first()
                 if spec_extras_row:
                     spec_extras = json.loads(spec_extras_row.value)
                     if spec_extras.get('instrument', '') == 'en06':
@@ -1797,10 +1800,10 @@ def load_single_spectrum_view(request):
                     comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
                     spec_extras['comments'] = comment_list
             elif spectrum.data_product_id:
-                spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                                       klass=ReducedDatumExtra.objects.filter(
-                                                           data_type='spectroscopy', key='upload_extras',
-                                                           value__icontains='"data_product_id": {}'.format(spectrum.data_product_id))).first()
+                spec_extras_row = ReducedDatumExtra.objects.filter(
+                    data_type='spectroscopy', key='upload_extras',
+                    value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
+                ).first()
                 if spec_extras_row:
                     spec_extras = json.loads(spec_extras_row.value)
                     if spec_extras.get('instrument', '') == 'en06':
