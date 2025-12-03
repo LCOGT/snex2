@@ -443,6 +443,8 @@ $(document).ready (function() {
 function setupDashErrorMonitoring() {
   // Keep track of which iframes we've already set up monitoring for
   var monitoredIframes = new Set();
+  // Track spectra currently being reloaded to prevent duplicates
+  var reloadingSpectra = new Set();
   
   function checkIframeForErrors($iframe) {
     try {
@@ -498,6 +500,12 @@ function setupDashErrorMonitoring() {
         }
         
         if (spectrumId) {
+          // Prevent duplicate reloads
+          if (reloadingSpectra.has(spectrumId)) {
+            console.log('Spectrum already being reloaded, skipping:', spectrumId);
+            return;
+          }
+          reloadingSpectra.add(spectrumId);
           console.log('Reloading individual spectrum:', spectrumId);
           
           // Show loading message in the plot cell
@@ -516,11 +524,19 @@ function setupDashErrorMonitoring() {
             },
             dataType: 'json',
             success: function(response) {
-              $row.replaceWith(response.html);
+              // Use the row ID to find and replace (more reliable after DOM changes)
+              var $targetRow = $('#spectrum-row-' + spectrumId);
+              if ($targetRow.length > 0) {
+                $targetRow.replaceWith(response.html);
+              } else {
+                $row.replaceWith(response.html);
+              }
               console.log('Spectrum row reloaded successfully');
+              reloadingSpectra.delete(spectrumId);
             },
             error: function() {
               $plotCell.html('<div style="text-align: center; padding: 20px; color: #dc3545;">Error reloading spectrum</div>');
+              reloadingSpectra.delete(spectrumId);
             }
           });
         }

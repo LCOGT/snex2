@@ -1,7 +1,7 @@
 {% load plotly_dash %}
 {% load bootstrap4 custom_code_tags %}
 
-<tr valign="top">
+<tr valign="top" id="spectrum-row-{{ entry.spectrum.id }}">
   <td width=200>
     <div class="row">
       <input type="checkbox" class="spectrum-row" id="spectrum-row-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">

@@ -70,12 +70,32 @@ $(document).ready(function() {
     {% endfor %}
   ];
   
+  // Track which spectra have been loaded to prevent duplicates
+  var loadedSpectra = new Set();
+  
   function loadSpectrum(index) {
     if (index >= spectraToLoad.length) {
       return; // All done!
     }
     
     var spectrum = spectraToLoad[index];
+    
+    // Skip if already loaded
+    if (loadedSpectra.has(spectrum.spectrum_id)) {
+      console.log('Spectrum already loaded, skipping:', spectrum.spectrum_id);
+      loadSpectrum(index + 1);
+      return;
+    }
+    
+    // Check if placeholder still exists (hasn't been replaced by error recovery)
+    var $placeholder = $('#spectrum-row-' + spectrum.spectrum_id);
+    if ($placeholder.length === 0 || !$placeholder.hasClass('spectrum-placeholder')) {
+      console.log('Placeholder not found or already replaced, skipping:', spectrum.spectrum_id);
+      loadSpectrum(index + 1);
+      return;
+    }
+    
+    loadedSpectra.add(spectrum.spectrum_id);
     
     $.ajax({
       url: '{% url "load-single-spectrum" %}',
@@ -86,7 +106,10 @@ $(document).ready(function() {
       dataType: 'json',
       success: function(response) {
         // Replace the placeholder row with the actual spectrum
-        $('#spectrum-row-' + spectrum.spectrum_id).replaceWith(response.html);
+        var $row = $('#spectrum-row-' + spectrum.spectrum_id);
+        if ($row.length > 0) {
+          $row.replaceWith(response.html);
+        }
         
         // Load the next spectrum after a short delay
         setTimeout(function() {
@@ -95,9 +118,12 @@ $(document).ready(function() {
       },
       error: function() {
         // Show error but continue with next spectrum
-        $('#spectrum-row-' + spectrum.spectrum_id).html(
-          '<td colspan="2" style="text-align: center; padding: 30px; color: red;">Error loading spectrum</td>'
-        );
+        var $row = $('#spectrum-row-' + spectrum.spectrum_id);
+        if ($row.length > 0) {
+          $row.html(
+            '<td colspan="2" style="text-align: center; padding: 30px; color: red;">Error loading spectrum</td>'
+          );
+        }
         setTimeout(function() {
           loadSpectrum(index + 1);
         }, 300);
