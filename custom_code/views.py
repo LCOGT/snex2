@@ -40,7 +40,16 @@ import random
 
 import plotly.graph_objs as go
 from tom_dataproducts.models import ReducedDatum, DataProduct
-from custom_code.templatetags.custom_code_tags import airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits, lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form, smart_name_list, dash_lightcurve, spectra_plot, test_display_thumbnail, airmass_plot
+from custom_code.templatetags.custom_code_tags import (
+    airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits,
+    lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form,
+    smart_name_list, dash_lightcurve, spectra_plot, test_display_thumbnail, airmass_plot,
+    target_details, observation_summary, submit_lco_observations, custom_upload_dataproduct,
+    image_slideshow, snex2_get_photometry_data, dash_spectra
+)
+from tom_observations.templatetags.observation_extras import observing_buttons
+from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
+from tom_targets.templatetags.targets_extras import target_groups
 from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
 from custom_code.thumbnails import make_thumb
 
@@ -1543,8 +1552,6 @@ def load_details_tab_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        # Import the template tag function
-        from custom_code.templatetags.custom_code_tags import target_details
         context_dict = {'request': request, 'user': request.user}
         context = target_details(context_dict, target)
         html = render_to_string(
@@ -1562,9 +1569,6 @@ def load_observations_tab_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        from custom_code.templatetags.custom_code_tags import observation_summary, submit_lco_observations
-        from tom_observations.templatetags.observation_extras import observing_buttons
-        
         context_dict = {'request': request, 'user': request.user}
         
         # Get all the template tag contexts
@@ -1601,9 +1605,6 @@ def load_manage_data_tab_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        from custom_code.templatetags.custom_code_tags import custom_upload_dataproduct
-        from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
-        
         context_dict = {'request': request, 'user': request.user}
         
         # Get the template tag contexts
@@ -1635,8 +1636,6 @@ def load_observing_runs_tab_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        from tom_targets.templatetags.targets_extras import target_groups
-        
         context = target_groups(target)
         html = render_to_string(
             template_name='tom_targets/partials/target_groups.html',
@@ -1653,8 +1652,6 @@ def load_images_tab_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        from custom_code.templatetags.custom_code_tags import image_slideshow
-        
         context_dict = {'request': request, 'user': request.user}
         context = image_slideshow(context_dict, target)
         html = render_to_string(
@@ -1672,8 +1669,6 @@ def load_photometry_tab_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        from custom_code.templatetags.custom_code_tags import snex2_get_photometry_data, dash_lightcurve
-        
         context_dict = {'request': request, 'user': request.user}
         
         # Get photometry data
@@ -1705,8 +1700,6 @@ def load_spectroscopy_tab_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        from custom_code.templatetags.custom_code_tags import dash_spectra, dash_spectra_page
-        
         context_dict = {'request': request, 'user': request.user}
         
         # Load the overview plot
@@ -1762,9 +1755,6 @@ def load_single_spectrum_view(request):
             spectrum = ReducedDatum.objects.get(id=spectrum_id)
             
             # Get spectrum extras
-            from django.contrib.contenttypes.models import ContentType
-            from django_comments.models import Comment
-            
             user = User.objects.get(username=request.user)
             
             try:
@@ -2597,7 +2587,6 @@ class TargetFilteringView(FormView):
 
         # Date-created filter
         if cd.get('apply_date_created_filter'):
-            from datetime import datetime
             min_date = cd.get('date_created_min')    # this is already a date or None
             if min_date:
                 qs = qs.filter(created__date__gte=min_date)
