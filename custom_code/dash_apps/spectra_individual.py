@@ -193,7 +193,7 @@ def show_compare(value, *args, **kwargs):
         return {'display': 'none'}
 
 
-line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'checked') for elem in elements]+[Input('standalone-checkbox-custom1', 'checked'), Input('standalone-checkbox-custom2', 'checked')]
+line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('standalone-checkbox-custom1', 'value'), Input('standalone-checkbox-custom2', 'value')]
 line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('v-custom1', 'value'), Input('v-custom2', 'value')]
 line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('z-custom1', 'value'), Input('z-custom2', 'value')]
 line_plotting_input += [Input('lambda-custom1', 'value'), Input('lambda-custom2', 'value')]
@@ -283,7 +283,8 @@ def change_redshift(z, *args, **kwargs):
     for elem in list(elements.keys())[10:]:
         row = html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-'))
+                dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-')),
+                style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
                 elem
@@ -319,7 +320,8 @@ def change_redshift(z, *args, **kwargs):
     elem_input_array.append(
         html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-custom1')
+                dbc.Checkbox(id='standalone-checkbox-custom1'),
+                style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
                 html.Div([
@@ -361,7 +363,8 @@ def change_redshift(z, *args, **kwargs):
     elem_input_array.append(
         html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-custom2')
+                dbc.Checkbox(id='standalone-checkbox-custom2'),
+                style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
                 html.Div([
@@ -618,6 +621,22 @@ def display_output(selected_rows,
         graph_data['layout']['yaxis']['range'] = [min(binned_flux), max(binned_flux)]
         graph_data['layout']['yaxis']['autorange'] = False
     
+    # Calculate actual min/max flux from spectrum data for element lines
+    actual_min_flux = min_flux
+    actual_max_flux = max_flux
+    for trace in graph_data['data']:
+        if trace['name'] not in elements.keys() and 'y' in trace and trace['y']:
+            y_vals = [v for v in trace['y'] if v is not None]
+            if y_vals:
+                trace_min = min(y_vals)
+                trace_max = max(y_vals)
+                if actual_min_flux == 0 and actual_max_flux == 0:
+                    actual_min_flux = trace_min
+                    actual_max_flux = trace_max
+                else:
+                    actual_min_flux = min(actual_min_flux, trace_min)
+                    actual_max_flux = max(actual_max_flux, trace_max)
+    
     for row in selected_rows:
         (elem, row_extras), = json.loads(row).items()
         z = row_extras['redshift']
@@ -637,8 +656,8 @@ def display_output(selected_rows,
         y = []
         
         if compare_target:
-            max_flux = max([max(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
-            min_flux = min([min(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
+            actual_max_flux = max([max(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
+            actual_min_flux = min([min(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
         for lambduh in lambda_rest:
 
             lambda_observed = lambduh*((1+z)-v_over_c)
@@ -646,8 +665,8 @@ def display_output(selected_rows,
             x.append(lambda_observed)
             x.append(lambda_observed)
             x.append(None)
-            y.append(min_flux)
-            y.append(max_flux)
+            y.append(actual_min_flux)
+            y.append(actual_max_flux)
             y.append(None)
 
         try:
