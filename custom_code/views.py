@@ -1908,7 +1908,7 @@ def download_photometry_view(request, targetid):
     return response
 
 def download_all_fits_view(request):
-    files_str = request.GET.get('files', '')
+    files_str = request.POST.get('files', '')
     files = files_str.split(',') if files_str else []
     logger.info(f"[download_all_fits_view] files_str: {files_str} files_parsed: {files}")
 
