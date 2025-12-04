@@ -63,7 +63,7 @@
       <td>{{ galaxy.catalog_objname }}<br>
 	{% if galaxy|get_target_id %}
 	  <span><a href="{% url 'targets:detail' galaxy|get_target_id %}">Target Created and Observations Requested</a></span><br>
-          {% if galaxy|has_images %}
+          {% if galaxy|has_images:request.user %}
 	  <span>Images Have Been Taken</span>
 	  {% else %}
 	  <span>No Images Yet</span>

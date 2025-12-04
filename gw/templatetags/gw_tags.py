@@ -168,9 +168,8 @@ def get_target_from_galaxy(galaxy):
     return target.first()   
 
 
-@register.filter(takes_context=True)
-def has_images(context, galaxy):
-    username = context['request'].user
+@register.filter
+def has_images(galaxy,username):
     targ = get_target_from_galaxy(galaxy)
     if not targ:
         return False
