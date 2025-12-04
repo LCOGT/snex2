@@ -1673,8 +1673,6 @@ def image_slideshow(context, target):
                 'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
             }
     
-    logger.info(f"[image_slideshow] target {target.id} filenames: {filenames}")
-
     thumbdict = [(json.dumps({'filename': filenames[i],
                    'filepath': filepaths[i],
                    'date': dates[i],
