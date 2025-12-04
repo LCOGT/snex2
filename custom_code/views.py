@@ -73,6 +73,9 @@ from django.utils import timezone
 import logging
 from io import BytesIO
 import os
+import tempfile
+import zipfile
+
 
 from tom_targets.models import Target
 
@@ -1904,6 +1907,41 @@ def download_photometry_view(request, targetid):
     response['Content-Disposition'] = 'attachment; filename={}.txt'.format(target.name.replace(' ',''))
     return response
 
+def download_all_fits_view(request):
+    files_str = request.GET.get('files', '')
+    files = files_str.split(',') if files_str else []
+    logger.info(f"[download_all_fits_view] files_str: {files_str} files_parsed: {files}")
+
+    if not files:
+        return HttpResponse("No files selected", status=400)
+
+    token = settings.FACILITIES['LCO']['api_key']
+    url = settings.FACILITIES['LCO']['archive_url']
+    
+    tmpdir = tempfile.mkdtemp()
+
+    downloaded_files = []
+
+    for basename in files:        
+        results = requests.get(url,
+                                headers={'Authorization': f'Token {token}'}, 
+                                params={'basename_exact': basename, 'include_related_frames': False}).json()["results"]
+
+        data = requests.get(results[0]["url"]).content
+        
+        tmpfile_path = os.path.join(tmpdir, basename + '.fits')
+        with open(tmpfile_path, 'wb') as f:
+            f.write(data)
+        
+        downloaded_files.append(tmpfile_path)
+    
+    batch_file = os.path.join(tempfile.gettempdir(), f"snex_photometry.zip")
+    with zipfile.ZipFile(batch_file, 'w', compression=zipfile.ZIP_DEFLATED) as zipf:
+        for fpath in downloaded_files:
+            zipf.write(fpath, arcname=os.path.basename(fpath))
+    
+    return FileResponse(open(batch_file, "rb"), filename="lco_batch_download.zip", as_attachment=True)
+    
 
 def get_target_standards_view(request):
 

@@ -1673,6 +1673,8 @@ def image_slideshow(context, target):
                 'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
             }
     
+    logger.info(f"[image_slideshow] target {target.id} filenames: {filenames}")
+
     thumbdict = [(json.dumps({'filename': filenames[i],
                    'filepath': filepaths[i],
                    'date': dates[i],
@@ -1711,7 +1713,8 @@ def image_slideshow(context, target):
             'telescope': teles[0],
             'instrument': instr[0],
             'filter': filters[0],
-            'exptime': exptimes[0]}
+            'exptime': exptimes[0],
+            'filenames': filenames}
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')

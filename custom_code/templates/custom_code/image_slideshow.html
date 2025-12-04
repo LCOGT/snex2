@@ -30,6 +30,14 @@
       <button type="submit" class="btn btn-primary" style="width: 200px;" onclick="downloadFile()">Download Fits</button>
       </form>
     </div>
+    <div class="row justify-content-center mt-2">
+      <form method="get" action="{% url 'download-all-fits' %}">
+        <input type="hidden" id="download-all-filenames" name="files"
+              value="{{ filenames|join:',' }}">
+        <button id="download-all-btn" type="button" class="btn btn-success" style="width: 200px;"
+        onclick="downloadAllFiles();">Download All</button>
+      </form>
+    </div>
   </div>
   <div class="col-md-2">
     <form>
@@ -142,4 +150,34 @@
   document.addEventListener("DOMContentLoaded", function() {
     makeThumbnail();
   });
+async function downloadAllFiles() {
+  const downloadButton = document.getElementById("download-all-btn");
+  const filesVal = document.getElementById("download-all-filenames").value;
+  if (!filesVal) { alert("No files to download!"); return; }
+
+  console.log("Fetch files:", filesVal);
+  const finalFilename = "all_fits_download.zip";
+  downloadButton.innerHTML = "Downloading...";
+  downloadButton.disabled = true;
+  const response = await fetch(`/download-all-fits/?files=${encodeURIComponent(filesVal)}`);
+  if (!response.ok) {
+      alert("Download failed!");
+      downloadButton.innerHTML = "Download All";
+      downloadButton.disabled = false;
+      return;
+  }
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = finalFilename;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+
+  downloadButton.innerHTML = "Download All";
+  downloadButton.disabled = false;
+}
 </script>
