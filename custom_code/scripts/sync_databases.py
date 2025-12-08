@@ -263,14 +263,14 @@ def update_phot(action, db_address=_SNEX2_DB):
                         if len(data_point) == 2:
                             if data_point[0].value == data_point[1].value:
                                 data_point[0].delete()
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first
+                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first()
 
                     else:
                         data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id']).first()
 
                     #update
                     if data_point:
-                        logger.info(f'Existing Phot point for target {targetid}: {data_point}, timestamp:{time}')
+                        logger.info(f'Existing Phot point for target {targetid}: {data_point}, timestamp:{time}, value: {data_point.value}')
                         data_point.value = phot
                         data_point.source_name = ''
                         data_point.source_location = ''
