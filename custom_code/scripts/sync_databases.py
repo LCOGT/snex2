@@ -262,6 +262,7 @@ def update_phot(action, db_address=_SNEX2_DB):
 
                     #update
                     if data_point:
+                        logger.info(f'Existing Phot point for target {targetid}: {data_point}')
                         data_point.value = phot
                         data_point.source_name = ''
                         data_point.source_location = ''
