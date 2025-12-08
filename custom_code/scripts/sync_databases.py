@@ -532,7 +532,7 @@ def update_target(action, db_address=_SNEX2_DB):
                     Target.objects.delete(id=target_id)
 
                 db_session.commit()
-            #delete_row(Db_Changes, tresult.id, db_address=_SNEX1_DB)
+            delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
 
         except:
             raise #continue
