@@ -709,7 +709,7 @@ def update_users(action, db_address=_SNEX2_DB):
 def update_groups(action, db_address=_SNEX2_DB):
     logger.info('Updating Groups. . .')
     group_changes = query_db_changes('groups', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total group changes: {len(group_changes)}')
+    logger.info(f'Total group changes: {group_changes}')
 
     for change in group_changes:
         row_id = change.rowid
