@@ -170,7 +170,6 @@ def update_phot(action, db_address=_SNEX2_DB):
     """
     logger.info('Updating Photometry. . .')
     phot_result = query_db_changes('photlco', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total photometry points to update: {len(phot_result)}')
     for result in phot_result:
         try:
             id_ = result.rowid # The ID of the row in the photlco table
@@ -308,7 +307,6 @@ def update_spec(action, db_address=_SNEX2_DB):
     """
     logger.info('Updating Spectra. . .')
     spec_result = query_db_changes('spec', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total spectra to update: {len(spec_result)}')
     for result in spec_result:
         try:
             id_ = result.rowid # The ID of the row in the spec table
@@ -456,8 +454,6 @@ def update_target(action, db_address=_SNEX2_DB):
     logger.info('Updating Targets. . .')
     target_result = query_db_changes('targets', action, db_address=settings.SNEX1_DB_URL)
     name_result = query_db_changes('targetnames', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total targets to update: {len(target_result)}')
-    logger.info(f'Total target name changes to update: {len(name_result)}')
     for tresult in target_result:
         try:
             target_id = tresult.rowid # The ID of the row in the targets table
@@ -648,7 +644,6 @@ def update_users(action, db_address=_SNEX2_DB):
     """
     logger.info('Updating Users. . .')
     user_changes = query_db_changes('users', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total users changes: {len(user_changes)}')
 
     for change in user_changes:
         try:
@@ -709,8 +704,7 @@ def update_users(action, db_address=_SNEX2_DB):
 def update_groups(action, db_address=_SNEX2_DB):
     logger.info('Updating Groups. . .')
     group_changes = query_db_changes('groups', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total group changes: {group_changes}')
-
+    logger.info(f'Total group changes {len([change.rowid for change in group_changes])}')
     for change in group_changes:
         row_id = change.rowid
         group_row = get_current_row(Groups, row_id, db_address=settings.SNEX1_DB_URL)
