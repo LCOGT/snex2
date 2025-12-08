@@ -265,7 +265,7 @@ def update_phot(action, db_address=_SNEX2_DB):
 
                     #update
                     if data_point:
-                        logger.info(f'Existing Phot point for target {targetid}: {data_point}')
+                        logger.info(f'Existing Phot point for target {targetid}: {data_point}, timestamp:{time} value:{data_point.value}')
                         data_point.value = phot
                         data_point.source_name = ''
                         data_point.source_location = ''
@@ -493,6 +493,7 @@ def update_target(action, db_address=_SNEX2_DB):
             with get_session(db_address=db_address) as db_session:
                 if action=='update':
                     target = Target.objects.get(pk=target_id)
+                    logger.info(f'updating target: {target}')
                     # the following could be the same as the insert action, not sure if necessary to have
                     #   as a separate code block
                     Target.objects.filter(pk=target_id).update(ra=t_ra,
