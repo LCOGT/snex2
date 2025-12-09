@@ -168,7 +168,10 @@ def update_phot(action, db_address=_SNEX2_DB):
     action: str, one of 'update', 'insert', or 'delete'
     db_address: str, sqlalchemy address to the SNex2 db
     """
+    logger.info('Updating Photometry. . .')
     phot_result = query_db_changes('photlco', action, db_address=settings.SNEX1_DB_URL)
+    logger.info(f'Total photometry changes {len([change.rowid for change in phot_result])}')
+
     for result in phot_result:
         try:
             id_ = result.rowid # The ID of the row in the photlco table
@@ -255,10 +258,19 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
-                    data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first()
-                    
+                    if 'background_subtracted' in phot.keys():
+                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted'])
+                        if len(data_point) == 2:
+                            if data_point[0].value == data_point[1].value:
+                                data_point[0].delete()
+                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first()
+
+                    else:
+                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id']).first()
+
                     #update
                     if data_point:
+                        logger.info(f'Existing Phot point for target {targetid}: {data_point}, timestamp:{time}, value: {data_point.value}')
                         data_point.value = phot
                         data_point.source_name = ''
                         data_point.source_location = ''
@@ -300,7 +312,10 @@ def update_spec(action, db_address=_SNEX2_DB):
     action: str, one of 'update', 'insert', or 'delete'
     db_address: str, sqlalchemy address to the SNex2 db
     """
+    logger.info('Updating Spectra. . .')
     spec_result = query_db_changes('spec', action, db_address=settings.SNEX1_DB_URL)
+    logger.info(f'Total spectra changes {len([change.rowid for change in spec_result])}')
+
     for result in spec_result:
         try:
             id_ = result.rowid # The ID of the row in the spec table
@@ -445,8 +460,11 @@ def update_target(action, db_address=_SNEX2_DB):
     action: str, one of 'update', 'insert', or 'delete'
     db_address: str, sqlalchemy address to the SNex2 db
     """
+    logger.info('Updating Targets. . .')
     target_result = query_db_changes('targets', action, db_address=settings.SNEX1_DB_URL)
     name_result = query_db_changes('targetnames', action, db_address=settings.SNEX1_DB_URL)
+    logger.info(f'Total target changes {len([change.rowid for change in target_result])}')
+    logger.info(f'Total target name changes {len([change.rowid for change in name_result])}')
 
     for tresult in target_result:
         try:
@@ -480,6 +498,7 @@ def update_target(action, db_address=_SNEX2_DB):
             with get_session(db_address=db_address) as db_session:
                 if action=='update':
                     target = Target.objects.get(pk=target_id)
+                    logger.info(f'updating target: {target}')
                     # the following could be the same as the insert action, not sure if necessary to have
                     #   as a separate code block
                     Target.objects.filter(pk=target_id).update(ra=t_ra,
@@ -636,7 +655,9 @@ def update_users(action, db_address=_SNEX2_DB):
     ----------
     action: str, action that was done on the users table ['update', 'insert', 'delete']
     """
+    logger.info('Updating Users. . .')
     user_changes = query_db_changes('users', action, db_address=settings.SNEX1_DB_URL)
+    logger.info(f'Total user changes {len([change.rowid for change in user_changes])}')
     for change in user_changes:
         try:
             row_id = change.rowid
@@ -694,7 +715,9 @@ def update_users(action, db_address=_SNEX2_DB):
 
 
 def update_groups(action, db_address=_SNEX2_DB):
+    logger.info('Updating Groups. . .')
     group_changes = query_db_changes('groups', action, db_address=settings.SNEX1_DB_URL)
+    logger.info(f'Total group changes {len([change.rowid for change in group_changes])}')
     for change in group_changes:
         row_id = change.rowid
         group_row = get_current_row(Groups, row_id, db_address=settings.SNEX1_DB_URL)
@@ -730,8 +753,14 @@ def run():
     """
     actions = ['delete', 'insert', 'update']
     for action in actions:
+        logger.info(f'Updating for action: {action}')
         update_groups(action, db_address=_SNEX2_DB)
+        logger.info('Done updating groups')
         update_users(action, db_address=_SNEX2_DB)
+        logger.info('Done updating users')
         update_target(action, db_address=_SNEX2_DB)
+        logger.info('Done updating targets')
         update_phot(action, db_address=_SNEX2_DB)
+        logger.info('Done updating photometry')
         update_spec(action, db_address=_SNEX2_DB)
+        logger.info('Done updating spectra')
