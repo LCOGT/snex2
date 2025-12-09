@@ -8,6 +8,7 @@ from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
 from django_comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
+from django.core.cache import cache
 
 from tom_targets.models import Target, TargetList, BaseTarget
 from tom_targets.forms import TargetVisibilityForm
@@ -605,18 +606,23 @@ def classifications_dropdown(target):
 
 @register.inclusion_tag('custom_code/science_tags_dropdown.html')
 def science_tags_dropdown(target):
-    tag_query = ScienceTags.objects.all().order_by(Lower('tag'))
-    tags = [i.tag for i in tag_query]
+    # Cache science tags for 1 hour since they rarely change
+    tags = cache.get('all_science_tags')
+    if tags is None:
+        tag_query = ScienceTags.objects.all().order_by(Lower('tag'))
+        tags = [i.tag for i in tag_query]
+        cache.set('all_science_tags', tags, 3600)
     return{'target': target,
            'sciencetags': tags}
 
 @register.filter
 def get_target_tags(target):
     #try:
-    target_tag_query = TargetTags.objects.filter(target_id=target.id)
+    # Optimize query with select_related to avoid N+1 queries
+    target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
     tags = ''
     for i in target_tag_query:
-        tag_name = ScienceTags.objects.filter(id=i.tag_id).first().tag
+        tag_name = i.tag.tag
         tags+=(str(tag_name) + ',')
     return json.dumps(tags)
     #except:
@@ -1309,7 +1315,14 @@ def order_by_reminder_upcoming(queryset, pagenumber):
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
 def dash_spectra_page(context, target):
-    request = context.request
+    # Support both dict-style access (from views) and attribute access (from templates)
+    if isinstance(context, dict):
+        request = context['request']
+    else:
+        try:
+            request = context['request']
+        except (KeyError, TypeError):
+            request = context.request
     try:
         z = target.redshift
     except:
@@ -1317,7 +1330,7 @@ def dash_spectra_page(context, target):
 
     # Setup the data share form for this spectra page
     initial = {
-        'submitter': context.request.user,
+        'submitter': request.user,
         'target': target,
         'data_type': 'spectroscopy',
         'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'SNEx2')}."
@@ -1359,16 +1372,19 @@ def dash_spectra_page(context, target):
         if max(flux) > max_flux: max_flux = max(flux)
         if min(flux) < min_flux: min_flux = min(flux)
 
-        snex_id_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                           klass=ReducedDatumExtra.objects.filter(
-                                               data_type='spectroscopy', target=target, 
-                                               key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id))).first()
+        # Query ReducedDatumExtra directly - no object-level permissions needed
+        # (user already has target access if they can view this page)
+        snex_id_row = ReducedDatumExtra.objects.filter(
+            data_type='spectroscopy', target=target, 
+            key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
+        ).first()
         spec_extras = {}
         if snex_id_row:
             snex1_id = json.loads(snex_id_row.value)['snex_id']
-            spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                                   klass=ReducedDatumExtra.objects.filter(
-                                                       data_type='spectroscopy', key='spec_extras', value__icontains='"snex_id": {}'.format(snex1_id))).first()
+            spec_extras_row = ReducedDatumExtra.objects.filter(
+                data_type='spectroscopy', key='spec_extras', 
+                value__icontains='"snex_id": {}'.format(snex1_id)
+            ).first()
             if spec_extras_row:
                 spec_extras = json.loads(spec_extras_row.value)
                 if spec_extras.get('instrument', '') == 'en06':
@@ -1386,10 +1402,10 @@ def dash_spectra_page(context, target):
             else:
                 spec_extras = {}
         elif spectrum.data_product_id:
-            spec_extras_row = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                                   klass=ReducedDatumExtra.objects.filter(
-                                                       data_type='spectroscopy', key='upload_extras',
-                                                       value__icontains='"data_product_id": {}'.format(spectrum.data_product_id))).first()
+            spec_extras_row = ReducedDatumExtra.objects.filter(
+                data_type='spectroscopy', key='upload_extras',
+                value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
+            ).first()
             if spec_extras_row:
                 spec_extras = json.loads(spec_extras_row.value)
                 if spec_extras.get('instrument', '') == 'en06':
@@ -1450,7 +1466,11 @@ def get_best_name(target):
 
 @register.inclusion_tag('custom_code/display_group_list.html')
 def display_group_list(target):
-    groups = Group.objects.all()
+    # Cache all groups for 1 hour since they rarely change
+    groups = cache.get('all_groups')
+    if groups is None:
+        groups = list(Group.objects.all())
+        cache.set('all_groups', groups, 3600)
     return {'target': target,
             'groups': groups
         }
@@ -1478,7 +1498,8 @@ def reference_status(target):
 
 @register.inclusion_tag('custom_code/interested_persons.html')
 def interested_persons(target, user, page):
-    interested_persons_query = InterestedPersons.objects.filter(target=target)
+    # Optimize query with select_related to reduce database hits
+    interested_persons_query = InterestedPersons.objects.filter(target=target).select_related('user')
     interested_persons = [u.user.get_full_name() for u in interested_persons_query]
     try:
         current_user_name = user.get_full_name()

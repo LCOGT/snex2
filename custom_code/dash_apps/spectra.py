@@ -67,7 +67,8 @@ elem_input_array = []
 for elem in list(elements.keys())[:9]:
     row = html.Tr([
         html.Td(
-            dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-'))
+            dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-')),
+            style={"padding-left": "1rem", "min-width": "40px"}
         ),
         html.Td(
             elem
@@ -105,7 +106,8 @@ elem_input_array = []
 for elem in list(elements.keys())[9:]:
     row = html.Tr([
         html.Td(
-            dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-'))
+            dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-')),
+            style={"padding-left": "1rem", "min-width": "40px"}
         ),
         html.Td(
             elem
@@ -197,7 +199,7 @@ def show_table(value, *args, **kwargs):
     else:
         return {'display': 'none'}
 
-line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'checked') for elem in elements]
+line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]
 line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]
 line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]
 @app.callback(
@@ -228,7 +230,8 @@ def change_redshift(z, *args, **kwargs):
     for elem in list(elements.keys())[:9]:
         row = html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-'))
+                dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-')),
+                style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
                 elem
@@ -266,7 +269,8 @@ def change_redshift(z, *args, **kwargs):
     for elem in list(elements.keys())[9:]:
         row = html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-'))
+                dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-')),
+                style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
                 elem
@@ -386,6 +390,22 @@ def display_output(selected_rows,
             # Remove all the element lines that were plotted last time
             fig_data['data'].remove(d)
     
+    # Calculate actual min/max flux from spectrum data (not element lines)
+    actual_min_flux = min_flux
+    actual_max_flux = max_flux
+    for trace in graph_data['data']:
+        if trace['name'] not in elements and 'y' in trace and trace['y']:
+            y_vals = [v for v in trace['y'] if v is not None]
+            if y_vals:
+                trace_min = min(y_vals)
+                trace_max = max(y_vals)
+                if actual_min_flux == 0 and actual_max_flux == 0:
+                    actual_min_flux = trace_min
+                    actual_max_flux = trace_max
+                else:
+                    actual_min_flux = min(actual_min_flux, trace_min)
+                    actual_max_flux = max(actual_max_flux, trace_max)
+    
     for row in selected_rows:
         for elem, row_extras in json.loads(row).items():
             z = row_extras['redshift']
@@ -398,28 +418,28 @@ def display_output(selected_rows,
                 v_over_c = float(v/(3e5))
             except:
                 v_over_c = 0
-        x = []
-        y = []
+            
+            x = []
+            y = []
+            
+            lambda_rest = elements[elem]['waves']
+            for lambduh in lambda_rest:
+                lambda_observed = lambduh*((1+z)-v_over_c)
         
-        lambda_rest = elements[elem]['waves']
-        for lambduh in lambda_rest:
+                x.append(lambda_observed)
+                x.append(lambda_observed)
+                x.append(None)
+                y.append(actual_min_flux*0.95)
+                y.append(actual_max_flux*1.05)
+                y.append(None)
 
-            lambda_observed = lambduh*((1+z)-v_over_c)
-    
-            x.append(lambda_observed)
-            x.append(lambda_observed)
-            x.append(None)
-            y.append(min_flux*0.95)
-            y.append(max_flux*1.05)
-            y.append(None)
-
-        graph_data['data'].append(
-            go.Scatter(
-                x=x,
-                y=y,
-                name=elem,
-                mode='lines',
-                line=dict(color=elements[elem]['color'])
+            graph_data['data'].append(
+                go.Scatter(
+                    x=x,
+                    y=y,
+                    name=elem,
+                    mode='lines',
+                    line=dict(color=elements[elem]['color'])
+                )
             )
-        )
     return graph_data
