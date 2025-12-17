@@ -172,10 +172,10 @@ def show_compare(value, *args, **kwargs):
         return {'display': 'none'}
 
 
-line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('standalone-checkbox-custom1', 'value'), Input('standalone-checkbox-custom2', 'value')]
-line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('v-custom1', 'value'), Input('v-custom2', 'value')]
-line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('z-custom1', 'value'), Input('z-custom2', 'value')]
-line_plotting_input += [Input('lambda-custom1', 'value'), Input('lambda-custom2', 'value')]
+line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('standalone-checkbox-custom-wavelength-1', 'value'), Input('standalone-checkbox-custom-wavelength-2', 'value')]
+line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('v-custom-wavelength-1', 'value'), Input('v-custom-wavelength-2', 'value')]
+line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('z-custom-wavelength-1', 'value'), Input('z-custom-wavelength-2', 'value')]
+line_plotting_input += [Input('lambda-custom-wavelength-1', 'value'), Input('lambda-custom-wavelength-2', 'value')]
 @app.callback(
     Output('checked-rows', 'children'),
     line_plotting_input)
@@ -195,7 +195,7 @@ def checked_boxes(*args, **kwargs):
                                         )
         elif args[i] and i == len(all_rows) - 2:
             # Custom wavelength entry
-            checked_rows.append(json.dumps({'custom1': {'waves': [args[-2]],
+            checked_rows.append(json.dumps({'custom-wavelength-1': {'waves': [args[-2]],
                                                         'redshift': args[i+2*len(all_rows)],
                                                         'velocity': args[i+len(all_rows)],
                                                         'color': '#c7b299'
@@ -204,7 +204,7 @@ def checked_boxes(*args, **kwargs):
                                         )
         elif args[i] and i == len(all_rows) - 1:
             # Custom wavelength entry
-            checked_rows.append(json.dumps({'custom2': {'waves': [args[-1]],
+            checked_rows.append(json.dumps({'custom-wavelength-2': {'waves': [args[-1]],
                                                         'redshift': args[i+2*len(all_rows)],
                                                         'velocity': args[i+len(all_rows)],
                                                         'color': '#837565'
@@ -299,7 +299,7 @@ def change_redshift(z, *args, **kwargs):
     elem_input_array.append(
         html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-custom1'),
+                dbc.Checkbox(id='standalone-checkbox-custom-wavelength-1'),
                 style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
@@ -309,7 +309,7 @@ def change_redshift(z, *args, **kwargs):
                         color='#c7b299'
                     ),
                     dbc.Input(
-                        id='lambda-custom1',
+                        id='lambda-custom-wavelength-1',
                         type='number',
                         min=0,
                         max=1e5,
@@ -321,7 +321,7 @@ def change_redshift(z, *args, **kwargs):
             ),
             html.Td(
                 dbc.Input(
-                    id='z-custom1',
+                    id='z-custom-wavelength-1',
                     type='number',
                     min=0,
                     max=10,
@@ -332,7 +332,7 @@ def change_redshift(z, *args, **kwargs):
             ),
             html.Td(
                 dbc.Input(
-                    id='v-custom1',
+                    id='v-custom-wavelength-1',
                     type='number',
                     placeholder='v = 0 (km/s)',
                 )
@@ -342,7 +342,7 @@ def change_redshift(z, *args, **kwargs):
     elem_input_array.append(
         html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-custom2'),
+                dbc.Checkbox(id='standalone-checkbox-custom-wavelength-2'),
                 style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
@@ -352,7 +352,7 @@ def change_redshift(z, *args, **kwargs):
                         color='#837565'
                     ),
                     dbc.Input(
-                        id='lambda-custom2',
+                        id='lambda-custom-wavelength-2',
                         type='number',
                         min=0,
                         max=1e5,
@@ -364,7 +364,7 @@ def change_redshift(z, *args, **kwargs):
             ),
             html.Td(
                 dbc.Input(
-                    id='z-custom2',
+                    id='z-custom-wavelength-2',
                     type='number',
                     min=0,
                     max=10,
@@ -375,7 +375,7 @@ def change_redshift(z, *args, **kwargs):
             ),
             html.Td(
                 dbc.Input(
-                    id='v-custom2',
+                    id='v-custom-wavelength-2',
                     type='number',
                     placeholder='v = 0 (km/s)',
                 )
