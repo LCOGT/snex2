@@ -258,22 +258,21 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
-                    if 'background_subtracted' in phot.keys():
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted'])
-                        if len(data_point) > 1:
-                            logger.info(f"{len(data_point)} data points, trying to consolidate")
-                            
-                            for x, point in enumerate(data_point):
-                                try:
-                                    print(x)
-                                    if point.value == data_point[x+1].value:
-                                        point.delete()
-                                        logger.info(f"deleted point {x}")
-                                except:
-                                    logger.info("x+1 indexing for multiple data points failed")
-                                    continue
+                    data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'])
+                    if len(data_point) > 1:
+                        logger.info(f"{len(data_point)} data points, trying to consolidate")
+                        
+                        for x, point in enumerate(data_point):
+                            try:
+                                print(x)
+                                if point.value == data_point[x+1].value:
+                                    point.delete()
+                                    logger.info(f"deleted point {x}")
+                            except:
+                                logger.info("x+1 indexing for multiple data points failed")
+                                continue
 
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first()
+                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id']).first()
                         
                     else:
                         data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id']).first()
