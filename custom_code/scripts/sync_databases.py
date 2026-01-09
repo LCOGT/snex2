@@ -364,7 +364,8 @@ def update_spec(action, db_address=_SNEX2_DB):
     logger.info('Updating Spectra. . .')
     spec_result = query_db_changes('spec', action, db_address=settings.SNEX1_DB_URL)
     logger.info(f'Total spectra changes {len([change.rowid for change in spec_result])}')
-
+    import pdb
+    pdb.set_trace()
     for result in spec_result:
         try:
             id_ = result.rowid # The ID of the row in the spec table
@@ -422,7 +423,7 @@ def update_spec(action, db_address=_SNEX2_DB):
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids:
                     if action=='update':
-                        logger.info("action:update")
+                        logger.info("action: update")
                         #snex2_id_query = db_session.query(Datum).filter(and_(Datum.target_id==targetid, Datum.data_type=='spectroscopy')).all()
                         #for snex2_row in snex2_id_query:
                         #    value = json.loads(snex2_row.value)
@@ -435,28 +436,41 @@ def update_spec(action, db_address=_SNEX2_DB):
                                 value = json.loads(snex2_row.value)
                                 if id_ == value.get('snex_id', ''):
                                     snex2_id = value.get('snex2_id', '')
-                                    data_point = ReducedDatum.objects.get(id=snex2_id)
-                                    logger.info(f"snex2id:{snex2_id}")
-                                    if len(data_point) > 1:
-                                        logger.info(f"{len(data_point)} data points, trying to consolidate")
+
+                                    original_rd = ReducedDatum.objects.filter(id=snex2_id).first()
+
+                                    logger.info(f"Original ReducedDatum: {original_rd}")
+
+                                    find_dup_query = ReducedDatum.objects.filter(target_id=original_rd.target_id, data_type='spectroscopy',timestamp=original_rd.timestamp,value=original_rd.value)
+                                    
+                                    logger.info(f"Looking for duplicates:{find_dup_query}")
+
+                                    if len(find_dup_query) > 1:
+
+                                        logger.info(f"Duplicate found. {len(find_dup_query)} data points, trying to consolidate")
                                         
-                                        for x, point in enumerate(data_point):
-                                            try:
-                                                print(x)
-                                                if point.value == data_point[x+1].value:
+                                        for point in find_dup_query:
+                                            if (point.value == original_rd.value) & (point.timestamp == original_rd.timestamp):
+                                                if point.id != snex2_id:
+                                                    logger.info(f"Deleted extraneous point {point}")
                                                     point.delete()
-                                                    logger.info(f"deleted extraneous point {x}")
-                                            except:
-                                                logger.info("x+1 indexing for multiple data points failed")
-                                                continue
+                                                else:
+                                                    logger.info(f"Point {point} not deleted")
+                                           
+                                    data_point = ReducedDatum.objects.get(id=snex2_id)
+                                    logger.info(f"single data_point:{data_point}")
 
                                     data_point.target_id = targetid
+
                                     data_point.timestamp = time
+
                                     data_point.value = spec
                                     data_point.data_type = 'spectroscopy'
                                     data_point.source_name = ''
                                     data_point.source_location = ''
+
                                     data_point.save()
+                                    logger.info("data_point has been saved")
                                     if spec_groupid is not None:
                                         update_permissions(int(spec_groupid), 'view_reduceddatum', data_point, snex1_groups) #View reduceddatum
                                     break
