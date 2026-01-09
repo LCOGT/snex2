@@ -364,8 +364,6 @@ def update_spec(action, db_address=_SNEX2_DB):
     logger.info('Updating Spectra. . .')
     spec_result = query_db_changes('spec', action, db_address=settings.SNEX1_DB_URL)
     logger.info(f'Total spectra changes {len([change.rowid for change in spec_result])}')
-    import pdb
-    pdb.set_trace()
     for result in spec_result:
         try:
             id_ = result.rowid # The ID of the row in the spec table
