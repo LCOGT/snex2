@@ -20,6 +20,7 @@ from django.db.models import Q
 from django.templatetags.static import static
 import matplotlib.pyplot as plt
 import logging
+from custom_code.dash_apps.spectra_utils import elements, calculate_flux_range
 
 logger = logging.getLogger(__name__)
 
@@ -31,28 +32,6 @@ app.css.append_css({'external_url': static('custom_code/css/dash.css')})
 params = [
     'Redshift', 'Velocity (km/s)'
 ]
-
-elements = {
-    'H': {'color': '#ff0000', 'waves': [3970, 4102, 4341, 4861, 6563]},
-    'He': {'color': '#002157', 'waves': [4472, 5876, 6678, 7065]},
-    'He II': {'color': '#003b99', 'waves': [3203, 4686]},
-    'O': {'color': '#007236', 'waves': [7774, 7775, 8447, 9266]},
-    'O II': {'color': '#00a64d', 'waves': [3727]},
-    'O III': {'color': '#00bf59', 'waves': [4959, 5007]},
-    'Na': {'color': '#aba000', 'waves': [5890, 5896, 8183, 8195]},
-    'Mg': {'color': '#8c6239', 'waves': [2780, 2852, 3829, 3832, 3838, 4571, 5167, 5173, 5184]},
-    'Mg II': {'color': '#bf874e', 'waves': [2791, 2796, 2803, 4481]},
-    'Si II': {'color': '#5674b9', 'waves': [3856, 5041, 5056, 5670, 6347, 6371]},
-    'S II': {'color': '#a38409', 'waves': [5433, 5454, 5606, 5640, 5647, 6715]},
-    'Ca II': {'color': '#005050', 'waves': [3934, 3969, 7292, 7324, 8498, 8542, 8662]},
-    'Fe II': {'color': '#f26c4f', 'waves': [5018, 5169]},
-    'Fe III': {'color': '#f9917b', 'waves': [4397, 4421, 4432, 5129, 5158]},
-    'C II': {'color': '#303030', 'waves': [4267, 4745, 6580, 7234]},
-    'Galaxy': {'color': '#000000', 'waves': [4341, 4861, 6563, 6548, 6583, 6300, 3727, 4959, 5007, 2798, 6717, 6731]},
-    'Tellurics': {'color': '#b7b7b7', 'waves': [6867, 6884, 7594, 7621]},
-    'Flash CNO': {'color': '#0064c8', 'waves': [4648, 5696, 5801, 4640, 4058, 4537, 5047, 7109, 7123, 4604, 4946, 3410, 5597, 3811, 3835]},
-    'SN Ia': {'color': '#ff9500', 'waves': [3856, 5041, 5056, 5670, 6347, 6371, 5433, 5454, 5606, 5640, 5647, 6715, 3934, 3969, 7292, 7324, 8498, 8542, 8662]},
-}
 tooltips = [{
     'value': 'rest wavelengths: ' + str(elements[elem]['waves']),
     'type': 'text',
@@ -193,10 +172,10 @@ def show_compare(value, *args, **kwargs):
         return {'display': 'none'}
 
 
-line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'checked') for elem in elements]+[Input('standalone-checkbox-custom1', 'checked'), Input('standalone-checkbox-custom2', 'checked')]
-line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('v-custom1', 'value'), Input('v-custom2', 'value')]
-line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('z-custom1', 'value'), Input('z-custom2', 'value')]
-line_plotting_input += [Input('lambda-custom1', 'value'), Input('lambda-custom2', 'value')]
+line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('standalone-checkbox-custom-wavelength-1', 'value'), Input('standalone-checkbox-custom-wavelength-2', 'value')]
+line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('v-custom-wavelength-1', 'value'), Input('v-custom-wavelength-2', 'value')]
+line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('z-custom-wavelength-1', 'value'), Input('z-custom-wavelength-2', 'value')]
+line_plotting_input += [Input('lambda-custom-wavelength-1', 'value'), Input('lambda-custom-wavelength-2', 'value')]
 @app.callback(
     Output('checked-rows', 'children'),
     line_plotting_input)
@@ -216,7 +195,7 @@ def checked_boxes(*args, **kwargs):
                                         )
         elif args[i] and i == len(all_rows) - 2:
             # Custom wavelength entry
-            checked_rows.append(json.dumps({'custom1': {'waves': [args[-2]],
+            checked_rows.append(json.dumps({'custom-wavelength-1': {'waves': [args[-2]],
                                                         'redshift': args[i+2*len(all_rows)],
                                                         'velocity': args[i+len(all_rows)],
                                                         'color': '#c7b299'
@@ -225,7 +204,7 @@ def checked_boxes(*args, **kwargs):
                                         )
         elif args[i] and i == len(all_rows) - 1:
             # Custom wavelength entry
-            checked_rows.append(json.dumps({'custom2': {'waves': [args[-1]],
+            checked_rows.append(json.dumps({'custom-wavelength-2': {'waves': [args[-1]],
                                                         'redshift': args[i+2*len(all_rows)],
                                                         'velocity': args[i+len(all_rows)],
                                                         'color': '#837565'
@@ -283,7 +262,8 @@ def change_redshift(z, *args, **kwargs):
     for elem in list(elements.keys())[10:]:
         row = html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-'))
+                dbc.Checkbox(id='standalone-checkbox-'+elem.replace(' ', '-')),
+                style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
                 elem
@@ -319,7 +299,8 @@ def change_redshift(z, *args, **kwargs):
     elem_input_array.append(
         html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-custom1')
+                dbc.Checkbox(id='standalone-checkbox-custom-wavelength-1'),
+                style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
                 html.Div([
@@ -328,7 +309,7 @@ def change_redshift(z, *args, **kwargs):
                         color='#c7b299'
                     ),
                     dbc.Input(
-                        id='lambda-custom1',
+                        id='lambda-custom-wavelength-1',
                         type='number',
                         min=0,
                         max=1e5,
@@ -340,7 +321,7 @@ def change_redshift(z, *args, **kwargs):
             ),
             html.Td(
                 dbc.Input(
-                    id='z-custom1',
+                    id='z-custom-wavelength-1',
                     type='number',
                     min=0,
                     max=10,
@@ -351,7 +332,7 @@ def change_redshift(z, *args, **kwargs):
             ),
             html.Td(
                 dbc.Input(
-                    id='v-custom1',
+                    id='v-custom-wavelength-1',
                     type='number',
                     placeholder='v = 0 (km/s)',
                 )
@@ -361,7 +342,8 @@ def change_redshift(z, *args, **kwargs):
     elem_input_array.append(
         html.Tr([
             html.Td(
-                dbc.Checkbox(id='standalone-checkbox-custom2')
+                dbc.Checkbox(id='standalone-checkbox-custom-wavelength-2'),
+                style={"padding-left": "1rem", "min-width": "40px"}
             ),
             html.Td(
                 html.Div([
@@ -370,7 +352,7 @@ def change_redshift(z, *args, **kwargs):
                         color='#837565'
                     ),
                     dbc.Input(
-                        id='lambda-custom2',
+                        id='lambda-custom-wavelength-2',
                         type='number',
                         min=0,
                         max=1e5,
@@ -382,7 +364,7 @@ def change_redshift(z, *args, **kwargs):
             ),
             html.Td(
                 dbc.Input(
-                    id='z-custom2',
+                    id='z-custom-wavelength-2',
                     type='number',
                     min=0,
                     max=10,
@@ -393,7 +375,7 @@ def change_redshift(z, *args, **kwargs):
             ),
             html.Td(
                 dbc.Input(
-                    id='v-custom2',
+                    id='v-custom-wavelength-2',
                     type='number',
                     placeholder='v = 0 (km/s)',
                 )
@@ -618,6 +600,9 @@ def display_output(selected_rows,
         graph_data['layout']['yaxis']['range'] = [min(binned_flux), max(binned_flux)]
         graph_data['layout']['yaxis']['autorange'] = False
     
+    # Calculate actual min/max flux from spectrum data for element lines
+    actual_min_flux, actual_max_flux = calculate_flux_range(graph_data, min_flux, max_flux)
+    
     for row in selected_rows:
         (elem, row_extras), = json.loads(row).items()
         z = row_extras['redshift']
@@ -637,8 +622,8 @@ def display_output(selected_rows,
         y = []
         
         if compare_target:
-            max_flux = max([max(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
-            min_flux = min([min(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
+            actual_max_flux = max([max(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
+            actual_min_flux = min([min(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
         for lambduh in lambda_rest:
 
             lambda_observed = lambduh*((1+z)-v_over_c)
@@ -646,8 +631,8 @@ def display_output(selected_rows,
             x.append(lambda_observed)
             x.append(lambda_observed)
             x.append(None)
-            y.append(min_flux)
-            y.append(max_flux)
+            y.append(actual_min_flux)
+            y.append(actual_max_flux)
             y.append(None)
 
         try:
