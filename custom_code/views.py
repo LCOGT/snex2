@@ -40,13 +40,7 @@ import random
 
 import plotly.graph_objs as go
 from tom_dataproducts.models import ReducedDatum, DataProduct
-from custom_code.templatetags.custom_code_tags import (
-    airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits,
-    lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form,
-    smart_name_list, dash_lightcurve, spectra_plot, test_display_thumbnail, airmass_plot,
-    target_details, observation_summary, submit_lco_observations, custom_upload_dataproduct,
-    image_slideshow, snex2_get_photometry_data, dash_spectra
-)
+from custom_code.templatetags import custom_code_tags
 from tom_observations.templatetags.observation_extras import observing_buttons
 from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
 from tom_targets.templatetags.targets_extras import target_groups
@@ -265,9 +259,9 @@ def targetlist_collapse_view(request):
     user_id = request.GET.get('user_id', None)
     user = User.objects.get(id=user_id)
 
-    lightcurve_plot = lightcurve_collapse(target, user)['plot']
-    spectra_plot = spectra_collapse(target, user)['plot']
-    airmass_plot = airmass_collapse(target)['figure']
+    lightcurve_plot = custom_code_tags.lightcurve_collapse(target, user)['plot']
+    spectra_plot = custom_code_tags.spectra_collapse(target, user)['plot']
+    airmass_plot = custom_code_tags.airmass_collapse(target)['figure']
 
     context = {
         'lightcurve_plot': lightcurve_plot,
@@ -1146,7 +1140,7 @@ def async_spectra_page_view(request):
     target_id = request.GET.get('target_id')
     if target_id:
         target = Target.objects.get(id=target_id)
-        context = dash_spectra_page(RequestContext(request), target)
+        context = custom_code_tags.dash_spectra_page(RequestContext(request), target)
         html = render_to_string(
             template_name='custom_code/dash_spectra_page.html',
             context=context,
@@ -1163,7 +1157,7 @@ def async_scheduling_page_view(request):
     all_html = ''
     for obs_id in obs_ids:
         obs = ObservationRecord.objects.get(id=obs_id)
-        response = scheduling_list_with_form({'request': request}, obs, case='nonpending')
+        response = custom_code_tags.scheduling_list_with_form({'request': request}, obs, case='nonpending')
 
         html = render_to_string(
             template_name='custom_code/scheduling_list_with_form.html',
@@ -1465,7 +1459,7 @@ def load_lightcurve_view(request):
     target = Target.objects.get(id=request.GET.get('target_id'))
     user = User.objects.get(id=request.GET.get('user_id'))
 
-    lightcurve = lightcurve_with_extras(target, user)['plot']
+    lightcurve = custom_code_tags.lightcurve_with_extras(target, user)['plot']
     context = {'success': 'success',
                'lightcurve_plot': lightcurve
     }
@@ -1482,7 +1476,7 @@ def load_dash_lightcurve_view(request):
         target = Target.objects.get(id=target_id)
         # Create a context dict with request, as expected by dash_lightcurve
         context_dict = {'request': request}
-        context = dash_lightcurve(context_dict, target, width, height)
+        context = custom_code_tags.dash_lightcurve(context_dict, target, width, height)
         html = render_to_string(
             template_name='custom_code/dash_lightcurve.html',
             context=context,
@@ -1500,7 +1494,7 @@ def load_spectra_plot_view(request):
         target = Target.objects.get(id=target_id)
         # Create a context dict with request, as expected by spectra_plot
         context_dict = {'request': request}
-        context = spectra_plot(context_dict, target)
+        context = custom_code_tags.spectra_plot(context_dict, target)
         html = render_to_string(
             template_name='custom_code/spectra.html',
             context=context,
@@ -1518,7 +1512,7 @@ def load_thumbnail_view(request):
         target = Target.objects.get(id=target_id)
         # Create a context dict with request, as expected by test_display_thumbnail
         context_dict = {'request': request}
-        context = test_display_thumbnail(context_dict, target)
+        context = custom_code_tags.test_display_thumbnail(context_dict, target)
         html = render_to_string(
             template_name='custom_code/thumbnail.html',
             context=context,
@@ -1536,7 +1530,7 @@ def load_airmass_plot_view(request):
         target = Target.objects.get(id=target_id)
         # Create a context dict with object (not request), as expected by airmass_plot
         context_dict = {'object': target}
-        context = airmass_plot(context_dict)
+        context = custom_code_tags.airmass_plot(context_dict)
         html = render_to_string(
             template_name='custom_code/airmass.html',
             context=context,
@@ -1553,7 +1547,7 @@ def load_details_tab_view(request):
     if target_id:
         target = Target.objects.get(id=target_id)
         context_dict = {'request': request, 'user': request.user}
-        context = target_details(context_dict, target)
+        context = custom_code_tags.target_details(context_dict, target)
         html = render_to_string(
             template_name='custom_code/target_details.html',
             context=context,
@@ -1573,10 +1567,10 @@ def load_observations_tab_view(request):
         
         # Get all the template tag contexts
         observing_buttons_context = observing_buttons(target)
-        previous_obs_context = observation_summary(context_dict, target, 'previous')
-        ongoing_obs_context = observation_summary(context_dict, target, 'ongoing')
-        pending_obs_context = observation_summary(context_dict, target, 'pending')
-        submit_obs_context = submit_lco_observations(target)
+        previous_obs_context = custom_code_tags.observation_summary(context_dict, target, 'previous')
+        ongoing_obs_context = custom_code_tags.observation_summary(context_dict, target, 'ongoing')
+        pending_obs_context = custom_code_tags.observation_summary(context_dict, target, 'pending')
+        submit_obs_context = custom_code_tags.submit_lco_observations(target)
         
         # Combine all contexts
         combined_context = {
@@ -1608,7 +1602,7 @@ def load_manage_data_tab_view(request):
         context_dict = {'request': request, 'user': request.user}
         
         # Get the template tag contexts
-        upload_context = custom_upload_dataproduct(context_dict, target) if request.user.is_authenticated else None
+        upload_context = custom_code_tags.custom_upload_dataproduct(context_dict, target) if request.user.is_authenticated else None
         dataproduct_context = dataproduct_list_for_target(context_dict, target)
         
         # Render the components
@@ -1653,7 +1647,7 @@ def load_images_tab_view(request):
     if target_id:
         target = Target.objects.get(id=target_id)
         context_dict = {'request': request, 'user': request.user}
-        context = image_slideshow(context_dict, target)
+        context = custom_code_tags.image_slideshow(context_dict, target)
         html = render_to_string(
             template_name='custom_code/image_slideshow.html',
             context=context,
@@ -1672,11 +1666,11 @@ def load_photometry_tab_view(request):
         context_dict = {'request': request, 'user': request.user}
         
         # Get photometry data
-        photometry_context = snex2_get_photometry_data(context_dict, target)
+        photometry_context = custom_code_tags.snex2_get_photometry_data(context_dict, target)
         photometry_html = render_to_string('tom_dataproducts/partials/photometry_datalist_for_target.html', photometry_context, request=request)
         
         # Get dash lightcurve
-        lightcurve_context = dash_lightcurve(context_dict, target, 1000, 600)
+        lightcurve_context = custom_code_tags.dash_lightcurve(context_dict, target, 1000, 600)
         lightcurve_html = render_to_string('custom_code/dash_lightcurve.html', lightcurve_context, request=request)
         
         combined_context = {
@@ -1703,7 +1697,7 @@ def load_spectroscopy_tab_view(request):
         context_dict = {'request': request, 'user': request.user}
         
         # Load the overview plot
-        overview_context = dash_spectra(context_dict, target)
+        overview_context = custom_code_tags.dash_spectra(context_dict, target)
         overview_html = render_to_string(
             template_name='custom_code/dash_spectra.html',
             context=overview_context,
@@ -1712,7 +1706,7 @@ def load_spectroscopy_tab_view(request):
         
         # Get the list of spectra metadata without rendering the plots
         # Pass dict with request for compatibility (dash_spectra_page now supports both)
-        details_context = dash_spectra_page(context_dict, target)
+        details_context = custom_code_tags.dash_spectra_page(context_dict, target)
         
         # Build the spectra list metadata for progressive loading
         spectra_metadata = []
@@ -1857,7 +1851,7 @@ def fit_lightcurve_view(request):
     filt = request.GET.get('filter', None)
     days = float(request.GET.get('days', 20))
 
-    fit = lightcurve_fits(target, user, filt, days)
+    fit = custom_code_tags.lightcurve_fits(target, user, filt, days)
     lightcurve_plot = fit['plot']
     fitted_max = fit['max']
     max_mag = fit['mag']
@@ -2116,7 +2110,7 @@ class InterestingTargetsView(ListView):
         active_cadences = DynamicCadence.objects.filter(active=True)
         active_target_ids = [c.observation_group.observation_records.first().target.id for c in active_cadences]
         for target in context['global_interesting_targets']:
-            target.best_name = get_best_name(target)
+            target.best_name = custom_code_tags.get_best_name(target)
             target.classification = Target.objects.get(pk=target.pk).classification
             target.redshift = Target.objects.get(pk=target.pk).redshift
             target.description = Target.objects.get(pk=target.pk).target_description
@@ -2129,7 +2123,7 @@ class InterestingTargetsView(ListView):
 
         context['personal_interesting_targets'] = [q.target for q in InterestedPersons.objects.filter(user=self.request.user)] 
         for target in context['personal_interesting_targets']:
-            target.best_name = get_best_name(target)
+            target.best_name = custom_code_tags.get_best_name(target)
             target.classification = Target.objects.get(pk=target.pk).classification
             target.redshift = Target.objects.get(pk=target.pk).redshift
             target.description = Target.objects.get(pk=target.pk).target_description
@@ -2227,7 +2221,7 @@ class FloydsInboxView(TemplateView):
             current_dict = {}
             t = Target.objects.get(id=targetids[i])
             current_dict['targetid'] = targetids[i]
-            current_dict['targetnames'] = smart_name_list(t)
+            current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
             current_dict['propid'] = propids[i]
             current_dict['dateobs'] = dateobs[i]
             current_dict['path'] = paths[i]
