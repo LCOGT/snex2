@@ -1,0 +1,31 @@
+{% load plotly_dash %}
+{% load bootstrap4 custom_code_tags %}
+
+<tr valign="top" id="spectrum-row-{{ entry.spectrum.id }}">
+  <td width=200>
+    <div class="row">
+      <input type="checkbox" class="spectrum-row" id="spectrum-row-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
+      <label class="form-check-label" for="spectrum-row-{{ entry.spectrum.id }}">Share</label>
+    </div>
+        <div class="row"><b>{{ entry.time }}</b></div>
+    <div class="row">Telescope: {{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</div>
+    <div class="row">Instrument: {{ entry.spec_extras.instrument }}</div>
+    <div class="row">Exposure Time: {{ entry.spec_extras.exptime|floatformat:0 }}s</div>
+    <div class="row">Slit: {{ entry.spec_extras.slit }}"</div>
+    <div class="row">Airmass: {{ entry.spec_extras.airmass|floatformat:2 }}</div>
+    <div class="row">Reduced by: {{ entry.spec_extras.reducer }}</div>
+    {% for comment in entry.spec_extras.comments %}
+    <div class="row">{{ comment }}</div>
+    {% endfor %}
+    <div class="row">
+      <input id="comment-{{ entry.spectrum.id }}" type="text" name="comment" title="Press Enter to submit" placeholder="Add a comment" onkeydown="savecomment(event, {{ entry.spectrum.id }})">
+    </div>
+    <div class="row mt-2">
+      <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title=TNS class="btn  btn-info">Submit TNS Classification</a>
+    </div>
+  </td>
+  <td width=1000>
+    {% plotly_app name="Spectra_Individual" ratio=0.6 initial_arguments=entry.dash_context %}
+  </td>
+</tr>
+
