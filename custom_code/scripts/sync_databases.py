@@ -746,7 +746,7 @@ def update_users(action, db_address=_SNEX2_DB):
             elif action == 'insert':
                 with get_session(db_address=db_address) as db_session:
                     existing_user = (db_session.query(Auth_User).filter(Auth_User.username == user_row.name).one_or_none())
-                    print(existing_user)
+                    logger.info(f'Inserting existing user: {existing_user}')
                     if existing_user:
                         with get_session(db_address=db_address) as db_session:
                             db_session.query(Auth_User).filter(
