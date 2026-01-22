@@ -745,29 +745,63 @@ def update_users(action, db_address=_SNEX2_DB):
 
             elif action == 'insert':
                 with get_session(db_address=db_address) as db_session:
-                    newuser = Auth_User(username=user_row.name, 
-                                        password='crypt$$'+user_row.pw,
-                                        first_name = user_row.firstname,
-                                        last_name = user_row.lastname,
-                                        email = user_row.email,
-                                        is_staff=False,
-                                        is_active=True,
-                                        is_superuser=False,
-                                        date_joined=user_row.datecreated)
-                    db_session.add(newuser)
-                    db_session.flush()
-                    
-                    ### Put the new user in the correct groups
+
+                    user = (
+                        db_session.query(Auth_User)
+                        .filter(Auth_User.username == user_row.name)
+                        .one_or_none()
+                    )
+
+                    if user:
+                        user.password = 'crypt$$' + user_row.pw
+                        user.first_name = user_row.firstname
+                        user.last_name = user_row.lastname
+                        user.email = user_row.email
+                    else:
+                        logger.info(f'Creating new user: {user_row.name}')
+                        user = Auth_User(
+                            username=user_row.name,
+                            password='crypt$$' + user_row.pw,
+                            first_name=user_row.firstname,
+                            last_name=user_row.lastname,
+                            email=user_row.email,
+                            is_staff=False,
+                            is_active=True,
+                            is_superuser=False,
+                            date_joined=user_row.datecreated,
+                        )
+                        db_session.add(user)
+                        db_session.flush()
+                        
                     affiliated_group_idcodes = powers_of_two(user_row.groupidcode)
+
                     for g_name, g_id in snex1_groups.items():
                         if g_id in affiliated_group_idcodes:
-                            snex2_groupid = db_session.query(Auth_Group).filter(Auth_Group.name==g_name).first().id
-                            new_auth_user_group = Auth_User_Group(
-                                    user_id=newuser.id,
-                                    group_id=snex2_groupid)
-                            db_session.add(new_auth_user_group)
+                            snex2_group = (
+                                db_session.query(Auth_Group)
+                                .filter(Auth_Group.name == g_name)
+                                .one()
+                            )
+
+                            exists = (
+                                db_session.query(Auth_User_Group)
+                                .filter(
+                                    Auth_User_Group.user_id == user.id,
+                                    Auth_User_Group.group_id == snex2_group.id,
+                                )
+                                .first()
+                            )
+
+                            if not exists:
+                                db_session.add(
+                                    Auth_User_Group(
+                                        user_id=user.id,
+                                        group_id=snex2_group.id,
+                                    )
+                                )
 
                     db_session.commit()
+
 
             elif action == 'update':
                 old_username = change.locator
