@@ -745,18 +745,33 @@ def update_users(action, db_address=_SNEX2_DB):
 
             elif action == 'insert':
                 with get_session(db_address=db_address) as db_session:
-                    newuser = Auth_User(username=user_row.name, 
-                                        password='crypt$$'+user_row.pw,
-                                        first_name = user_row.firstname,
-                                        last_name = user_row.lastname,
-                                        email = user_row.email,
-                                        is_staff=False,
-                                        is_active=True,
-                                        is_superuser=False,
-                                        date_joined=user_row.datecreated)
-                    db_session.add(newuser)
-                    db_session.flush()
-                    
+                    existing_user = (db_session.query(Auth_User).filter(Auth_User.username == user_row.name).one_or_none())
+                    print(existing_user)
+                    if existing_user:
+                        with get_session(db_address=db_address) as db_session:
+                            db_session.query(Auth_User).filter(
+                                Auth_User.username==old_username
+                            ).update(
+                                {'username': user_row.name,
+                                'password': 'crypt$$'+user_row.pw,
+                                'first_name': user_row.firstname,
+                                'last_name': user_row.lastname,
+                                'email': user_row.email}
+                            )
+                            db_session.commit()
+                    else:
+                        newuser = Auth_User(username=user_row.name, 
+                                            password='crypt$$'+user_row.pw,
+                                            first_name = user_row.firstname,
+                                            last_name = user_row.lastname,
+                                            email = user_row.email,
+                                            is_staff=False,
+                                            is_active=True,
+                                            is_superuser=False,
+                                            date_joined=user_row.datecreated)
+                        db_session.add(newuser)
+                        db_session.flush()
+                        
                     ### Put the new user in the correct groups
                     affiliated_group_idcodes = powers_of_two(user_row.groupidcode)
                     for g_name, g_id in snex1_groups.items():
