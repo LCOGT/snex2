@@ -753,7 +753,6 @@ def update_users(action, db_address=_SNEX2_DB):
                     )
 
                     if user:
-                        logger.info(f'User already exists, updating: {user.username}')
                         user.password = 'crypt$$' + user_row.pw
                         user.first_name = user_row.firstname
                         user.last_name = user_row.lastname
