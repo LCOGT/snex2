@@ -320,7 +320,9 @@ class Command(BaseCommand):
                         # Get the observation portal observation id using this tracknumber 
                         headers = {'Authorization': 'Token {}'.format(os.environ['LCO_APIKEY'])}
                         response = requests.get('https://observe.lco.global/api/requestgroups/{}'.format(tracknumber), headers=headers)
-                        logger.info(f'response: {response}, targetid: {target_id}, tracknumber: {tracknumber}')
+                        logger.info(f'response: {response}, Target: {target_query[0]}, tracknumber: {tracknumber}')
+                        if response.status_code == 503:
+                            logger.info(f'ERROR IN THE REQUEST 503: {response} for target id {target_id}, {target_query[0]}, tracknumber: {tracknumber}, header: {headers}')
                         if not response.json().get('requests'):
                             continue
                         result = response.json()['requests'][0]
