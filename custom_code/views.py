@@ -40,10 +40,7 @@ import random
 
 import plotly.graph_objs as go
 from tom_dataproducts.models import ReducedDatum, DataProduct
-from custom_code.templatetags import custom_code_tags
-from tom_observations.templatetags.observation_extras import observing_buttons
-from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
-from tom_targets.templatetags.targets_extras import target_groups
+from custom_code.templatetags.custom_code_tags import airmass_collapse, lightcurve_collapse, spectra_collapse, lightcurve_fits, lightcurve_with_extras, get_best_name, dash_spectra_page, scheduling_list_with_form, smart_name_list
 from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
 from custom_code.thumbnails import make_thumb
 
@@ -259,9 +256,9 @@ def targetlist_collapse_view(request):
     user_id = request.GET.get('user_id', None)
     user = User.objects.get(id=user_id)
 
-    lightcurve_plot = custom_code_tags.lightcurve_collapse(target, user)['plot']
-    spectra_plot = custom_code_tags.spectra_collapse(target, user)['plot']
-    airmass_plot = custom_code_tags.airmass_collapse(target)['figure']
+    lightcurve_plot = lightcurve_collapse(target, user)['plot']
+    spectra_plot = spectra_collapse(target, user)['plot']
+    airmass_plot = airmass_collapse(target)['figure']
 
     context = {
         'lightcurve_plot': lightcurve_plot,
@@ -1140,7 +1137,7 @@ def async_spectra_page_view(request):
     target_id = request.GET.get('target_id')
     if target_id:
         target = Target.objects.get(id=target_id)
-        context = custom_code_tags.dash_spectra_page(RequestContext(request), target)
+        context = dash_spectra_page(RequestContext(request), target)
         html = render_to_string(
             template_name='custom_code/dash_spectra_page.html',
             context=context,
@@ -1157,7 +1154,7 @@ def async_scheduling_page_view(request):
     all_html = ''
     for obs_id in obs_ids:
         obs = ObservationRecord.objects.get(id=obs_id)
-        response = custom_code_tags.scheduling_list_with_form({'request': request}, obs, case='nonpending')
+        response = scheduling_list_with_form({'request': request}, obs, case='nonpending')
 
         html = render_to_string(
             template_name='custom_code/scheduling_list_with_form.html',
@@ -1459,387 +1456,11 @@ def load_lightcurve_view(request):
     target = Target.objects.get(id=request.GET.get('target_id'))
     user = User.objects.get(id=request.GET.get('user_id'))
 
-    lightcurve = custom_code_tags.lightcurve_with_extras(target, user)['plot']
+    lightcurve = lightcurve_with_extras(target, user)['plot']
     context = {'success': 'success',
                'lightcurve_plot': lightcurve
     }
     return HttpResponse(json.dumps(context), content_type='application/json')
-
-
-def load_dash_lightcurve_view(request):
-    """Lazy-load the dash lightcurve plot for the overview tab"""
-    target_id = request.GET.get('target_id')
-    width = int(request.GET.get('width', 600))
-    height = int(request.GET.get('height', 400))
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        # Create a context dict with request, as expected by dash_lightcurve
-        context_dict = {'request': request}
-        context = custom_code_tags.dash_lightcurve(context_dict, target, width, height)
-        html = render_to_string(
-            template_name='custom_code/dash_lightcurve.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'plot_html': html}, safe=False)
-    return JsonResponse({'plot_html': '<div>Error loading plot</div>'}, safe=False)
-
-
-def load_spectra_plot_view(request):
-    """Lazy-load the spectra plot for the overview tab"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        # Create a context dict with request, as expected by spectra_plot
-        context_dict = {'request': request}
-        context = custom_code_tags.spectra_plot(context_dict, target)
-        html = render_to_string(
-            template_name='custom_code/spectra.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'plot_html': html}, safe=False)
-    return JsonResponse({'plot_html': '<div>Error loading plot</div>'}, safe=False)
-
-
-def load_thumbnail_view(request):
-    """Lazy-load the thumbnail for the overview tab"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        # Create a context dict with request, as expected by test_display_thumbnail
-        context_dict = {'request': request}
-        context = custom_code_tags.test_display_thumbnail(context_dict, target)
-        html = render_to_string(
-            template_name='custom_code/thumbnail.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading thumbnail</div>'}, safe=False)
-
-
-def load_airmass_plot_view(request):
-    """Lazy-load the airmass plot for the overview tab"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        # Create a context dict with object (not request), as expected by airmass_plot
-        context_dict = {'object': target}
-        context = custom_code_tags.airmass_plot(context_dict)
-        html = render_to_string(
-            template_name='custom_code/airmass.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading airmass plot</div>'}, safe=False)
-
-
-def load_details_tab_view(request):
-    """Lazy-load the details tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        context = custom_code_tags.target_details(context_dict, target)
-        html = render_to_string(
-            template_name='custom_code/target_details.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading details</div>'}, safe=False)
-
-
-def load_observations_tab_view(request):
-    """Lazy-load the observations tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        
-        # Get all the template tag contexts
-        observing_buttons_context = observing_buttons(target)
-        previous_obs_context = custom_code_tags.observation_summary(context_dict, target, 'previous')
-        ongoing_obs_context = custom_code_tags.observation_summary(context_dict, target, 'ongoing')
-        pending_obs_context = custom_code_tags.observation_summary(context_dict, target, 'pending')
-        submit_obs_context = custom_code_tags.submit_lco_observations(target)
-        
-        # Combine all contexts
-        combined_context = {
-            'target': target,
-            'object': target,
-            'observing_buttons_html': render_to_string('tom_observations/partials/observing_buttons.html', observing_buttons_context, request=request),
-            'previous_obs_html': render_to_string('custom_code/observation_summary.html', previous_obs_context, request=request),
-            'ongoing_obs_html': render_to_string('custom_code/observation_summary.html', ongoing_obs_context, request=request),
-            'pending_obs_html': render_to_string('custom_code/observation_summary.html', pending_obs_context, request=request),
-            'submit_obs_html': render_to_string('custom_code/submit_lco_observations.html', submit_obs_context, request=request),
-        }
-        
-        # Render the combined template
-        html = render_to_string(
-            template_name='custom_code/observations_tab.html',
-            context=combined_context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading observations</div>'}, safe=False)
-
-
-def load_manage_data_tab_view(request):
-    """Lazy-load the manage data tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        
-        # Get the template tag contexts
-        upload_context = custom_code_tags.custom_upload_dataproduct(context_dict, target) if request.user.is_authenticated else None
-        dataproduct_context = dataproduct_list_for_target(context_dict, target)
-        
-        # Render the components
-        upload_html = render_to_string('custom_code/custom_upload_dataproduct.html', upload_context, request=request) if upload_context else ''
-        dataproduct_html = render_to_string('tom_dataproducts/partials/dataproduct_list_for_target.html', dataproduct_context, request=request)
-        
-        combined_context = {
-            'upload_html': upload_html,
-            'dataproduct_html': dataproduct_html,
-        }
-        
-        html = render_to_string(
-            template_name='custom_code/manage_data_tab.html',
-            context=combined_context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading manage data</div>'}, safe=False)
-
-
-
-def load_observing_runs_tab_view(request):
-    """Lazy-load the observing runs tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context = target_groups(target)
-        html = render_to_string(
-            template_name='tom_targets/partials/target_groups.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading observing runs</div>'}, safe=False)
-
-
-def load_images_tab_view(request):
-    """Lazy-load the images tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        context = custom_code_tags.image_slideshow(context_dict, target)
-        html = render_to_string(
-            template_name='custom_code/image_slideshow.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading images</div>'}, safe=False)
-
-
-def load_photometry_tab_view(request):
-    """Lazy-load the photometry tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        
-        # Get photometry data
-        photometry_context = custom_code_tags.snex2_get_photometry_data(context_dict, target)
-        photometry_html = render_to_string('tom_dataproducts/partials/photometry_datalist_for_target.html', photometry_context, request=request)
-        
-        # Get dash lightcurve
-        lightcurve_context = custom_code_tags.dash_lightcurve(context_dict, target, 1000, 600)
-        lightcurve_html = render_to_string('custom_code/dash_lightcurve.html', lightcurve_context, request=request)
-        
-        combined_context = {
-            'target': target,
-            'photometry_html': photometry_html,
-            'lightcurve_html': lightcurve_html,
-        }
-        
-        html = render_to_string(
-            template_name='custom_code/photometry_tab.html',
-            context=combined_context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading photometry</div>'}, safe=False)
-
-
-def load_spectroscopy_tab_view(request):
-    """Lazy-load the spectroscopy tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        
-        # Load the overview plot
-        overview_context = custom_code_tags.dash_spectra(context_dict, target)
-        overview_html = render_to_string(
-            template_name='custom_code/dash_spectra.html',
-            context=overview_context,
-            request=request
-        )
-        
-        # Get the list of spectra metadata without rendering the plots
-        # Pass dict with request for compatibility (dash_spectra_page now supports both)
-        details_context = custom_code_tags.dash_spectra_page(context_dict, target)
-        
-        # Build the spectra list metadata for progressive loading
-        spectra_metadata = []
-        for entry in details_context.get('plot_list', []):
-            spectra_metadata.append({
-                'spectrum_id': entry['spectrum'].id,
-                'time': entry['time'],
-                'telescope': entry['spec_extras'].get('telescope', 'Unknown'),
-                'instrument': entry['spec_extras'].get('instrument', 'Unknown')
-            })
-        
-        # Render the spectra container with placeholders
-        spectra_container_html = render_to_string(
-            template_name='custom_code/spectra_progressive_container.html',
-            context={
-                'spectra_metadata': spectra_metadata,
-                'target': target,
-                'target_data_share_form': details_context.get('target_data_share_form'),
-                'sharing_destinations': details_context.get('sharing_destinations'),
-                'hermes_sharing': details_context.get('hermes_sharing'),
-            },
-            request=request
-        )
-        
-        # Combine both
-        combined_html = overview_html + spectra_container_html
-        
-        return JsonResponse({'html': combined_html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading spectroscopy</div>'}, safe=False)
-
-
-def load_single_spectrum_view(request):
-    """Lazy-load a single spectrum"""
-    spectrum_id = request.GET.get('spectrum_id')
-    target_id = request.GET.get('target_id')
-    
-    if spectrum_id and target_id:
-        try:
-            target = Target.objects.get(id=target_id)
-            spectrum = ReducedDatum.objects.get(id=spectrum_id)
-            
-            # Get spectrum extras
-            user = User.objects.get(username=request.user)
-            
-            try:
-                z = target.redshift
-            except:
-                z = 0
-            
-            # Get spectrum extras - query directly since user already has target access
-            # (ReducedDatumExtra doesn't need separate object-level permissions)
-            snex_id_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', target=target, 
-                key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
-            ).first()
-            
-            spec_extras = {}
-            if snex_id_row:
-                snex1_id = json.loads(snex_id_row.value)['snex_id']
-                spec_extras_row = ReducedDatumExtra.objects.filter(
-                    data_type='spectroscopy', key='spec_extras', 
-                    value__icontains='"snex_id": {}'.format(snex1_id)
-                ).first()
-                if spec_extras_row:
-                    spec_extras = json.loads(spec_extras_row.value)
-                    if spec_extras.get('instrument', '') == 'en06':
-                        spec_extras['site'] = '(OGG 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    elif spec_extras.get('instrument', '') == 'en12':
-                        spec_extras['site'] = '(COJ 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    
-                    content_type_id = ContentType.objects.get(model='reduceddatum').id
-                    comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                    comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                    spec_extras['comments'] = comment_list
-            elif spectrum.data_product_id:
-                spec_extras_row = ReducedDatumExtra.objects.filter(
-                    data_type='spectroscopy', key='upload_extras',
-                    value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
-                ).first()
-                if spec_extras_row:
-                    spec_extras = json.loads(spec_extras_row.value)
-                    if spec_extras.get('instrument', '') == 'en06':
-                        spec_extras['site'] = '(OGG 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    elif spec_extras.get('instrument', '') == 'en12':
-                        spec_extras['site'] = '(COJ 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    
-                    content_type_id = ContentType.objects.get(model='reduceddatum').id
-                    comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                    comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                    spec_extras['comments'] = comment_list
-            
-            # Calculate min/max flux
-            datum = spectrum.value
-            flux = []
-            if datum.get('photon_flux'):
-                flux = datum.get('photon_flux')
-            elif datum.get('flux'):
-                flux = datum.get('flux')
-            else:
-                for key, value in datum.items():
-                    flux.append(float(value['flux']))
-            
-            max_flux = max(flux) if flux else 0
-            min_flux = min(flux) if flux else 0
-            
-            entry = {
-                'dash_context': {
-                    'spectrum_id': {'value': spectrum.id},
-                    'target_redshift': {'value': z},
-                    'min-flux': {'value': min_flux},
-                    'max-flux': {'value': max_flux}
-                },
-                'time': str(spectrum.timestamp).split('+')[0],
-                'spec_extras': spec_extras,
-                'spectrum': spectrum
-            }
-            
-            html = render_to_string(
-                template_name='custom_code/single_spectrum.html',
-                context={'entry': entry, 'target': target},
-                request=request
-            )
-            
-            return JsonResponse({'html': html}, safe=False)
-        except Exception as e:
-            logger.error(f"Error loading spectrum {spectrum_id}: {e}")
-            return JsonResponse({'html': f'<div>Error loading spectrum: {e}</div>'}, safe=False)
-    
-    return JsonResponse({'html': '<div>Error: Missing parameters</div>'}, safe=False)
 
 
 def fit_lightcurve_view(request):
@@ -1851,7 +1472,7 @@ def fit_lightcurve_view(request):
     filt = request.GET.get('filter', None)
     days = float(request.GET.get('days', 20))
 
-    fit = custom_code_tags.lightcurve_fits(target, user, filt, days)
+    fit = lightcurve_fits(target, user, filt, days)
     lightcurve_plot = fit['plot']
     fitted_max = fit['max']
     max_mag = fit['mag']
@@ -2114,7 +1735,7 @@ class InterestingTargetsView(ListView):
         active_cadences = DynamicCadence.objects.filter(active=True)
         active_target_ids = [c.observation_group.observation_records.first().target.id for c in active_cadences]
         for target in context['global_interesting_targets']:
-            target.best_name = custom_code_tags.get_best_name(target)
+            target.best_name = get_best_name(target)
             target.classification = Target.objects.get(pk=target.pk).classification
             target.redshift = Target.objects.get(pk=target.pk).redshift
             target.description = Target.objects.get(pk=target.pk).target_description
@@ -2127,7 +1748,7 @@ class InterestingTargetsView(ListView):
 
         context['personal_interesting_targets'] = [q.target for q in InterestedPersons.objects.filter(user=self.request.user)] 
         for target in context['personal_interesting_targets']:
-            target.best_name = custom_code_tags.get_best_name(target)
+            target.best_name = get_best_name(target)
             target.classification = Target.objects.get(pk=target.pk).classification
             target.redshift = Target.objects.get(pk=target.pk).redshift
             target.description = Target.objects.get(pk=target.pk).target_description
@@ -2228,7 +1849,7 @@ class FloydsInboxView(TemplateView):
             current_dict = {}
             t = Target.objects.get(id=targetids[i])
             current_dict['targetid'] = targetids[i]
-            current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
+            current_dict['targetnames'] = smart_name_list(t)
             current_dict['propid'] = propids[i]
             current_dict['dateobs'] = dateobs[i]
             current_dict['path'] = paths[i]
@@ -2588,6 +2209,7 @@ class TargetFilteringView(FormView):
 
         # Date-created filter
         if cd.get('apply_date_created_filter'):
+            from datetime import datetime
             min_date = cd.get('date_created_min')    # this is already a date or None
             if min_date:
                 qs = qs.filter(created__date__gte=min_date)
