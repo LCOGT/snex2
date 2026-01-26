@@ -21,6 +21,8 @@ from django.contrib.auth.models import User
 from django_comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
+import logging
+logger = logging.getLogger(__name__)
 
 engine1 = create_engine(settings.SNEX1_DB_URL)
 
@@ -318,6 +320,9 @@ class Command(BaseCommand):
                         # Get the observation portal observation id using this tracknumber 
                         headers = {'Authorization': 'Token {}'.format(os.environ['LCO_APIKEY'])}
                         response = requests.get('https://observe.lco.global/api/requestgroups/{}'.format(tracknumber), headers=headers)
+                        logger.info(f'response: {response}')
+                        logger.info(f'response.json(): {response.json()}')
+                        logger.info(f'response.json().get(requests): {response.json().get("requests")}')
                         if not response.json().get('requests'):
                             continue
                         result = response.json()['requests'][0]
