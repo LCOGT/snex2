@@ -1,7 +1,0 @@
-{{ photometry_html|safe }}
-<div align="center">
-  <u><span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:10pt; color:#ff9900;"><a href="{% url 'custom_code:download-photometry' target.id %}">Download Photometry for this Target</a></span></u><br>
-  <u><span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size: 10pt; cursor: pointer;"><div style="text-decoration: underline;" id="standard-div" onclick="loadStandardTable(); this.onclick=null;">View Standard Info for this Target</div></span></u>
-</div>
-{{ lightcurve_html|safe }}
-

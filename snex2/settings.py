@@ -268,11 +268,6 @@ MEDIA_URL = '/data/'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'filters': {
-        'compact_dash_errors': {
-            '()': 'custom_code.log_filters.CompactDashSessionErrors',
-        }
-    },
     'formatters': {
         'default': {
             '()': LCOGTFormatter
@@ -281,8 +276,7 @@ LOGGING = {
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'default',
-            'filters': ['compact_dash_errors']
+            'formatter': 'default'
         }
     },
     'loggers': {
