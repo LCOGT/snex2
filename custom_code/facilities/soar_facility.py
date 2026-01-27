@@ -254,7 +254,7 @@ class SOARFacility(LCOFacility):
     observation_forms = {
         'IMAGING': SOARImagingObservationForm,
         'Goodman_BLUE_Spectra': SOARSimpleGoodmanSpectroscopyObservationForm,
-        # 'Goodman_RED_Spectra': SOARSimpleGoodmanSpectroscopyObservationForm,
+        'Goodman_RED_Spectra': SOARSimpleGoodmanSpectroscopyObservationForm,
         'SPECTRA_Advanced': SOARSpectroscopyObservationForm,
     }
 
