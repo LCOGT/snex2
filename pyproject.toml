@@ -14,7 +14,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "tomtoolkit>=2.26.2",
+    "tomtoolkit>=2.30.1",
     "astropy>=5",
     "astroquery",
     "requests",

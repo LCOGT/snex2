@@ -1,31 +1,58 @@
-import copy
 import requests
 
-from tom_common.exceptions import ImproperCredentialsException
-from tom_observations.facilities.soar import SOARFacility, SOARSpectroscopyObservationForm
-from tom_observations.facilities.lco import LCOSpectroscopyObservationForm
 from django import forms
-import datetime
-from django.conf import settings
-from crispy_forms.layout import Layout, Div, HTML, Column
-from crispy_forms.bootstrap import PrependedAppendedText, PrependedText, AppendedText
-from tom_targets.models import Target
+from crispy_forms.bootstrap import Tab, Alert
+from crispy_forms.layout import Div
+from django.forms.widgets import HiddenInput
 
-# Determine settings for this module.
-try:
-    LCO_SETTINGS = settings.FACILITIES['LCO']
-except (AttributeError, KeyError):
-    LCO_SETTINGS = {
-        'portal_url': 'https://observe.lco.global',
-        'api_key': '',
-    }
+from tom_observations.facilities.lco import LCOFacility, LCOSettings, SpectralInstrumentConfigLayout
+from tom_observations.facilities.lco import LCOImagingObservationForm, LCOSpectroscopyObservationForm
+from tom_observations.facilities.lco import SpectralConfigurationLayout
+from tom_common.exceptions import ImproperCredentialsException
 
-# Module specific settings.
-PORTAL_URL = LCO_SETTINGS['portal_url']
-TERMINAL_OBSERVING_STATES = ['COMPLETED', 'CANCELED', 'WINDOW_EXPIRED']
 
-# There is currently only one available grating, which is required for spectroscopy.
-#SPECTRAL_GRATING = 'SYZY_400'
+class SOARSettings(LCOSettings):
+
+    instrument_type_help = """
+            <a href="https://noirlab.edu/science/programs/ctio/telescopes/soar-telescope/instruments" target="_blank">
+                More information about SOAR instruments.
+            </a>
+        """
+
+    exposure_time_help = """
+        """
+
+    rotator_mode_help = """
+        """
+
+    rotator_angle_help = """
+        """
+
+    def get_sites(self):
+        return {
+            'Cerro Pachón': {
+                'sitecode': 'sor',
+                'latitude': -30.237892,
+                'longitude': -70.733642,
+                'elevation': 2000
+            }
+        }
+
+    def get_weather_urls(self):
+        return {
+            'code': 'SOAR',
+            'sites': [
+                {
+                    'code': site['sitecode'],
+                    'weather_url': 'https://noirlab.edu/science/observing-noirlab/weather-webcams/'
+                                   'cerro-pachon/environmental-conditions'
+                }
+                for site in self.get_sites().values()]
+        }
+
+    def __init__(self, facility_name='SOAR'):
+        super().__init__(facility_name=facility_name)
+
 
 def make_request(*args, **kwargs):
     response = requests.request(*args, **kwargs)
@@ -35,215 +62,204 @@ def make_request(*args, **kwargs):
     return response
 
 
-class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObservationForm):
-
-    # Auto set name, need to check exp getting submitted correctly
-    #   Use validate endpoint to check, print submission
-    # Field for exp time, exp count, rotator angle
-
-    window = forms.FloatField(initial=3.0,label='',min_value=0.0)
-    ipp_value = forms.FloatField(initial=1.0,label='',min_value=0.5,max_value=2.0)
-    max_airmass = forms.FloatField(initial=1.6,label='',min_value=1.0)
-    min_lunar_distance = forms.IntegerField(min_value=0, label='', initial=20)
-    rotator_angle= forms.FloatField(initial=0.0,label='',min_value=0.0)
-    exposure_count = forms.IntegerField(initial=1,label='',min_value=1)
-    exposure_time = forms.FloatField(min_value=0.1,label='',
-                                     widget=forms.TextInput(attrs={'placeholder': 'Seconds'}))
-    observation_mode= forms.ChoiceField(
-        choices=(('NORMAL', 'Normal'), ('TARGET_OF_OPPORTUNITY', 'Rapid Response')),
-        label='Priority'
-    )
-    delay_start = forms.BooleanField(required=False, label='Delay Start By')
-    delay_amount = forms.FloatField(initial=0.0, min_value=0, label='', required=False)
-
-    # These are required fields in the base LCO form, so I need to include them but will ignore
-    start = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}), required=False, label='')
-    end = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}), required=False, label='')
-    name = forms.CharField(initial='SOAR Observation', required=False, label='')
-
-
-    def filter_choices(self):
-        return set([
-            (f['code'], f['name']) for ins in self._get_instruments().values() for f in
-            ins['optical_elements'].get('slits', [])
-        ])
-
-    def grating_choices(self):
-        return set([
-            (f['code'], f['name']) for ins in self._get_instruments().values() for f in 
-            ins['optical_elements'].get('gratings', [])
-        ])
-
-
-    def clean_start(self):
-        # Took care of this in clean method, so ignore
-        return self.cleaned_data['start']
-
-
-    def clean_end(self):
-        # Took care of this in clean method, so ignore
-        return self.cleaned_data['end']
-
-
-    def clean(self):
-        cleaned_data = super().clean()
-        target = Target.objects.get(pk=cleaned_data['target_id'])
-        cleaned_data['name'] = target.name
-        now = datetime.datetime.utcnow()
-        if cleaned_data.get('delay_start'):
-            cleaned_data['start'] = str(now + datetime.timedelta(days=cleaned_data['delay_amount']))
-            cleaned_data['end'] = str(now + datetime.timedelta(days=cleaned_data['window']+cleaned_data['delay_amount']))
-        else:
-            cleaned_data['start'] = str(now)
-            cleaned_data['end'] = str(now + datetime.timedelta(days=cleaned_data['window']))
-        #cleaned_data['start'] = str(datetime.datetime.utcnow())
-        #cleaned_data['end'] = str(datetime.datetime.utcnow() +
-        #                               datetime.timedelta(days=cleaned_data['window']))
-        return cleaned_data
-
-    
-    def _build_instrument_config(self):
-        instrument_configs = super()._build_instrument_config()
-        
-        instrument_configs[0]['optical_elements'] = {
-            'slit': self.cleaned_data['filter'],
-            'grating': self.cleaned_data['grating']#SPECTRAL_GRATING
-        }
-        instrument_configs[0]['rotator_mode'] = 'SKY'
-        instrument_configs[0]['mode'] = self.cleaned_data['readout']
-
-        return instrument_configs
-
-
+class SOARImagingObservationForm(LCOImagingObservationForm):
     def __init__(self, *args, **kwargs):
+        # Set the facility settings to the SOAR settings
+        if 'facility_settings' not in kwargs:
+            kwargs['facility_settings'] = SOARSettings("SOAR")
         super().__init__(*args, **kwargs)
-        self.fields['proposal'] = forms.ChoiceField(choices=self.proposal_choices(),initial='SOAR2022A-002')
-        self.fields['instrument_type'] = forms.ChoiceField(choices=self.instrument_choices(), initial='SOAR_GHTS_REDCAM', label='')
-        self.fields['grating'] = forms.ChoiceField(choices=self.grating_choices(), initial='400_SYGY', label='')
-        self.fields['filter'] = forms.ChoiceField(choices=list(self.filter_choices()), initial=list(self.filter_choices())[0][0], label='')
-        self.fields['readout'] = forms.ChoiceField(choices=self.mode_choices('readout'), initial='GHTS_R_400m1_2x2', label='')
 
-        for field_name in ['start', 'end', 'name', 'groups']:
-            self.fields[field_name].widget = forms.HiddenInput()
+    def get_instruments(self):
+        instruments = super()._get_instruments()
+        return {
+            code: instrument for (code, instrument) in instruments.items() if (
+                'IMAGE' == instrument['type'] and 'SOAR' in code)
+        }
 
-        self.helper.layout = Layout(
-            self.common_layout,
+    def configuration_type_choices(self):
+        return [('EXPOSE', 'Exposure')]
+
+
+class SOARSpectroscopyObservationForm(LCOSpectroscopyObservationForm):
+    def __init__(self, *args, **kwargs):
+        # Set the facility settings to the SOAR settings
+        if 'facility_settings' not in kwargs:
+            kwargs['facility_settings'] = SOARSettings("SOAR")
+        super().__init__(*args, **kwargs)
+        # Add readout mode field for each instrument configuration since LCO doesn't have this field for spectroscopy
+        for j in range(self.facility_settings.get_setting('max_configurations')):
+            for i in range(self.facility_settings.get_setting('max_instrument_configs')):
+                self.fields[f'c_{j + 1}_ic_{i + 1}_readout_mode'] = forms.ChoiceField(
+                    choices=self.mode_choices('readout'), required=False, label='Readout Mode')
+
+    def get_instruments(self):
+        instruments = super()._get_instruments()
+        return {
+            code: instrument for (code, instrument) in instruments.items() if (
+                'SPECTRA' == instrument['type'] and 'SOAR' in code)
+        }
+
+    def configuration_type_choices(self):
+        return [('SPECTRUM', 'Spectrum'), ('ARC', 'Arc'), ('LAMP_FLAT', 'Lamp Flat')]
+
+    def instrument_config_layout_class(self):
+        return SoarSpectralInstrumentConfigLayout
+
+
+class SOARSimpleGoodmanSpectroscopyObservationForm(SOARSpectroscopyObservationForm):
+    def __init__(self, *args, **kwargs):
+        if 'facility_settings' not in kwargs:
+            kwargs['facility_settings'] = SOARSettings("SOAR")
+        super().__init__(*args, **kwargs)
+        # Set default values for Arcs/Flats
+        self.fields['c_2_configuration_type'].initial = "ARC"
+        self.fields['c_2_ic_1_exposure_time'].initial = 0.5
+        self.fields['c_2_target_override'].widget = HiddenInput()
+        self.fields['c_3_configuration_type'].initial = "LAMP_FLAT"
+        self.fields['c_3_ic_1_exposure_time'].initial = 0.5
+        self.fields['c_3_target_override'].widget = HiddenInput()
+        for j in range(2, 4):
+            for i in range(self.facility_settings.get_setting('max_instrument_configs')):
+                self.fields[f'c_{j}_ic_{i+1}_readout_mode'].widget = HiddenInput()
+                self.fields[f'c_{j}_ic_{i+1}_exposure_time'].help_text = "Exposure time is hard-coded, " \
+                                                                         "and the value is ignored for Flats/Arcs. " \
+                                                                         "Any value will cause the calibration to be " \
+                                                                         "scheduled."
+
+    def form_name(self):
+        if 'BLUE' in self.initial.get('observation_type', ''):
+            return 'BlueCam'
+        return 'RedCam'
+
+    def get_instruments(self):
+        instruments = super()._get_instruments()
+        return {
+            code: instrument for (code, instrument) in instruments.items() if ('SPECTRA' == instrument['type'] and
+                                                                               'SOAR' in code and
+                                                                               self.form_name() in instrument['name'])
+        }
+
+    def _build_instrument_configs(self, instrument_type, configuration_id):
+        ics = super()._build_instrument_configs(instrument_type, configuration_id)
+        # Overwrite the Lamp/Arc readout mode to be the same mode as the initial spectrum
+        if configuration_id != 1:
+            for j, ic in enumerate(ics):
+                ic['mode'] = self._build_instrument_config(instrument_type, 1, j + 1)['mode']
+        return ics
+
+    def configuration_layout_class(self):
+        return SOARSimpleConfigurationLayout
+
+
+class SOARSimpleConfigurationLayout(SpectralConfigurationLayout):
+    def _get_config_tabs(self, oe_groups, num_tabs):
+        tabs = [Tab('Spectrum',
+                    *self._get_config_layout(1, oe_groups),
+                    css_id=f'{self.form_name}_config_{1}'
+                    ),
+                Tab('Arc',
+                    *self._get_config_layout(2, oe_groups),
+                    css_id=f'{self.form_name}_config_{2}'
+                    ),
+                Tab('Lamp Flat',
+                    *self._get_config_layout(3, oe_groups),
+                    css_id=f'{self.form_name}_config_{3}'
+                    )
+                ]
+
+        return tuple(tabs)
+
+    def _get_basic_config_layout(self, instance):
+        return (
+            Alert(
+                content="""Make sure the instrument and readout match the current load-out for SOAR.
+                                    """,
+                css_class='alert-warning'
+            ),
+            Alert(
+                content="""An Arc and a Lamp FLat will be automatically generated for this observation.
+                                    """,
+                css_class='alert-success'
+            ),
             Div(
                 Div(
-                    HTML("<p></p>"),
-                    PrependedAppendedText(
-                        'window','Once in the next', 'days'
-                    ),
-                    Div(
-                        Column('delay_start'),
-                        Column(AppendedText('delay_amount', 'days')),
-                        css_class='form_row'
-                    ),
-                    PrependedText('exposure_time','Exposure Time'),
-                    PrependedText('exposure_count','Exposure Count'),
-                    PrependedText('rotator_angle','Rotator Angle'),
-                    PrependedText('instrument_type','Camera'),
-                    PrependedText('grating', 'Grating'),
-                    PrependedText('filter','Slit Width'),
-                    PrependedText('readout', 'Readout Mode'),
+                    f'c_{instance}_instrument_type',
                     css_class='col'
                 ),
                 Div(
-                    HTML("<p></p>"),
-                    PrependedText('max_airmass', 'Airmass <'),
-                    PrependedText('min_lunar_distance', 'Lunar Distance >'),
-                    PrependedText('ipp_value', 'IPP'),
-                    'proposal',
-                    'observation_mode',
+                    f'c_{instance}_configuration_type',
                     css_class='col'
                 ),
-                css_class='form-row',
+                css_class='form-row'
             ),
-            self.button_layout()
         )
 
 
-class SOARFacility(SOARFacility):
+class SoarSpectralInstrumentConfigLayout(SpectralInstrumentConfigLayout):
+    def _get_ic_layout(self, config_instance, instance, oe_groups):
+        return (
+            Div(
+                Div(
+                    f'c_{config_instance}_ic_{instance}_readout_mode',
+                    css_class='col'
+                ),
+                css_class='form-row'
+            ),
+            Div(
+                Div(
+                    f'c_{config_instance}_ic_{instance}_exposure_time',
+                    css_class='col'
+                ),
+                Div(
+                    f'c_{config_instance}_ic_{instance}_exposure_count',
+                    css_class='col'
+                ),
+                css_class='form-row'
+            ),
+            Div(
+                Div(
+                    f'c_{config_instance}_ic_{instance}_rotator_mode',
+                    css_class='col'
+                ),
+                Div(
+                    f'c_{config_instance}_ic_{instance}_rotator_angle',
+                    css_class='col'
+                ),
+                css_class='form-row'
+            ),
+            *self._get_oe_groups_layout(config_instance, instance, oe_groups)
+        )
 
-    observation_types = [('SPECTRA', 'Goodman Spectrograph RedCam: 1.0" slit'),
-                         ('SPECTRA', 'Goodman Spectrograph BlueCam: 1.0" slit')]
-    observation_forms = {'SPECTRA': SOARObservationForm}
 
-    def get_form(self, observation_type):
-        return SOARObservationForm
+class SOARFacility(LCOFacility):
+    """
+    The ``SOARFacility`` is the interface to the SOAR Telescope. For information regarding SOAR observing and the
+    available parameters, please see https://noirlab.edu/science/observing-noirlab/observing-ctio/observing-soar.
 
-    def add_calibrations(self, observation_payload):
-        _target = observation_payload['requests'][0]['configurations'][0]['target']
-        _constraints = observation_payload['requests'][0]['configurations'][0]['constraints']
-        instrument_type = observation_payload['requests'][0]['configurations'][0]['instrument_type']
+    Please note that SOAR is only available in AEON-mode. It also uses the LCO API key, so to use this module, the
+    LCO dictionary in FACILITIES in `settings.py` will need to be completed.
 
-        if instrument_type == 'SOAR_TRIPLESPEC':
-            observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['optical_elements'].pop('slit', '')
-            observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['optical_elements'].pop('grating', '')
-            slit = ''
-            grating = ''
+    .. code-block:: python
+        :caption: settings.py
 
-        else:
-            slit = observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['optical_elements']['slit']
-            grating = observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['optical_elements']['grating']
-
-        rotator_angle = observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['extra_params']['rotator_angle']
-        readout = observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['mode']
-
-        template_calibration= {
-            "instrument_type": instrument_type,
-            "instrument_configs": [{
-                "exposure_count": 1,
-                "rotator_mode": "SKY",
-                "extra_params": {
-                    "rotator_angle": rotator_angle
-                },
-                'optical_elements': {
-                    'slit': slit,
-                    'grating': grating
-                },
-                'mode': readout,
-
-            }],
-            'acquisition_config': {
-                "mode": "OFF"
+        FACILITIES = {
+            'SOAR': {
+                'portal_url': 'https://observe.lco.global',
+                'api_key': os.getenv('LCO_API_KEY'),
             },
-            'guiding_config': {
-                "mode": "ON",
-            },
-            'target': _target,
-            'constraints': _constraints
         }
 
-        if instrument_type != 'SOAR_TRIPLESPEC':
-            arc = copy.deepcopy(template_calibration)
-            arc["type"] = "ARC"
-            arc["instrument_configs"][0]["exposure_time"] = 0.5
-            observation_payload['requests'][0]['configurations'].append(arc)
+    """
+    name = 'SOAR'
+    observation_forms = {
+        'IMAGING': SOARImagingObservationForm,
+        'Goodman_BLUE_Spectra': SOARSimpleGoodmanSpectroscopyObservationForm,
+        # 'Goodman_RED_Spectra': SOARSimpleGoodmanSpectroscopyObservationForm,
+        'SPECTRA_Advanced': SOARSpectroscopyObservationForm,
+    }
 
-            flat = copy.deepcopy(template_calibration)
-            flat["type"] = "LAMP_FLAT"
-            flat["instrument_configs"][0]["exposure_time"] = 2
-            observation_payload['requests'][0]['configurations'].append(flat)
+    def __init__(self, facility_settings=SOARSettings("SOAR")):
+        super().__init__(facility_settings=facility_settings)
 
-        return observation_payload
-
-    def validate_observation(self, observation_payload):
-        observation_payload = self.add_calibrations(observation_payload)
-        response = make_request(
-            'POST',
-            PORTAL_URL + '/api/requestgroups/validate/',
-            json=observation_payload,
-            headers=self._portal_headers()
-        )
-        return response.json()['errors']
-
-    def submit_observation(self, observation_payload):
-        observation_payload = self.add_calibrations(observation_payload)
-        response = make_request(
-            'POST',
-            PORTAL_URL + '/api/requestgroups/',
-            json=observation_payload,
-            headers=self._portal_headers()
-        )
-        return [r['id'] for r in response.json()['requests']]
+    def get_form(self, observation_type):
+        return self.observation_forms.get(observation_type, SOARImagingObservationForm)
