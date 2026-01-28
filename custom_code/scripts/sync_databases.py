@@ -574,6 +574,9 @@ def update_target(action, db_address=_SNEX2_DB):
                 if action=='update':
                     target = Target.objects.get(pk=target_id)
                     logger.info(f'updating target: {target}')
+                    logger.info(f'did the redshift change? snex1: {t_redshift}, snex2: {target.redshift}')
+                    logger.info(f'did the classification change? snex1: {class_name} (class_name) or {class_id} (class_id), snex2: {target.classification}')
+                    
                     # the following could be the same as the insert action, not sure if necessary to have
                     #   as a separate code block
                     Target.objects.filter(pk=target_id).update(ra=t_ra,
@@ -582,7 +585,9 @@ def update_target(action, db_address=_SNEX2_DB):
                                                                created=t_created,
                                                                type='SIDEREAL',
                                                                epoch=2000,
-                                                               scheme='')
+                                                               scheme='',
+                                                               redshift=t_redshift,
+                                                               classification = class_name)
                     update_permissions(t_groupid, 'change_target', target, snex1_groups)
                     update_permissions(t_groupid, 'delete_target', target, snex1_groups)
                     update_permissions(t_groupid, 'view_target', target, snex1_groups)
