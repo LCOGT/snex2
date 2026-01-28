@@ -2167,7 +2167,8 @@ def target_comment_receiver(sender, **kwargs):
     posted_comment = kwargs['comment']
     comment = posted_comment.comment
     content_type = ContentType.objects.get(id=posted_comment.content_type_id).model
-    if content_type == 'target':
+    logger.info(f'comment content_type: {content_type}, content_type id: {posted_comment.content_type_id}')
+    if content_type == 'snextarget':
         tablename = 'targets'
         target_id = int(posted_comment.object_pk)
         user_id = int(posted_comment.user_id)
