@@ -794,6 +794,7 @@ def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, w
         snex1_userid = 67
  
     existing_comment = db_session.query(Notes).filter(and_(Notes.targetid==targetid, Notes.note==comment, Notes.tablename==tablename, Notes.tableid==snex1_rowid)).first()
+    logger.info(f'existing comment: {existing_comment}')
     if not existing_comment:
         newcomment = Notes(
                 targetid=targetid,
@@ -804,6 +805,8 @@ def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, w
                 userid=snex1_userid,
                 datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
         )
+        logger.info(f'new comment: {newcomment}')
+
         db_session.add(newcomment)
     
     if not wrapped_session:
