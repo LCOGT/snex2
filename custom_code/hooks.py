@@ -814,8 +814,10 @@ def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, w
     
     if not wrapped_session:
         try:
+            logger.info(f'changes committed')
             db_session.commit()
         except:
+            logger.info(f'changes rolled back')
             db_session.rollback()
         finally:
             db_session.close()

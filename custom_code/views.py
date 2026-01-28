@@ -2168,6 +2168,8 @@ def target_comment_receiver(sender, **kwargs):
     comment = posted_comment.comment
     content_type = ContentType.objects.get(id=posted_comment.content_type_id).model
     logger.info(f'new comment that needs to be synced: {comment}')
+    logger.info(f'content_type: {content_type}')
+    logger.info(f'posted_comment: {posted_comment}')
     if content_type == 'target':
         tablename = 'targets'
         target_id = int(posted_comment.object_pk)
