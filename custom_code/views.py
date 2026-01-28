@@ -2172,6 +2172,7 @@ def target_comment_receiver(sender, **kwargs):
         tablename = 'targets'
         target_id = int(posted_comment.object_pk)
         user_id = int(posted_comment.user_id)
+        logger.info(f'why isnt the sync comments running? {run_hook("sync_comment_with_snex1", comment, tablename, user_id, target_id, target_id)}')
         if not settings.DEBUG:
             run_hook('sync_comment_with_snex1', comment, tablename, user_id, target_id, target_id)
 

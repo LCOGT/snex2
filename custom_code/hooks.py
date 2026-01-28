@@ -288,6 +288,8 @@ def targetextra_post_save(target):
         with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
             Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
             Classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
+            logger.info(f'is the snex1 db being called? {Targets}')
+
             targetid = target.id
             if target.classification != '': # Update the classification in the targets table in the SNex 1 db
                 classification = target.classification # Get the new classification
@@ -296,6 +298,7 @@ def targetextra_post_save(target):
                     # Get the corresponding id from the classifications table
                     classificationid = classification_query.id
                     db_session.query(Targets).filter(Targets.id==targetid).update({'classificationid': classificationid}) # Update the classificationid in the targets table
+                    logger.info(f'classification query: {db_session.query(Targets).filter(Targets.id==targetid).update({"classificationid": classificationid})}')
 
             elif target.redshift != '': # Now update the targets table with the redshift info
                 db_session.query(Targets).filter(Targets.id==targetid).update({'redshift': target.redshift})
