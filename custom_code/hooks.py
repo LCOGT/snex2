@@ -770,8 +770,7 @@ def sync_paper_with_snex1(paper):
     
     logger.info('Synced paper {} with SNEx1'.format(paper.id))
 
-
-def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, wrapped_session=None):
+def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, mode='create', wrapped_session=None):
     '''
     Hook to sync an observation sequence submitted through SNEx2 
     to the obsrequests table in the SNEx1 database
@@ -797,7 +796,13 @@ def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, w
         snex1_userid = 67
  
     existing_comment = db_session.query(Notes).filter(and_(Notes.targetid==targetid, Notes.note==comment, Notes.tablename==tablename, Notes.tableid==snex1_rowid)).first()
-    if not existing_comment:
+    logger.info(f'existing comment in {tablename}: {existing_comment}')
+    if existing_comment and mode == 'delete':
+        logger.info(f'deleting existing comment {existing_comment.note}')
+        db_session.delete(existing_comment)
+    
+    if not existing_comment and mode == 'create':
+        logger.info(f'creating new comment {comment}')
         newcomment = Notes(
                 targetid=targetid,
                 note=comment,
