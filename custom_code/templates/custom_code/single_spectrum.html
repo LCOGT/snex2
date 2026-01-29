@@ -18,7 +18,7 @@
     <div class="row comment-row" id="comment-{{ comment.id }}" style="display: flex; align-items: center;">
         <span style="flex: 1; word-break: break-word;">{{ comment.user.username }}: {{ comment.comment }}</span>
         {% if comment.user == user or user.is_staff %}
-          <button type="button" onclick="deleteComment({{ comment.id }})" class="btn btn-danger btn-sm" title="Delete comment"> ✖ </button>
+          <button type="button" onclick="deletecomment({{ comment.id }})" class="btn btn-danger btn-sm" title="Delete comment"> ✖ </button>
         {% endif %}
       </div>
     {% endfor %}
