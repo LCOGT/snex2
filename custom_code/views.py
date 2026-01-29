@@ -13,7 +13,8 @@ from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
 from django.template.context import RequestContext
 from django_comments.models import Comment
-from django_comments.signals import comment_was_posted
+from django_comments.signals import comment_was_posted, comment_was_flagged
+from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
 from tom_targets.models import TargetList, Target, TargetName
@@ -544,6 +545,19 @@ class PaperCreateView(FormView):
         
         return HttpResponseRedirect('/targets/{}/'.format(target.id))
 
+def delete_comment_view(request):
+    if request.method == "POST":
+        comment_id = request.POST.get("comment_id")
+        try:
+            comment = Comment.objects.get(id=comment_id)
+            if comment.user == request.user or request.user.is_staff:
+                comment.delete() # this triggers the receiver that syncs to snex1
+                return JsonResponse({'success': True})
+            else:
+                return JsonResponse({'error': 'Permission denied'}, status=403)
+        except Comment.DoesNotExist:
+            return JsonResponse({'error': 'Comment not found'}, status=404)
+    return JsonResponse({'error': 'Invalid method'}, status=400)
 
 def save_comments(comment, object_id, user, tablename='observationgroup'):
 
@@ -569,7 +583,7 @@ def save_comments(comment, object_id, user, tablename='observationgroup'):
             user_id=user.id
         )
         newcomment.save()
-        return True
+        return newcomment
     except:
         return False
 
@@ -583,7 +597,7 @@ def save_comments_view(request):
     user = User.objects.get(id=user_id)
 
     saved = save_comments(comment, object_id, user, tablename=tablename)
-
+    
     if saved:
         if tablename == 'spec':
             ### Save comment in SNEx1 as well
@@ -594,11 +608,15 @@ def save_comments_view(request):
                 snex1_id = json.loads(snex_id_row.value)['snex_id']
                 run_hook('sync_comment_with_snex1', comment, 'spec', user_id, target_id, snex1_id)
         
-        return HttpResponse(json.dumps({'success': 'Saved'}))
+        return JsonResponse({
+            "success": True,
+            "comment_id": saved.id,
+            "username": user.username,
+            "comment": comment,
+        })
     
     else:
-        return HttpResponse(json.dumps({'failure': 'Failed to save'}))
-
+        return JsonResponse({"success": False})
 
 def cancel_observation(obs):
      
@@ -1782,7 +1800,9 @@ def load_single_spectrum_view(request):
                     content_type_id = ContentType.objects.get(model='reduceddatum').id
                     comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
                     comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                    spec_extras['comments'] = comment_list
+                    spec_extras['comments'] = comments
+
+                    spec_extras['comments_list'] = comment_list
             elif spectrum.data_product_id:
                 spec_extras_row = ReducedDatumExtra.objects.filter(
                     data_type='spectroscopy', key='upload_extras',
@@ -2167,13 +2187,38 @@ def target_comment_receiver(sender, **kwargs):
     posted_comment = kwargs['comment']
     comment = posted_comment.comment
     content_type = ContentType.objects.get(id=posted_comment.content_type_id).model
+    obj_id = int(posted_comment.object_pk)
+    user_id = int(posted_comment.user_id)
     logger.info(f'comment content_type: {content_type}, content_type id: {posted_comment.content_type_id}')
     if content_type == 'snextarget':
         tablename = 'targets'
-        target_id = int(posted_comment.object_pk)
-        user_id = int(posted_comment.user_id)
+        snex1_id = obj_id # that target table id is the same as the targetid
         if not settings.DEBUG:
-            run_hook('sync_comment_with_snex1', comment, tablename, user_id, target_id, target_id)
+            logger.info(f"posted comment {comment} to be created")
+            run_hook('sync_comment_with_snex1', comment, tablename, user_id, obj_id, snex1_id)
+
+@receiver(post_delete, sender=Comment)
+def target_comment_remove(sender, instance, **kwargs):
+    comment = instance.comment
+    content_type = ContentType.objects.get_for_id(instance.content_type_id).model
+    logger.info(f'content type of deleted comment {content_type} content_type id: {instance.content_type_id}')
+    obj_id = int(instance.object_pk)
+    user_id = int(instance.user_id)
+    if content_type == 'snextarget':
+        tablename = 'targets'
+        snex1_id = obj_id
+        user_id = int(instance.user_id)
+        if not settings.DEBUG:
+            logger.info(f"posted comment {comment} to be deleted")
+            run_hook('sync_comment_with_snex1', comment, tablename, user_id, obj_id, snex1_id, mode = 'delete')
+    if content_type == 'reduceddatum':
+        spec = ReducedDatum.objects.get(id=obj_id)
+        target_id = int(spec.target_id)
+        snex_id_row = ReducedDatumExtra.objects.filter(data_type='spectroscopy', key='snex_id', target_id=target_id, value__icontains='"snex2_id": {}'.format(obj_id)).first()
+        if snex_id_row:
+            snex1_id = json.loads(snex_id_row.value)['snex_id']
+            logger.info(f"spec posted comment {comment} to be deleted")
+            run_hook('sync_comment_with_snex1', comment, 'spec', user_id, target_id, snex1_id, mode = 'delete')
 
 
 def change_broker_target_status_view(request):

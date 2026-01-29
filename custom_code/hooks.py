@@ -770,8 +770,49 @@ def sync_paper_with_snex1(paper):
     
     logger.info('Synced paper {} with SNEx1'.format(paper.id))
 
+def delete_comment_on_snex1(comment, tablename, userid, targetid, snex1_rowid, wrapped_session=None):
+    if wrapped_session:
+            db_session = wrapped_session
 
-def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, wrapped_session=None):
+    else:
+        db_session = _return_session(settings.SNEX1_DB_URL)
+        #with _get_session(db_address=_snex1_address) as db_session:
+    Notes = _load_table('notes', db_address=settings.SNEX1_DB_URL)
+    Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
+
+    if userid != 67:
+        try:
+            # Get SNEx1 id corresponding to this user
+            snex2_user = User.objects.get(id=userid)
+            snex1_user = db_session.query(Users).filter(Users.name==snex2_user.username).first()
+            snex1_userid = snex1_user.id
+        except:
+            snex1_userid = 67
+    else:
+        snex1_userid = 67
+    
+    existing_comment = db_session.query(Notes).filter(and_(Notes.targetid==targetid, Notes.note==comment, Notes.tablename==tablename, Notes.tableid==snex1_rowid)).first()
+    if existing_comment:
+        logger.info(f'deleting existing comment {existing_comment}')
+        db_session.delete(existing_comment)
+    
+    if not wrapped_session:
+        try:
+            logger.info(f'deletion committed')
+            db_session.commit()
+        except:
+            logger.info(f'deletion rolled back')
+            db_session.rollback()
+        finally:
+            db_session.close()
+    
+    else:
+        db_session.flush()
+
+    logger.info('deleted comment for table {} from user {}'.format(tablename, userid)) 
+
+
+def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, mode='create', wrapped_session=None):
     '''
     Hook to sync an observation sequence submitted through SNEx2 
     to the obsrequests table in the SNEx1 database
@@ -797,7 +838,13 @@ def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, w
         snex1_userid = 67
  
     existing_comment = db_session.query(Notes).filter(and_(Notes.targetid==targetid, Notes.note==comment, Notes.tablename==tablename, Notes.tableid==snex1_rowid)).first()
-    if not existing_comment:
+    logger.info(f'existing comment in {tablename}: {existing_comment}')
+    if existing_comment and mode == 'delete':
+        logger.info(f'deleting existing comment {existing_comment.note}')
+        db_session.delete(existing_comment)
+    
+    if not existing_comment and mode == 'create':
+        logger.info(f'creating new comment {comment}')
         newcomment = Notes(
                 targetid=targetid,
                 note=comment,
