@@ -13,7 +13,7 @@ from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
 from django.template.context import RequestContext
 from django_comments.models import Comment
-from django_comments.signals import comment_was_posted, comment_was_flagged
+from django_comments.signals import comment_was_posted
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
