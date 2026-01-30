@@ -558,9 +558,9 @@ def update_target(action, db_address=_SNEX2_DB):
             class_id = target_row.classificationid
             if class_id is not None:
                 class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
-                logger.info(f'Slassification has been set: {class_name}')
+                logger.info(f'Classification for {target_id} has been set: {class_name}')
             else:
-                logger.info(f'No classification set yet: {target_row.classificationid}')
+                logger.info(f'No classification for {target_id} set yet: {target_row.classificationid}')
                 class_name = None
 
             ### Get the name of the target
