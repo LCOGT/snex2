@@ -288,6 +288,7 @@ def targetextra_post_save(target):
         with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
             Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
             Classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
+
             targetid = target.id
             if target.classification != '': # Update the classification in the targets table in the SNex 1 db
                 classification = target.classification # Get the new classification
@@ -297,8 +298,10 @@ def targetextra_post_save(target):
                     classificationid = classification_query.id
                     db_session.query(Targets).filter(Targets.id==targetid).update({'classificationid': classificationid}) # Update the classificationid in the targets table
 
-            elif target.redshift != '': # Now update the targets table with the redshift info
+            if target.redshift != '': # Now update the targets table with the redshift info
                 db_session.query(Targets).filter(Targets.id==targetid).update({'redshift': target.redshift})
+                logger.info(f'redshift should be now changed: {db_session.query(Targets).filter(Targets.id==targetid).first().redshift}')
+
             db_session.commit()
     logger.info(f'Classification and Redshift target post save hook: {target}')
 
@@ -804,12 +807,15 @@ def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, w
                 userid=snex1_userid,
                 datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
         )
+        
         db_session.add(newcomment)
     
     if not wrapped_session:
         try:
+            logger.info(f'changes committed')
             db_session.commit()
         except:
+            logger.info(f'changes rolled back')
             db_session.rollback()
         finally:
             db_session.close()

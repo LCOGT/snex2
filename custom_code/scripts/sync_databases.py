@@ -558,7 +558,10 @@ def update_target(action, db_address=_SNEX2_DB):
             class_id = target_row.classificationid
             if class_id is not None:
                 class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
-                
+                logger.info(f'Slassification has been set: {class_name}')
+            else:
+                logger.info(f'No classification set yet: {target_row.classificationid}')
+                class_name = None
 
             ### Get the name of the target
             with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
@@ -573,7 +576,7 @@ def update_target(action, db_address=_SNEX2_DB):
             with get_session(db_address=db_address) as db_session:
                 if action=='update':
                     target = Target.objects.get(pk=target_id)
-                    logger.info(f'updating target: {target}')
+
                     # the following could be the same as the insert action, not sure if necessary to have
                     #   as a separate code block
                     Target.objects.filter(pk=target_id).update(ra=t_ra,
@@ -582,7 +585,9 @@ def update_target(action, db_address=_SNEX2_DB):
                                                                created=t_created,
                                                                type='SIDEREAL',
                                                                epoch=2000,
-                                                               scheme='')
+                                                               scheme='',
+                                                               redshift=t_redshift,
+                                                               classification = class_name)
                     update_permissions(t_groupid, 'change_target', target, snex1_groups)
                     update_permissions(t_groupid, 'delete_target', target, snex1_groups)
                     update_permissions(t_groupid, 'view_target', target, snex1_groups)
