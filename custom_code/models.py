@@ -9,6 +9,12 @@ STATUS_CHOICES = (
     ('published', 'Published')
 )
 
+class SNEx1PasswordSync(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    snex1_encrypted_pw = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class TNSTarget(models.Model):
     
     name = models.CharField(

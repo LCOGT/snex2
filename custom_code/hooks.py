@@ -1,6 +1,5 @@
 import os
 import requests
-import logging
 from astropy.time import Time, TimezoneInfo
 from tom_dataproducts.models import ReducedDatum
 import json
@@ -20,6 +19,7 @@ from sqlalchemy.orm import sessionmaker, aliased
 from sqlalchemy.ext.automap import automap_base
 from contextlib import contextmanager
 from collections import OrderedDict
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -914,7 +914,7 @@ def get_standards_from_snex1(target_id):
     return [dict(r._mapping) for r in standard_info]
 
 
-def sync_users_with_snex1(user, created=False, old_username=''):
+def sync_users_with_snex1(user, created=False, old_username='', snex1_pw = ''):
     """
     Sync a new or updated user with SNEx1
     
@@ -937,11 +937,12 @@ def sync_users_with_snex1(user, created=False, old_username=''):
         groupidcode = 0
         for group in groups:
             groupidcode += int(db_session.query(Groups).filter(Groups.name==group.name).first().idcode)
-
         if created:
+            logger.info(f'Password snex1 {snex1_pw}')
+
             newuser = Users(
                 name=user.username,
-                pw=user.password, ### Hash?
+                pw=snex1_pw, # same function that snex1 uses
                 groupidcode=groupidcode,
                 firstname=user.first_name,
                 lastname=user.last_name,

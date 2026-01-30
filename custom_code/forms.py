@@ -5,7 +5,7 @@ from tom_observations.widgets import FilterField
 from tom_dataproducts.models import DataProduct
 from guardian.shortcuts import assign_perm, get_groups_with_perms, remove_perm
 from django import forms
-from custom_code.models import ScienceTags, TargetTags, Papers
+from custom_code.models import ScienceTags, TargetTags, Papers, SNEx1PasswordSync
 from django.conf import settings
 from django.db.models.functions import Lower
 from django.core.exceptions import ValidationError
@@ -20,6 +20,9 @@ from django.db import transaction
 from crispy_forms.helper import FormHelper
 
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CustomTargetCreateForm(SiderealTargetCreateForm):
 
@@ -72,7 +75,25 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
                 )
 
         return instance
-    
+
+import random
+import crypt
+def encrypt_pw(pw=None):
+    if not pw:
+        return None
+
+    chars = 'abcdefghijklmnopqrstuvwxyz' \
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ' \
+            '0123456789'
+
+    salt = ''
+    for i in range(2):
+        salt += random.choice(chars)
+
+    encpw = crypt.crypt(pw, salt)
+
+    return encpw
+
 class SNEx2UserCreationForm(UserCreationForm):
     """
     Form used for creation of new users and update of existing users.
@@ -98,10 +119,16 @@ class SNEx2UserCreationForm(UserCreationForm):
             # Saving the MaterialRequisition first
             user = super(forms.ModelForm, self).save(commit=False)
 
-            # Because this form is used for both create and update user, and the user can be updated without modifying
-            # the password, we check if the password field has been populated in order to set a new one.
-            if self.cleaned_data['password1']:
-                user.set_password(self.cleaned_data["password1"])
+            pw = self.cleaned_data['password1']
+            logger.info(f'input password {pw}')
+            if pw:
+                user.set_password(pw)
+                snex1_pw = encrypt_pw(pw)
+                logger.info(f'snex1 password {snex1_pw}')
+                SNEx1PasswordSync.objects.update_or_create(
+                    user=user, 
+                    defaults={'snex1_encrypted_pw': snex1_pw}
+                )
             if commit:
                 # Saving the inline formsets
                 user.save()
@@ -111,9 +138,11 @@ class SNEx2UserCreationForm(UserCreationForm):
 
     # Also needs to be overridden in case any clean method are implemented
     def clean(self):
-        super().clean()
-
-        return self.cleaned_data
+        cleaned_data = super().clean()
+        logger.info(f"Form Raw Data: {self.data.get('password1')}")
+        logger.info(f"Form Cleaned Data keys: {cleaned_data.keys()}")
+    
+        return cleaned_data
 
     # is_valid sets the cleaned_data attribute so we need to override that too
     def is_valid(self):

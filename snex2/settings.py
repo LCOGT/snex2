@@ -508,17 +508,19 @@ TOM_REGISTRATION = {
 }
 
 MANAGERS = [
-    ('SNEx Secure', 'sne@lco.global')
+    ('Admin', 'mandrews@lco.global')
+    # ('SNEx Secure', 'sne@lco.global')
 ]
 
-MANAGERS = [("SNe", "sne@lco.global")]
+# MANAGERS = [("SNe", "sne@lco.global")]
 EMAIL_SUBJECT_PREFIX = f'[{TOM_NAME}]'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
-EMAIL_HOST_USER = 'snex@lco.global'
-EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
+EMAIL_HOST_USER = 'mandrews@lco.global'#snex@lco.global'
+EMAIL_HOST_PASSWORD = 'aqht xnbg feee ezck'#str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000

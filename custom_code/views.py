@@ -17,7 +17,7 @@ from django_comments.signals import comment_was_posted
 from django.dispatch import receiver
 
 from tom_targets.models import TargetList, Target, TargetName
-from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
+from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget, SNEx1PasswordSync
 from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
 from custom_code.forms import SNEx2UserCreationForm
 from guardian.mixins import PermissionListMixin
@@ -64,7 +64,7 @@ from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
 from tom_observations.facilities.lco import LCOSettings
 from tom_observations.views import ObservationCreateView, ObservationListView
-from tom_registration.registration_flows.approval_required.views import UserApprovalView
+from tom_registration.registration_flows.approval_required.views import UserApprovalView, ApprovalRegistrationView
 import base64
 import requests
 import django_filters
@@ -345,7 +345,10 @@ class CustomTargetCreateView(TargetCreateView):
             'groups': Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
             **dict(self.request.GET.items())
         }
-    
+
+
+class SNEx2RegisterView(ApprovalRegistrationView):
+    form_class = SNEx2UserCreationForm
 
 class CustomUserUpdateView(UserUpdateView):
 
@@ -376,17 +379,29 @@ class CustomUserUpdateView(UserUpdateView):
 
     def form_valid(self, form):
         old_username = self.get_object().username
+        plain_password = form.cleaned_data.get('password1') 
+        logger.info(f'plain pw from cleaned_data: {plain_password}')
+        plain_password = self.request.POST.get('password1')
+        logger.info(f'plain pw from request: {plain_password}')
         super().form_valid(form)
-        run_hook('sync_users_with_snex1', self.get_object(), False, old_username)
+        # run_hook('sync_users_with_snex1', self.get_object(), False, old_username, plain_password)
         return redirect(self.get_success_url())
 
 
 class SNEx2UserApprovalView(UserApprovalView):
 
     def form_valid(self, form):
-        response = super().form_valid(form)
-        run_hook("sync_users_with_snex1", self.get_object(), True)
+        plain_password = form.cleaned_data.get('password1') 
 
+        response = super().form_valid(form)
+        user = self.get_object()
+        sync_record = SNEx1PasswordSync.objects.filter(user=user).first()
+        snex1_pw = sync_record.snex1_encrypted_pw 
+        run_hook("sync_users_with_snex1", self.get_object(), True, snex1_pw=snex1_pw)
+        
+        if sync_record:
+            sync_record.delete()
+        
         return response
 
 
