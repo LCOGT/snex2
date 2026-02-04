@@ -20,7 +20,6 @@ from django.dispatch import receiver
 from tom_targets.models import TargetList, Target, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
 from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
-from custom_code.forms import SNEx2UserCreationForm
 from guardian.mixins import PermissionListMixin
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
@@ -29,6 +28,8 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib import messages
 from django.conf import settings
 from django.db.models.fields.json import KeyTextTransform
+from django.contrib.auth.signals import user_logged_in
+import crypt
 
 from astropy.coordinates import SkyCoord
 from astropy import units as u
@@ -346,50 +347,39 @@ class CustomTargetCreateView(TargetCreateView):
             'groups': Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
             **dict(self.request.GET.items())
         }
-    
 
-class CustomUserUpdateView(UserUpdateView):
+def encrypt_pw(pw=None):
+    if not pw:
+        return None
 
-    form_class = SNEx2UserCreationForm
+    chars = 'abcdefghijklmnopqrstuvwxyz' \
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ' \
+            '0123456789'
 
-    def get_success_url(self):
-        """
-        Returns the redirect URL for a successful update. If the current user is a superuser, returns the URL for the
-        user list. Otherwise, returns the URL for updating the current user.
+    salt = ''
+    for i in range(2):
+        salt += random.choice(chars)
 
-        :returns: URL for user list or update user
-        :rtype: str
-        """
-        if self.request.user.is_superuser:
-            return reverse_lazy('user-list')
-        else:
-            return reverse_lazy('custom_code:custom-user-update', kwargs={'pk': self.request.user.id})
+    encpw = crypt.crypt(pw, salt)
 
-    def dispatch(self, *args, **kwargs):
-        """
-        Directs the class-based view to the correct method for the HTTP request method. Ensures that non-superusers
-        are not incorrectly updating the profiles of other users.
-        """
-        if not self.request.user.is_superuser and self.request.user.id != self.kwargs['pk']:
-            return redirect('custom_code:custom-user-update', self.request.user.id)
-        else:
-            return super().dispatch(*args, **kwargs)
+    return encpw
 
-    def form_valid(self, form):
-        old_username = self.get_object().username
-        super().form_valid(form)
-        run_hook('sync_users_with_snex1', self.get_object(), False, old_username)
-        return redirect(self.get_success_url())
+@receiver(user_logged_in)
+def snex1_pw_sync(sender, request, user, **kwargs):
+    logger.info(f"Receiver called, User {user.username} has logged in. request: {request}")
+    password = request.POST.get("password")
+    logger.info(f"password: {password}")
+    snex1_pw = encrypt_pw(password)
+    logger.info(f'snex1pw: {snex1_pw}')
+    run_hook('sync_users_with_snex1', user, snex1_pw = snex1_pw)
 
-
-class SNEx2UserApprovalView(UserApprovalView):
-
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        run_hook("sync_users_with_snex1", self.get_object(), True)
-
-        return response
-
+@receiver(post_delete, sender=User)
+def user_account_remove(sender, instance, **kwargs):
+    logger.info(f'user account deleted {instance.username}')
+    logger.info(f'what is instance? {instance}')
+    logger.info(f'type instance? {type(instance)}')
+    logger.info(f'keys for instance? {dir(instance)}')
+    run_hook('sync_users_with_snex1', instance, delete = True)
 
 class CustomDataProductUploadView(DataProductUploadView):
 
