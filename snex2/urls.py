@@ -71,6 +71,7 @@ urlpatterns = [
     path('load-spectra-page/', async_spectra_page_view, name='load-spectra-page'),
     path('load-upcoming-reminders/', async_scheduling_page_view, name='load-upcoming-reminders'),
     path('save-comment/', save_comments_view, name='save-comment'),
+    path('delete-comment/', delete_comment_view, name='delete-comment'),
     path('sync-targetextra/', sync_targetextra_view, name='sync_targetextra'),
     path('scheduling/<str:key>/', ObservationListExtrasView.as_view(), name='observation-list'),
     path('alerts/broker-targets/', BrokerTargetView.as_view(), name='broker-targets'),
