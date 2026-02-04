@@ -422,7 +422,7 @@ class SNEx2UserApprovalView(UserApprovalView):
         response = super().form_valid(form)
         user = self.get_object()
         sync_record = SNEx1PasswordSync.objects.filter(user=user).first()
-        run_hook("sync_users_with_snex1", self.get_object(), True, snex1_pw=snex1_pw)
+        # run_hook("sync_users_with_snex1", self.get_object(), True, snex1_pw=plain_password)
         
         if sync_record:
             sync_record.delete()
