@@ -381,8 +381,7 @@ def user_account_remove(sender, instance, **kwargs):
     logger.info(f'what is instance? {instance}')
     logger.info(f'type instance? {type(instance)}')
     logger.info(f'keys for instance? {dir(instance)}')
-    
-    # run_hook('sync_users_with_snex1', user, delete = True)
+    run_hook('sync_users_with_snex1', instance, delete = True)
 
 class CustomDataProductUploadView(DataProductUploadView):
 
