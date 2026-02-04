@@ -20,7 +20,7 @@ from django.dispatch import receiver
 from tom_targets.models import TargetList, Target, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget, SNEx1PasswordSync
 from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
-from custom_code.forms import SNEx2UserCreationForm
+# from custom_code.forms import SNEx2UserCreationForm
 from guardian.mixins import PermissionListMixin
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
@@ -375,61 +375,14 @@ def snex1_pw_sync(sender, request, user, **kwargs):
     logger.info(f'snex1pw: {snex1_pw}')
     run_hook('sync_users_with_snex1', user, snex1_pw = snex1_pw)
 
-
-class SNEx2RegisterView(ApprovalRegistrationView):
-    form_class = SNEx2UserCreationForm
-
-class CustomUserUpdateView(UserUpdateView):
-
-    form_class = SNEx2UserCreationForm
-
-    def get_success_url(self):
-        """
-        Returns the redirect URL for a successful update. If the current user is a superuser, returns the URL for the
-        user list. Otherwise, returns the URL for updating the current user.
-
-        :returns: URL for user list or update user
-        :rtype: str
-        """
-        if self.request.user.is_superuser:
-            return reverse_lazy('user-list')
-        else:
-            return reverse_lazy('custom_code:custom-user-update', kwargs={'pk': self.request.user.id})
-
-    def dispatch(self, *args, **kwargs):
-        """
-        Directs the class-based view to the correct method for the HTTP request method. Ensures that non-superusers
-        are not incorrectly updating the profiles of other users.
-        """
-        if not self.request.user.is_superuser and self.request.user.id != self.kwargs['pk']:
-            return redirect('custom_code:custom-user-update', self.request.user.id)
-        else:
-            return super().dispatch(*args, **kwargs)
+@receiver(post_delete, sender=User)
+def user_account_remove(sender, instance, **kwargs):
+    logger.info(f'user account deleted {instance.username}')
+    logger.info(f'what is instance? {instance}')
+    logger.info(f'type instance? {type(instance)}')
+    logger.info(f'keys for instance? {dir(instance)}')
     
-    def form_valid(self, form):
-        old_username = self.get_object().username
-        plain_password = form.cleaned_data.get('password1') 
-        plain_password = self.request.POST.get('password1')
-        super().form_valid(form)
-        # run_hook('sync_users_with_snex1', self.get_object(), False, plain_password)
-        return redirect(self.get_success_url())
-
-
-class SNEx2UserApprovalView(UserApprovalView):
-
-    def form_valid(self, form):
-        plain_password = form.cleaned_data.get('password1') 
-
-        response = super().form_valid(form)
-        user = self.get_object()
-        sync_record = SNEx1PasswordSync.objects.filter(user=user).first()
-        # run_hook("sync_users_with_snex1", self.get_object(), True, snex1_pw=plain_password)
-        
-        if sync_record:
-            sync_record.delete()
-        
-        return response
-
+    # run_hook('sync_users_with_snex1', user, delete = True)
 
 class CustomDataProductUploadView(DataProductUploadView):
 

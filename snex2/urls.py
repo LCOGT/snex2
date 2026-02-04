@@ -19,6 +19,7 @@ from django.conf import settings
 from django.urls import include
 from custom_code.views import *
 from custom_code.api_views import CustomDataProductViewSet, CustomObservationRecordViewSet
+from tom_registration.registration_flows.approval_required.views import UserApprovalView
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
@@ -82,7 +83,7 @@ urlpatterns = [
     path('floyds-inbox/', FloydsInboxView.as_view(), name='floyds-inbox'),
     path('nonlocalizedevents/sequence/<int:id>/obs/', EventSequenceGalaxiesTripletView.as_view(), name='nonlocalizedevents-sequence-triplets'),
     path('nonlocalizedevents/galaxies/<int:id>/obs/', GWFollowupGalaxyTripletView.as_view(), name='nonlocalizedevents-galaxies-triplets'),
-    path('snex2/accounts/approve/<int:pk>/', SNEx2UserApprovalView.as_view(), name="snex2-approve-user"),
+    # path('snex2/accounts/approve/<int:pk>/', UserApprovalView.as_view(), name="snex2-approve-user"),
     path('snex2/', include('custom_code.urls')),
     path('nonlocalizedevents/', include('tom_nonlocalizedevents.urls', namespace='nonlocalizedevents')),
     path('django_plotly_dash/', include('django_plotly_dash.urls')),
