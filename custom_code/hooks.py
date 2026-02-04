@@ -913,58 +913,53 @@ def get_standards_from_snex1(target_id):
 
     return [dict(r._mapping) for r in standard_info]
 
-
-def sync_users_with_snex1(user, created=False, old_username='', snex1_pw = ''):
+def sync_users_with_snex1(user, delete=False, snex1_pw=''):
     """
     Sync a new or updated user with SNEx1
     
     Parameters
     ----------
     user: User database object
-    created: boolean, True if this user was just created
-    old_username: str, to track the old username of the user prior to update
+    delete: boolean, True if the user was just deleted
+    snex1_pw: str, to pass the snex1 password to supernova db
     """
-
     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-
         Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
         Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
 
-        # Get all groups this user belongs to
-        groups = user.groups.all()
+        group_names = [g.name for g in user.groups.all()]
+        snex1_groups = db_session.query(Groups).filter(Groups.name.in_(group_names)).all()
+        
+        groupidcode = sum(int(g.idcode) for g in snex1_groups)
 
-        # Get the idcodes from the groups in the group_list
-        groupidcode = 0
-        for group in groups:
-            groupidcode += int(db_session.query(Groups).filter(Groups.name==group.name).first().idcode)
-        if created:
-            logger.info(f'Password snex1 {snex1_pw}')
-
-            newuser = Users(
-                name=user.username,
-                pw=snex1_pw, # same function that snex1 uses
-                groupidcode=groupidcode,
-                firstname=user.first_name,
-                lastname=user.last_name,
-                email=user.email,
-                datecreated=user.date_joined
-            )
-            db_session.add(newuser)
-            db_session.commit()
-
+        if delete:
+            db_session.query(Users).filter(Users.name == user.username).delete()
+            logger.info(f'User {user.username} deleted from SNEx1')
+        
         else:
-            db_session.query(Users).filter(
-                Users.name==old_username
-            ).update(
-                {'name': user.username,
-                # 'pw': 'crypt$$'+user.password,
-                'firstname': user.first_name,
-                'lastname': user.last_name,
-                'email': user.email}
-            )
-            db_session.commit()
+            existing_user = db_session.query(Users).filter(Users.name == user.username).first()
+            
+            if existing_user:
+                existing_user.pw = snex1_pw
+                existing_user.firstname = user.first_name
+                existing_user.lastname = user.last_name
+                existing_user.email = user.email
+                existing_user.groupidcode = groupidcode
+                logger.info(f'User {user.username} updated in SNEx1')
+            else:
+                new_user = Users(
+                    name=user.username,
+                    pw=snex1_pw,
+                    groupidcode=groupidcode,
+                    firstname=user.first_name,
+                    lastname=user.last_name,
+                    email=user.email,
+                    datecreated=user.date_joined
+                )
+                db_session.add(new_user)
+                logger.info(f'User {user.username} created in SNEx1')
 
-    logger.info('Synced user {} with SNEx1'.format(user.username)) 
+        db_session.commit()
 
 def download_test_image_from_archive():
     """

@@ -345,6 +345,34 @@ class CustomTargetCreateView(TargetCreateView):
             'groups': Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
             **dict(self.request.GET.items())
         }
+    
+from django.contrib.auth.signals import user_logged_in, user_logged_out
+import crypt
+
+def encrypt_pw(pw=None):
+    if not pw:
+        return None
+
+    chars = 'abcdefghijklmnopqrstuvwxyz' \
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ' \
+            '0123456789'
+
+    salt = ''
+    for i in range(2):
+        salt += random.choice(chars)
+
+    encpw = crypt.crypt(pw, salt)
+
+    return encpw
+
+@receiver(user_logged_in)
+def snex1_pw_sync(sender, request, user, **kwargs):
+    logger.info(f"Receiver called, User {user.username} has logged in. request: {request}")
+    password = request.POST.get("password")
+    logger.info(f"password: {password}")
+    snex1_pw = encrypt_pw(password)
+    logger.info(f'snex1pw: {snex1_pw}')
+    run_hook('sync_users_with_snex1', user, snex1_pw = snex1_pw)
 
 
 class SNEx2RegisterView(ApprovalRegistrationView):
@@ -376,15 +404,13 @@ class CustomUserUpdateView(UserUpdateView):
             return redirect('custom_code:custom-user-update', self.request.user.id)
         else:
             return super().dispatch(*args, **kwargs)
-
+    
     def form_valid(self, form):
         old_username = self.get_object().username
         plain_password = form.cleaned_data.get('password1') 
-        logger.info(f'plain pw from cleaned_data: {plain_password}')
         plain_password = self.request.POST.get('password1')
-        logger.info(f'plain pw from request: {plain_password}')
         super().form_valid(form)
-        # run_hook('sync_users_with_snex1', self.get_object(), False, old_username, plain_password)
+        # run_hook('sync_users_with_snex1', self.get_object(), False, plain_password)
         return redirect(self.get_success_url())
 
 
@@ -396,7 +422,6 @@ class SNEx2UserApprovalView(UserApprovalView):
         response = super().form_valid(form)
         user = self.get_object()
         sync_record = SNEx1PasswordSync.objects.filter(user=user).first()
-        snex1_pw = sync_record.snex1_encrypted_pw 
         run_hook("sync_users_with_snex1", self.get_object(), True, snex1_pw=snex1_pw)
         
         if sync_record:
