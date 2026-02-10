@@ -6,6 +6,9 @@ from tom_observations.cadences.resume_cadence_after_failure import ResumeCadence
 from django.conf import settings
 from urllib.parse import urlencode
 from dateutil.parser import parse
+from tom_observations.facility import get_service_class
+import requests
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +21,7 @@ class SnexResumeCadenceAfterFailureStrategy(ResumeCadenceAfterFailureStrategy):
 
         # Make a call to the facility to get the current status of the observation
         facility = get_service_class(last_obs.facility)()
+        logger.warning(f'observationid for last observation: {last_obs.observation_id}')
         facility.update_observation_status(last_obs.observation_id)  # Updates the DB record
         last_obs.refresh_from_db()  # Gets the record updates
 
@@ -47,6 +51,7 @@ class SnexResumeCadenceAfterFailureStrategy(ResumeCadenceAfterFailureStrategy):
         form = facility.get_form(obs_type)(observation_payload)
         if form.is_valid():
             observation_ids = facility.submit_observation(form.observation_payload())
+            logger.info(f'observation ids: {observation_ids}')
         else:
             logger.error(msg=f'Unable to submit next cadenced observation: {form.errors}')
             raise Exception(f'Unable to submit next cadenced observation: {form.errors}')
@@ -96,7 +101,7 @@ class SnexResumeCadenceAfterFailureStrategy(ResumeCadenceAfterFailureStrategy):
                 requestgroup_id = int(requestgroups['results'][0]['id'])
 
             # Use a hook to sync this observation request with SNEx1
-            run_hook('sync_observation_with_snex1', snex_id, params, requestgroup_id)
+            # run_hook('sync_observation_with_snex1', snex_id, params, requestgroup_id)
 
         return new_observations 
 

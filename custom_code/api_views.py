@@ -131,7 +131,7 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
         Endpoint for submitting a new observation with syncing with SNEx1.
         """
         with transaction.atomic():
-            db_session = _return_session()
+            # db_session = _return_session()
             # Initialize the observation form, validate the form data, and submit to the observatory
             observation_ids = []
             try:
@@ -198,6 +198,8 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
 
             # Create the serializer data used to create the observation records
             serializer_data = []
+            logger.info(f'in api_views, observation ids?: {observation_ids}')
+
             for obsr_id in observation_ids:
                 obsr_data = {  # TODO: at present, submitted fields have to be added to this dict manually, maybe fix?
                     'name': self.request.data.get('name', ''),
@@ -231,12 +233,13 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                     group_names.append(Group.objects.get(pk=group['id']).name)
 
             ## Run the hook to add the sequence to SNEx1
-            snex_id = run_hook(
-                    'sync_sequence_with_snex1',
-                    observation_form.serialize_parameters(),
-                    group_names,
-                    userid=int(self.request.data.get('user_id', '3')),
-                    wrapped_session=db_session)
+            snex_id = str(random.randint(0, 99999))
+            # snex_id = run_hook(
+            #         'sync_sequence_with_snex1',
+            #         observation_form.serialize_parameters(),
+            #         group_names,
+            #         userid=int(self.request.data.get('user_id', '3')),
+            #         wrapped_session=db_session)
 
             # Change the name of the observation group, if one was created
             if len(observation_ids) > 1 or cadence:
@@ -262,13 +265,13 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 if requestgroups['count'] == 1:
                     requestgroup_id = int(requestgroups['results'][0]['id'])
 
-                run_hook('sync_observation_with_snex1', 
-                         snex_id, 
-                         record.parameters, 
-                         requestgroup_id, 
-                         wrapped_session=db_session)
+                # run_hook('sync_observation_with_snex1', 
+                #          snex_id, 
+                #          record.parameters, 
+                #          requestgroup_id, 
+                #          wrapped_session=db_session)
 
-            db_session.commit()
+            # db_session.commit()
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)

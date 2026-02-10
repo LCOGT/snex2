@@ -6,6 +6,8 @@ from tom_observations.cadences.retry_failed_observations import RetryFailedObser
 from django.conf import settings
 from urllib.parse import urlencode
 from dateutil.parser import parse
+from tom_observations.facility import get_service_class
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,9 @@ class SnexRetryFailedObservationsStrategy(RetryFailedObservationsStrategy):
             obs_type = obs.parameters.get('observation_type', None)
             form = facility.get_form(obs_type)(observation_payload)
             form.is_valid()
+            logger.info(f'submitting form: {form.observation_payload()}')
             observation_ids = facility.submit_observation(form.observation_payload())
+            logger.info(f'getting observation ids: {observation_ids}')
 
             for observation_id in observation_ids:
                 # Create Observation record
@@ -67,7 +71,7 @@ class SnexRetryFailedObservationsStrategy(RetryFailedObservationsStrategy):
                 requestgroup_id = int(requestgroups['results'][0]['id'])
 
             # Use a hook to sync this observation request with SNEx1
-            run_hook('sync_observation_with_snex1', snex_id, params, requestgroup_id)
+            # run_hook('sync_observation_with_snex1', snex_id, params, requestgroup_id)
 
-
+        logger.info(f'all new observations? {new_observations}')
         return new_observations

@@ -705,7 +705,7 @@ def approve_or_reject_observation_view(request):
     obsr_id = int(float(request.GET['pk']))
     status = request.GET['status']
     obsr = ObservationRecord.objects.get(id=obsr_id)
-    obsr.observation_id = 'template'
+    # obsr.observation_id = 'template'
     obsr.save()
 
     obs_group = obsr.observationgroup_set.first()
@@ -1365,20 +1365,20 @@ class CustomObservationCreateView(ObservationCreateView):
         target = self.get_target()
         errors = facility().validate_observation(form.observation_payload()) #TODO: Do something with errors
         records = []
+        logger.info(f'observationid set to template')
 
-        for observation_id in ['template']:#observation_ids:
-            # Create Observation record
-            record = ObservationRecord.objects.create(
-                target=target,
-                user=self.request.user,
-                facility=facility.name,
-                parameters=form.serialize_parameters(),
-                observation_id=observation_id
+        # Create Observation record
+        record = ObservationRecord.objects.create(
+            target=target,
+            user=self.request.user,
+            facility=facility.name,
+            parameters=form.serialize_parameters()
             )
-            # Add the request user
-            record.parameters['start_user'] = self.request.user.first_name
-            record.save()
-            records.append(record)
+        
+        # Add the request user
+        record.parameters['start_user'] = self.request.user.first_name
+        record.save()
+        records.append(record)
 
         if len(records) > 1 or form.cleaned_data.get('cadence_strategy'):
             observation_group = ObservationGroup.objects.create(name=form.cleaned_data['name'])
@@ -1401,7 +1401,9 @@ class CustomObservationCreateView(ObservationCreateView):
 
         if not settings.TARGET_PERMISSIONS_ONLY:
             groups = form.cleaned_data['groups']
+            logger.info(f'groups to be assigned {groups}')
             for record in records:
+                logger.info(f'record that is getting assigned permission{record}')
                 assign_perm('tom_observations.view_observationrecord', groups, record)
                 assign_perm('tom_observations.change_observationrecord', groups, record)
                 assign_perm('tom_observations.delete_observationrecord', groups, record)
@@ -1416,16 +1418,18 @@ class CustomObservationCreateView(ObservationCreateView):
         # Run the hook to add the sequence to SNEx1
         if form.cleaned_data.get('comment') and (len(records) > 1 or form.cleaned_data.get('cadence_strategy')):
             save_comments(form.cleaned_data['comment'], observation_group.id, self.request.user)
-            snex_id = run_hook('sync_sequence_with_snex1', 
-                               form.serialize_parameters(), 
-                               group_names, 
-                               userid=self.request.user.id, 
-                               comment=form.cleaned_data['comment'], 
-                               targetid=target.id)
+            snex_id = str(random.randint(0, 99999))
+            # snex_id = run_hook('sync_sequence_with_snex1', 
+            #                    form.serialize_parameters(), 
+            #                    group_names, 
+            #                    userid=self.request.user.id, 
+            #                    comment=form.cleaned_data['comment'], 
+            #                    targetid=target.id)
             
         else:
-            snex_id = run_hook('sync_sequence_with_snex1', form.serialize_parameters(), group_names, userid=self.request.user.id)
-
+            snex_id = str(random.randint(0, 99999))
+            # snex_id = run_hook('sync_sequence_with_snex1', form.serialize_parameters(), group_names, userid=self.request.user.id)
+        logger.info(f'snexid defined: {snex_id}')
         if settings.DEBUG and snex_id is None:
             snex_id = str(random.randint(0, 99999))
         

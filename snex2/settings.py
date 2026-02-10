@@ -440,6 +440,8 @@ TOM_HARVESTER_CLASSES = [
 ]
 
 TOM_CADENCE_STRATEGIES = [
+    'tom_observations.cadences.retry_failed_observations.RetryFailedObservationsStrategy',
+    'tom_observations.cadences.resume_cadence_after_failure.ResumeCadenceAfterFailureStrategy',
     'custom_code.cadences.snex_retry_failed_observations.SnexRetryFailedObservationsStrategy',
     'custom_code.cadences.snex_resume_cadence_after_failure.SnexResumeCadenceAfterFailureStrategy'
 ]
