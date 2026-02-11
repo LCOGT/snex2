@@ -1363,10 +1363,13 @@ class CustomObservationCreateView(ObservationCreateView):
         # Submit the observation
         facility = self.get_facility_class()
         target = self.get_target()
+        observation_form_class = facility.observation_forms[self.request.data['observation_type']]
         errors = facility().validate_observation(form.observation_payload()) #TODO: Do something with errors
         records = []
         logger.info(f'observationid set to template')
-
+        observing_parameters = json.loads(self.request.data['observing_parameters'])
+        observation_form = observation_form_class(observing_parameters)
+        observation_ids = facility.submit_observation(observation_form.observation_payload())
         # Create Observation record
         record = ObservationRecord.objects.create(
             target=target,
