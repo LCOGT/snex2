@@ -660,6 +660,12 @@ function setupDashErrorMonitoring() {
       return;
     }
     
+    // Skip monitoring for iframes inside the observations tab
+    if ($iframe.closest('#observations').length > 0) {
+      console.log('Skipping Dash monitoring for observations tab iframe');
+      return;
+    }
+    
     // Generate a unique ID for this iframe
     var iframeId = $iframe.attr('id') || ('dash-iframe-' + Math.random().toString(36).substr(2, 9));
     if (!$iframe.attr('id')) {
