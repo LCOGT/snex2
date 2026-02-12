@@ -49,6 +49,7 @@ class SnexResumeCadenceAfterFailureStrategy(ResumeCadenceAfterFailureStrategy):
         # Submission of the new observation to the facility
         obs_type = last_obs.parameters.get('observation_type')
         form = facility.get_form(obs_type)(observation_payload)
+        logger.info(f'observation payload: {observation_payload}')
         if form.is_valid():
             observation_ids = facility.submit_observation(form.observation_payload())
             logger.info(f'observation ids: {observation_ids}')

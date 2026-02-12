@@ -666,9 +666,12 @@ def submit_lco_observations(target):
     spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
     phot_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
     spec_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
+    logger.info(f'groups {phot_form.fields["groups"]}')
+    logger.info(f'groups {phot_form.fields["groups"].queryset}')
     if not settings.TARGET_PERMISSIONS_ONLY:
         phot_form.fields['groups'].queryset = Group.objects.all()
         spec_form.fields['groups'].queryset = Group.objects.all()
+    logger.info(f'groups after {phot_form.fields["groups"].queryset}')
     return {'object': target,
             'phot_form': phot_form,
             'spec_form': spec_form}

@@ -620,21 +620,19 @@ def save_comments_view(request):
 
 def cancel_observation(obs):
      
-    # Get the last non-template ObservationRecord and cancel it through the facility
-    if 'template' in obs.observation_id:
-        last_obs = obs.observationgroup_set.first().observation_records.all().exclude(observation_id__contains='template').order_by('-id').first()
-        if last_obs is None:
-            # Sequence was canceled before a request was submitted to the observation portal
-            obs_group = obs.observationgroup_set.first()
-            dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
-            dynamic_cadence.active = False
-            dynamic_cadence.save()
-            
-            # Update the end date in the template record
-            obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-            obs.save()
-            
-            return True
+    last_obs = obs.observationgroup_set.first().observation_records.all().order_by('-id').first()
+    if last_obs is None:
+        # Sequence was canceled before a request was submitted to the observation portal
+        obs_group = obs.observationgroup_set.first()
+        dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
+        dynamic_cadence.active = False
+        dynamic_cadence.save()
+        
+        # Update the end date in the template record
+        obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+        obs.save()
+        
+        return True
     else:
         last_obs = obs
     
@@ -668,7 +666,7 @@ def observation_sequence_cancel_view(request):
     obsr_id = int(float(request.GET['pk']))
     obsr = ObservationRecord.objects.get(id=obsr_id)
     # obsr is the template observation record, so need to get the most recent one from this sequence to cancel
-    last_obs = obsr.observationgroup_set.first().observation_records.all().exclude(observation_id__contains='template').order_by('-id').first()
+    last_obs = obsr.observationgroup_set.first().observation_records.all().order_by('-id').first()
 
     if last_obs:
         canceled = cancel_observation(last_obs)
@@ -677,24 +675,15 @@ def observation_sequence_cancel_view(request):
             response_data = {'failure': 'Error'}
             return HttpResponse(json.dumps(response_data), content_type='application/json')
     
-    ## Run hook to cancel old sequence in SNEx1
     try:
         obs_group = obsr.observationgroup_set.first()
-        snex_id = int(obs_group.name)
         # Get comments, if any
         comments = json.loads(request.GET['comment'])
         if comments.get('cancel', ''):
             save_comments(comments['cancel'], obs_group.id, request.user)
-            run_hook('cancel_sequence_in_snex1', 
-                     snex_id, 
-                     comment=comments['cancel'],
-                     tableid=snex_id,
-                     userid=request.user.id,
-                     targetid=obsr.target_id)
-        else:
-            run_hook('cancel_sequence_in_snex1', snex_id, userid=request.user.id)
+
     except:
-        logger.error('This sequence was not in SNEx1 or was not canceled', exc_info=True)
+        logger.error('This sequence was not canceled', exc_info=True)
     
     response_data = {'success': 'Modified'}
     return HttpResponse(json.dumps(response_data), content_type='application/json')
@@ -811,7 +800,6 @@ def scheduling_view(request):
 
         ### Begin atomic transaction here
         try:
-            db_session = _return_session()
             with transaction.atomic():
                 
                 ### Get SNEx1 db session
@@ -886,18 +874,6 @@ def scheduling_view(request):
                 comments = json.loads(request.GET['comment'])
                 if comments.get('cancel', ''):
                     save_comments(comments['cancel'], obs_group.id, request.user)
-                    run_hook('cancel_sequence_in_snex1',
-                             snex_id,
-                             comment=comments['cancel'],
-                             tableid=snex_id,
-                             userid=request.user.id,
-                             targetid=obs.target_id,
-                             wrapped_session=db_session)
-                else:
-                    run_hook('cancel_sequence_in_snex1', 
-                             snex_id, 
-                             userid=request.user.id, 
-                             wrapped_session=db_session)
         
                 # Get the group ids to pass to SNEx1
                 group_names = []
@@ -907,50 +883,20 @@ def scheduling_view(request):
         
                 # Run the hook to add the sequence to SNEx1
                 # Get comments, if any
-                snex_id = run_hook(
-                        'sync_sequence_with_snex1', 
-                        form.serialize_parameters(), 
-                        group_names, 
-                        userid=request.user.id,
-                        wrapped_session=db_session)
-        
+
                 # Change the name of the observation group, if one was created
                 if len(new_observations) > 1 or form_data.get('cadence'):
-                    observation_group.name = str(snex_id)
                     observation_group.save()
 
                     for record in new_observations:
-                        record.parameters['name'] = snex_id
                         record.save()
             
-                ## Now run the hook to add each observation record to SNEx1
-                #for record in new_observations:
-                #    # Get the requestsgroup ID from the LCO API using the observation ID
-                #    obs_id = int(record.observation_id)
-                #    LCO_SETTINGS = settings.FACILITIES['LCO']
-                #    PORTAL_URL = LCO_SETTINGS['portal_url']
-                #    portal_headers = {'Authorization': 'Token {0}'.format(LCO_SETTINGS['api_key'])}
-
-                #    query_params = urlencode({'request_id': obs_id})
-
-                #    r = requests.get('{}/api/requestgroups?{}'.format(PORTAL_URL, query_params), headers=portal_headers)
-                #    requestgroups = r.json()
-                #    if requestgroups['count'] == 1:
-                #        requestgroup_id = int(requestgroups['results'][0]['id'])
-
-                #    run_hook('sync_observation_with_snex1', snex_id, record.parameters, requestgroup_id, wrapped_session=db_session)
-                
                 response_data = {'success': 'Modified'}
-                db_session.commit()
 
         except Exception as e: 
-            logger.error('Syncing with the SNEx1 database failed for target {} with error {}'.format(obs.target_id, e))
+            logger.error('something failed for target {} with error {}'.format(obs.target_id, e))
             response_data = {'failure': 'Unable to modify sequence: see logs for error'}
-            db_session.rollback()
-        
-        finally:
-            db_session.close()
-        
+            
         ### End of the atomic transaction
         return HttpResponse(json.dumps(response_data), content_type='application/json')
 
@@ -1347,125 +1293,10 @@ class CustomObservationCreateView(ObservationCreateView):
         form.helper.form_action = reverse(
             'submit-lco-obs', kwargs={'facility': 'LCO'}
         )
+        if form.is_valid():
+            logger.info(f'form observation payload: {form.observation_payload()}')
         return form
     
-    
-    def form_valid(self, form):
-        """
-        Runs after form validation. Submits the observation to the desired facility and creates an associated
-        ``ObservationRecord``, then writes this sequence and record to the SNEx1 database,
-        and finally redirects to the detail page of the target to be observed.
-        If the facility returns more than one record, a group is created and all observation
-        records from the request are added to it.
-        :param form: form containing observating request parameters
-        :type form: subclass of GenericObservationForm
-        """
-        # Submit the observation
-        facility = self.get_facility_class()
-        target = self.get_target()
-        observation_form_class = facility.observation_forms[self.request.data['observation_type']]
-        errors = facility().validate_observation(form.observation_payload()) #TODO: Do something with errors
-        records = []
-        logger.info(f'observationid set to template')
-        observing_parameters = json.loads(self.request.data['observing_parameters'])
-        observation_form = observation_form_class(observing_parameters)
-        observation_ids = facility.submit_observation(observation_form.observation_payload())
-        # Create Observation record
-        record = ObservationRecord.objects.create(
-            target=target,
-            user=self.request.user,
-            facility=facility.name,
-            parameters=form.serialize_parameters()
-            )
-        
-        # Add the request user
-        record.parameters['start_user'] = self.request.user.first_name
-        record.save()
-        records.append(record)
-
-        if len(records) > 1 or form.cleaned_data.get('cadence_strategy'):
-            observation_group = ObservationGroup.objects.create(name=form.cleaned_data['name'])
-            observation_group.observation_records.add(*records)
-            assign_perm('tom_observations.view_observationgroup', self.request.user, observation_group)
-            assign_perm('tom_observations.change_observationgroup', self.request.user, observation_group)
-            assign_perm('tom_observations.delete_observationgroup', self.request.user, observation_group)
-
-            if form.cleaned_data.get('cadence_strategy'):
-                cadence_parameters = {}
-                cadence_form = get_cadence_strategy(form.cleaned_data.get('cadence_strategy')).form
-                for field in cadence_form().cadence_fields:
-                    cadence_parameters[field] = form.cleaned_data.get(field)
-                DynamicCadence.objects.create(
-                    observation_group=observation_group,
-                    cadence_strategy=form.cleaned_data.get('cadence_strategy'),
-                    cadence_parameters=cadence_parameters,
-                    active=True
-                )
-
-        if not settings.TARGET_PERMISSIONS_ONLY:
-            groups = form.cleaned_data['groups']
-            logger.info(f'groups to be assigned {groups}')
-            for record in records:
-                logger.info(f'record that is getting assigned permission{record}')
-                assign_perm('tom_observations.view_observationrecord', groups, record)
-                assign_perm('tom_observations.change_observationrecord', groups, record)
-                assign_perm('tom_observations.delete_observationrecord', groups, record)
-        
-        ### Sync with SNEx1
-        
-        # Get the group ids to pass to SNEx1
-        group_names = []
-        for group in form.cleaned_data['groups']:
-           group_names.append(group.name)
-        
-        # Run the hook to add the sequence to SNEx1
-        if form.cleaned_data.get('comment') and (len(records) > 1 or form.cleaned_data.get('cadence_strategy')):
-            save_comments(form.cleaned_data['comment'], observation_group.id, self.request.user)
-            snex_id = str(random.randint(0, 99999))
-            # snex_id = run_hook('sync_sequence_with_snex1', 
-            #                    form.serialize_parameters(), 
-            #                    group_names, 
-            #                    userid=self.request.user.id, 
-            #                    comment=form.cleaned_data['comment'], 
-            #                    targetid=target.id)
-            
-        else:
-            snex_id = str(random.randint(0, 99999))
-            # snex_id = run_hook('sync_sequence_with_snex1', form.serialize_parameters(), group_names, userid=self.request.user.id)
-        logger.info(f'snexid defined: {snex_id}')
-        if settings.DEBUG and snex_id is None:
-            snex_id = str(random.randint(0, 99999))
-        
-        # Change the name of the observation group, if one was created
-        if len(records) > 1 or form.cleaned_data.get('cadence_strategy'):
-            observation_group.name = str(snex_id)
-            observation_group.save()
-
-            for record in records:
-                record.parameters['name'] = snex_id
-                record.save()
-            
-        ## Now run the hook to add each observation record to SNEx1
-        #for record in records:
-        #    # Get the requestsgroup ID from the LCO API using the observation ID
-        #    obs_id = int(record.observation_id)
-        #    LCO_SETTINGS = settings.FACILITIES['LCO']
-        #    PORTAL_URL = LCO_SETTINGS['portal_url']
-        #    portal_headers = {'Authorization': 'Token {0}'.format(LCO_SETTINGS['api_key'])}
-
-        #    query_params = urlencode({'request_id': obs_id})
-
-        #    r = requests.get('{}/api/requestgroups?{}'.format(PORTAL_URL, query_params), headers=portal_headers)
-        #    requestgroups = r.json()
-        #    if requestgroups['count'] == 1:
-        #        requestgroup_id = int(requestgroups['results'][0]['id'])
-
-        #    run_hook('sync_observation_with_snex1', snex_id, record.parameters, requestgroup_id)
-
-        return redirect(
-            reverse('tom_targets:detail', kwargs={'pk': target.id})
-        )
-
 
 def make_tns_request_view(request):
     target_id = request.GET.get('target_id')
