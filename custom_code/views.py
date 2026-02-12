@@ -22,7 +22,6 @@ from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumE
 from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
 from custom_code.forms import SNEx2UserCreationForm
 from guardian.mixins import PermissionListMixin
-from guardian.models import GroupObjectPermission
 from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
 from django.contrib.auth.models import User, Group
 from django.contrib.contenttypes.models import ContentType
@@ -62,23 +61,21 @@ from guardian.shortcuts import assign_perm
 
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.facility import get_service_class
-from tom_observations.cadence import get_cadence_strategy
 from tom_observations.facilities.lco import LCOSettings
 from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_registration.registration_flows.approval_required.views import UserApprovalView
 import base64
 import requests
-import django_filters
 from django import forms
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout, Div, HTML, Fieldset, Row, Column
-from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 from django.utils import timezone
 import logging
 from io import BytesIO
 import os
+from custom_code.scheduling_logic import change_obs_from_scheduling
+from custom_code.forms import PhotSchedulingForm
 
-from tom_targets.models import Target
 
 logger = logging.getLogger(__name__)
 
@@ -738,9 +735,6 @@ def approve_or_reject_observation_view(request):
      
     response_data = {'success': 'Modified'}
     return HttpResponse(json.dumps(response_data), content_type='application/json')
-
-from custom_code.scheduling_logic import change_obs_from_scheduling
-from custom_code.forms import PhotSchedulingForm
 
 def scheduling_view(request):
     form = PhotSchedulingForm(request.GET)
