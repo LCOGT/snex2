@@ -49,9 +49,6 @@ def cancel_gw_obs(galaxy_ids=[], sequence_id=None, wrapped_session=None):
                 raise Snex1ConnectionError(message='This sequence could not be canceled')
             
             obs_group = template.observationgroup_set.first()
-            snex_id = int(obs_group.name)
-
-            run_hook('cancel_sequence_in_snex1', snex_id, userid=67, wrapped_session=db_session)
 
     if not wrapped_session:
         try:

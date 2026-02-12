@@ -1293,8 +1293,6 @@ class CustomObservationCreateView(ObservationCreateView):
         form.helper.form_action = reverse(
             'submit-lco-obs', kwargs={'facility': 'LCO'}
         )
-        if form.is_valid():
-            logger.info(f'form observation payload: {form.observation_payload()}')
         return form
     
 

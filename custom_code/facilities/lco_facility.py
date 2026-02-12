@@ -174,7 +174,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         logger.info(f'now: {now} cadence frequency: {cleaned_data["cadence_frequency"]*24} and cadence start: {cleaned_data["start"]} and cadence end: {cleaned_data["end"]}')
         reminder_days = cleaned_data.get('reminder', 2)
         logger.info(f'reminder from cleaned_data {reminder_days}')
-        cleaned_data['reminder'] = 2#datetime.datetime.strftime(now + datetime.timedelta(days=reminder_days), '%Y-%m-%dT%H:%M:%S')
+        cleaned_data['reminder'] = datetime.datetime.strftime(now + datetime.timedelta(days=reminder_days), '%Y-%m-%dT%H:%M:%S')
         cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and v[0] == 0.0 else v) for k, v in cleaned_data.items()}
         logger.info(f'form cleaned data with 0 exp time filters replaced with empty lists: {cleaned_data}')
         return cleaned_data
