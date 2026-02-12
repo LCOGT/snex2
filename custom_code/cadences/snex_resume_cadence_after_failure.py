@@ -8,13 +8,30 @@ from urllib.parse import urlencode
 from dateutil.parser import parse
 from tom_observations.facility import get_service_class
 import requests
-from datetime import datetime
+import datetime
 
 logger = logging.getLogger(__name__)
 
 class SnexResumeCadenceAfterFailureStrategy(ResumeCadenceAfterFailureStrategy):
     def update_observation_payload(self, observation_payload):
         logger.info(f"Submitting cadenced observation with payload: {observation_payload}")
+        reminder = observation_payload.get('reminder', 6.7)
+
+        try:
+            new_start = parse(observation_payload['start'])
+            
+            new_reminder_dt = new_start + datetime.timedelta(days=float(reminder))
+            
+            observation_payload['reminder_date'] = new_reminder_dt.strftime('%Y-%m-%dT%H:%M:%S')
+            
+            logger.info(f"Observation start: {observation_payload['start']}")
+            logger.info(f"Dynamic reminder set for: {observation_payload['reminder']}")
+            logger.info(f"Dynamic reminder date set for: {observation_payload['reminder_date']}")
+            
+        except Exception as e:
+            logger.error(f"Failed to dynamically update reminder: {e}")
+
+        logger.info(f"Final submission payload: {observation_payload}")
         
         return observation_payload
     # def run(self):

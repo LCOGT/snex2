@@ -617,7 +617,7 @@ def cancel_sequence_in_snex1(snex_id, comment=False, tableid=None, userid=67, ta
 
     logger.info('Cancel sequence in SNEx1 hook: Sequence with SNEx1 ID {} synced'.format(snex_id))
 
-
+### REMOVE 
 def approve_sequence_in_snex1(snex_id):
     '''
     Hook to approve a pending observation request in SNEx1 
@@ -635,7 +635,7 @@ def approve_sequence_in_snex1(snex_id):
 
     logger.info('Approve sequence in SNEx1 hook: Sequence with SNEx1 ID {} synced'.format(snex_id))
 
-
+### REMOVE
 def update_reminder_in_snex1(snex_id, next_reminder, wrapped_session=None):
     '''
     Hook to update reminder for sequence in SNEx1.

@@ -1119,7 +1119,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
 
         cadence_frequency = parameter.get('cadence_frequency', '')
         #start = str(obsset.first().parameters['start']).replace('T', ' ')
-        end = str(parameter.get('reminder', '')).replace('T', ' ')
+        end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
 
@@ -1127,7 +1127,8 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'
-
+        
+        reminder = parameter.get('reminder', 2 * cadence_frequency)
         observing_parameters = {
                    'instrument_type': parameter.get('instrument_type', ''),
                    'min_lunar_distance': parameter.get('min_lunar_distance', ''),
@@ -1135,7 +1136,8 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                    'observation_type': parameter.get('observation_type', ''),
                    'observation_mode': parameter.get('observation_mode', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
-                   'cadence_frequency': cadence_frequency
+                   'cadence_frequency': cadence_frequency,
+                   'reminder': reminder
             }
 
         if instrument == 'Muscat':
@@ -1154,7 +1156,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                    'cadence_frequency': cadence_frequency,
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
-                   'reminder': 2*cadence_frequency
+                   'reminder': reminder
             }
         
         filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
@@ -1177,7 +1179,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                            'instrument': instrument,
                            'start': start + ' by ' + requested_str,
                            'comment': comment_str,
-                           'reminder': end,
+                           'reminder_date': end,
                            'user_id': user_id,
                            'case': case
                         })
@@ -1191,7 +1193,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
         else:
             cadence_strat = '(Onetime)'
         #start = str(obsset.first().parameters['start']).replace('T', ' ')
-        end = str(parameter.get('reminder', '')).replace('T', ' ')
+        end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
 
@@ -1253,26 +1255,18 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
 def scheduling_list_with_form(context, observation, case='notpending'):
     facility = observation.facility
     
-    # For now, we'll only worry about scheduling for LCO observations
     if facility != 'LCO':
         return {'observations': observation,
                 'parameters': ''}
          
     obsgroup = observation.observationgroup_set.first()
-    template_observation = obsgroup.observation_records.all().filter(observation_id='template').first()
-    if not template_observation and case!='pending':
-        obsset = obsgroup.observation_records.all()
-        obsset = obsset.order_by('parameters__start')
-        start = str(obsset.first().parameters['start']).replace('T', ' ')
-        requested_str = ''
-    else:
-        if case == 'pending':
-            template_observation = observation
-        start = str(template_observation.parameters.get('sequence_start', '')).replace('T', ' ')
-        if not start:
-            start = str(template_observation.parameters.get('start', '')).replace('T', ' ')
-        requested_str = str(template_observation.parameters.get('start_user', ''))
+    first_obs = obsgroup.observation_records.order_by('created').first()
     
+    start_val = first_obs.parameters.get('start', 'Unknown')
+    start = str(start_val).replace('T', ' ')
+    username = first_obs.parameters.get('start_user', 'snex2')
+    user = User.objects.filter(username = username).first()
+    requested_str = f"{user.first_name} {user.last_name}".strip() or username
     return get_scheduling_form(observation, context['request'].user.id, start, requested_str, case=case)
 
 

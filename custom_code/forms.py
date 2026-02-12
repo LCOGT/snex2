@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db.models.functions import Lower
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import Group
+import json
 try:
     from django.contrib.auth.forms import BaseUserCreationForm as UserCreationForm
 except ImportError:
@@ -331,14 +332,15 @@ class PhotSchedulingForm(forms.Form):
     facility = forms.CharField(widget=forms.HiddenInput())
     observation_type = forms.CharField(widget=forms.HiddenInput())
     cadence_strategy = forms.CharField(widget=forms.HiddenInput(), required=False)
-    observing_parameters = forms.CharField(max_length=1024, widget=forms.HiddenInput()) 
+    observing_parameters = forms.CharField(max_length=5000, widget=forms.HiddenInput()) 
     
-    cadence_frequency = forms.FloatField(min_value=0.0, label='')
-    ipp_value = forms.FloatField(min_value=0.5, max_value=2.0, label='')
-    max_airmass = forms.FloatField(min_value=0.0, label='')
-    reminder = forms.FloatField(min_value=0.0, label='')
+    cadence_frequency = forms.FloatField(min_value=0.0, label='Cadence (Days)')
+    ipp_value = forms.FloatField(min_value=0.5, max_value=2.0, label='IPP')
+    max_airmass = forms.FloatField(min_value=0.0, label='Airmass Limit')
+    reminder = forms.FloatField(min_value=0.0, label='Reminder Interval (Days)')
+    delay_start = forms.FloatField(min_value=0.0, initial=0.0, label='Delay Start (Days)')
+
     filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
-    delay_start = forms.FloatField(min_value=0.0, initial=0.0, label='')
     
     def __init__(self, *args, **kwargs):
         super(PhotSchedulingForm, self).__init__(*args, **kwargs)
@@ -348,7 +350,14 @@ class PhotSchedulingForm(forms.Form):
 
         self.fields['cadence_frequency'].widget.attrs['class'] = 'cadence-input'
         self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
+    
+    def clean_observing_parameters(self):
 
+        data = self.cleaned_data['observing_parameters']
+        try:
+            return json.loads(data)
+        except (json.JSONDecodeError, TypeError):
+            raise forms.ValidationError("Invalid format for observing parameters.")
 
 class SpecSchedulingForm(forms.Form):
 
