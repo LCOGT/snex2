@@ -1137,7 +1137,7 @@ def async_scheduling_page_view(request):
     all_html = ''
     for obs_id in obs_ids:
         obs = ObservationRecord.objects.get(id=obs_id)
-        response = custom_code_tags.scheduling_list_with_form({'request': request}, obs, case='notpending')
+        response = custom_code_tags.scheduling_list_with_form({'request': request}, obs)
 
         html = render_to_string(
             template_name='custom_code/scheduling_list_with_form.html',
@@ -1445,7 +1445,6 @@ def load_observations_tab_view(request):
         observing_buttons_context = observing_buttons(target)
         previous_obs_context = custom_code_tags.observation_summary(context_dict, target, 'previous')
         ongoing_obs_context = custom_code_tags.observation_summary(context_dict, target, 'ongoing')
-        pending_obs_context = custom_code_tags.observation_summary(context_dict, target, 'pending')
         submit_obs_context = custom_code_tags.submit_lco_observations(target)
         
         # Combine all contexts
@@ -1455,7 +1454,6 @@ def load_observations_tab_view(request):
             'observing_buttons_html': render_to_string('tom_observations/partials/observing_buttons.html', observing_buttons_context, request=request),
             'previous_obs_html': render_to_string('custom_code/observation_summary.html', previous_obs_context, request=request),
             'ongoing_obs_html': render_to_string('custom_code/observation_summary.html', ongoing_obs_context, request=request),
-            'pending_obs_html': render_to_string('custom_code/observation_summary.html', pending_obs_context, request=request),
             'submit_obs_html': render_to_string('custom_code/submit_lco_observations.html', submit_obs_context, request=request),
         }
         

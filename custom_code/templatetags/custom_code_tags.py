@@ -9,9 +9,9 @@ from django.contrib.auth.models import User, Group
 from django_comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.core.paginator import Paginator
 
 from tom_targets.models import Target, TargetList, BaseTarget
-from tom_targets.forms import TargetVisibilityForm
 from tom_observations import utils, facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
@@ -25,12 +25,10 @@ from astropy.time import Time
 from astropy import units as u
 from astropy.coordinates import get_moon, get_sun, SkyCoord, AltAz
 import numpy as np
-import time
 import matplotlib.pyplot as plt
 
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
-from urllib.parse import urlencode
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.thumbnails import make_thumb
@@ -916,8 +914,6 @@ def observation_summary(context, target=None, time='previous'):
         cadences = DynamicCadence.objects.filter(active=True, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
     
     else:
-        if time == 'pending':
-            observations = observations.filter(status='PENDING')
         cadences = DynamicCadence.objects.filter(active=False, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
     
     parameters = []
@@ -925,13 +921,8 @@ def observation_summary(context, target=None, time='previous'):
         obsgroup = ObservationGroup.objects.get(id=cadence.observation_group_id)
         #Check if the request is pending, and if so skip it
         pending_obs = obsgroup.observation_records.all().filter(status='PENDING').first()
-        if not pending_obs and time == 'pending':
-            continue
         
-        if time == 'pending':
-            observation = pending_obs
-        else:
-            observation = obsgroup.observation_records.all().filter(status='PENDING').first()
+        observation = obsgroup.observation_records.all().filter(status='PENDING').first()
         if not observation:
             observation = obsgroup.observation_records.all().order_by('-id').first()
             first_observation = obsgroup.observation_records.all().order_by('id').first()
@@ -1086,7 +1077,7 @@ def smart_name_list(target):
     return good_names
     
 
-def get_scheduling_form(observation, user_id, start, requested_str, case='notpending'):
+def get_scheduling_form(observation, user_id, start, requested_str):
     '''
     Used to get the initial parameters and form for scheduling current
     and pending sequences.
@@ -1180,8 +1171,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                            'start': start + ' by ' + requested_str,
                            'comment': comment_str,
                            'reminder_date': end,
-                           'user_id': user_id,
-                           'case': case
+                           'user_id': user_id
                         })
     
     else: # For spectra observations
@@ -1240,8 +1230,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                            'start': start + ' by ' + requested_str,
                            'comment': comment_str,
                            'reminder': end,
-                           'user_id': user_id,
-                           'case': case
+                           'user_id': user_id
                         })
 
 
@@ -1252,7 +1241,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
 
 
 @register.inclusion_tag('custom_code/scheduling_list_with_form.html', takes_context=True)
-def scheduling_list_with_form(context, observation, case='notpending'):
+def scheduling_list_with_form(context, observation):
     facility = observation.facility
     
     if facility != 'LCO':
@@ -1269,45 +1258,69 @@ def scheduling_list_with_form(context, observation, case='notpending'):
     username = first_obs.parameters.get('start_user', 'snex2')
     user = User.objects.filter(username = username).first()
     requested_str = f"{user.first_name} {user.last_name}".strip() or username
-    return get_scheduling_form(observation, context['request'].user.id, start, requested_str, case=case)
+    return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
 
+# @register.filter
+# def order_by_pending_requests(queryset):
+
+#     queryset = ObservationRecord.objects.filter(status='PENDING')
+
+#     return queryset
 
 @register.filter
-def order_by_pending_requests(queryset):
-    queryset = ObservationRecord.objects.filter(status='PENDING')
-    return queryset
+def filter_current_reminders(queryset, pagenumber):
+    now = datetime.datetime.now()
+    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
+    queryset = queryset.order_by('parameters__reminder_date')
+
+    paginator = Paginator(queryset, 25)
+    page_number = pagenumber.strip('page=')
+    page_obj = paginator.get_page(page_number)
+    return page_obj
+
+@register.filter
+def filter_upcoming_reminders(queryset, pagenumber):
+    now = datetime.datetime.now()
+    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
+    queryset = queryset.order_by('parameters__reminder_date')
+
+    paginator = Paginator(queryset, 25)
+    page_number = pagenumber.strip('page=')
+    page_obj = paginator.get_page(page_number)
+    return page_obj
     
 
-@register.filter
-def order_by_reminder_expired(queryset, pagenumber):
-    queryset = queryset.exclude(status='CANCELED')
-    from django.core.paginator import Paginator
-    now = datetime.datetime.now()
+# @register.filter
+# def order_by_reminder_expired(queryset, pagenumber):
+#     queryset = queryset.exclude(status='CANCELED')
+#     from django.core.paginator import Paginator
+#     now = datetime.datetime.now()
    
-    queryset = queryset.filter(parameters__reminder__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-    queryset = queryset.order_by('parameters__reminder')
+#     queryset = queryset.filter(parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
+#     queryset = queryset.order_by('parameters__reminder')
 
-    paginator = Paginator(queryset, 25)
-    page_number = pagenumber.strip('page=')
-    page_obj = paginator.get_page(page_number)
-    return page_obj
-    #return queryset
+#     paginator = Paginator(queryset, 25)
+#     page_number = pagenumber.strip('page=')
+#     page_obj = paginator.get_page(page_number)
+#     return page_obj
+#     #return queryset
 
 
-@register.filter
-def order_by_reminder_upcoming(queryset, pagenumber):
-    queryset = queryset.exclude(status='CANCELED')
-    from django.core.paginator import Paginator
-    now = datetime.datetime.now()
+# @register.filter
+# def order_by_reminder_upcoming(queryset, pagenumber):
+#     logger.info(f'queryset input to order_by_reminder_upcoming: {queryset}')
+#     queryset = queryset.exclude(status='CANCELED')
+#     from django.core.paginator import Paginator
+#     now = datetime.datetime.now()
    
-    queryset = queryset.filter(parameters__reminder__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')) 
-    queryset = queryset.order_by('parameters__reminder')
+#     queryset = queryset.filter(parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')) 
+#     queryset = queryset.order_by('parameters__reminder')
 
-    paginator = Paginator(queryset, 25)
-    page_number = pagenumber.strip('page=')
-    page_obj = paginator.get_page(page_number)
-    return page_obj
-    #return queryset
+#     paginator = Paginator(queryset, 25)
+#     page_number = pagenumber.strip('page=')
+#     page_obj = paginator.get_page(page_number)
+#     return page_obj
+#     #return queryset
 
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)

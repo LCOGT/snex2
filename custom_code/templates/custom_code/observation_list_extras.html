@@ -49,7 +49,7 @@
       <h4>In Order of Decreasing {{ value }}</h4>
     </div>
     {% for q in observation_list %}
-    {% scheduling_list_with_form q 'notpending' %}
+    {% scheduling_list_with_form q %}
     {% if value == 'IPP' %}
     {% if 'SUPA202' in q.parameters.proposal %}
     <div class="row pessto-table">
