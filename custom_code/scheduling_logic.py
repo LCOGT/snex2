@@ -159,7 +159,7 @@ def _modify_sequence(obs, user, data):
     new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
     new_params['end'] = (now + timedelta(days=delay + (data['cadence_frequency']))).strftime('%Y-%m-%dT%H:%M:%S')
 
-    filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+    filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
     for f in filters:
         if f in data and data[f]:
             new_params[f] = data[f]

@@ -343,7 +343,7 @@ class PhotSchedulingForm(forms.Form):
     reminder = forms.FloatField(min_value=0.0, label='Reminder Interval (Days)')
     delay_start = forms.FloatField(min_value=0.0, initial=0.0, label='Delay Start (Days)')
 
-    filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+    filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
     
     def __init__(self, *args, **kwargs):
         super(PhotSchedulingForm, self).__init__(*args, **kwargs)

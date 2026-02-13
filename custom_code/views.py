@@ -800,7 +800,7 @@ def scheduling_view(request):
 #         observing_parameters['end'] = datetime.strftime(now + timedelta(hours=float(request.GET['cadence_frequency'])*24+float(request.GET['delay_start'])*24), '%Y-%m-%dT%H:%M:%S')
 
 #         if request.GET['observation_type'] == 'IMAGING':
-#             filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+#             filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
 #             for f in filters:
 #                 if f+'_0' in request.GET.keys() and float(request.GET[f+'_0'][0]) > 0.0:
 #                     observing_parameters[f] = [float(request.GET[f+'_0']), int(float(request.GET[f+'_1'])), int(float(request.GET[f+'_2']))]
@@ -816,7 +816,7 @@ def scheduling_view(request):
 #         form_data['observing_parameters'] = observing_parameters
 
 #         # Make sure at least one of the observing parameters changed
-#         dict_keys = ['ipp_value', 'max_airmass', 'cadence_frequency', 'U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w', 'exposure_time']
+#         dict_keys = ['ipp_value', 'max_airmass', 'cadence_frequency', 'U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'exposure_time']
 #         modified = False
 #         for key in dict_keys:
 #             if key in observing_parameters.keys() and key in obs.parameters.keys():
@@ -941,7 +941,7 @@ def scheduling_view(request):
 #         observing_parameters['cadence_frequency'] = float(request.GET['cadence_frequency'])
         
 #         if request.GET['observation_type'] == 'IMAGING':
-#             filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+#             filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
 #             for f in filters:
 #                 if f+'_0' in request.GET.keys() and float(request.GET[f+'_0'][0]) > 0.0:
 #                     observing_parameters[f] = [float(request.GET[f+'_0']), int(float(request.GET[f+'_1'])), int(float(request.GET[f+'_2']))]
@@ -949,7 +949,7 @@ def scheduling_view(request):
 #         elif request.GET['observation_type'] == 'SPECTRA':
 #             observing_parameters['exposure_time'] = int(float(request.GET['exposure_time']))
         
-#         dict_keys = ['ipp_value', 'max_airmass', 'cadence_frequency', 'U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w', 'exposure_time']
+#         dict_keys = ['ipp_value', 'max_airmass', 'cadence_frequency', 'U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'exposure_time']
 #         modified = False
 #         for key in dict_keys:
 #             if key in observing_parameters.keys() and key in obs.parameters.keys():
@@ -1828,7 +1828,7 @@ class ObservationGroupDetailView(DetailView):
             if obs.parameters['observation_type'] == 'SPECTRA':
                 acq_radius = obs.parameters['acquisition_radius']
                 p['acq_radius'] = acq_radius
-            for f in ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']:
+            for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']:
                 if f in obs.parameters.keys() and not obs.parameters[f]:
                     continue
                 elif f in obs.parameters.keys() and obs.parameters[f][0]:

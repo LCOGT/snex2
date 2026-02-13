@@ -961,7 +961,7 @@ def observation_summary(context, target=None, time='previous'):
                 parameter_string = 'Single ' + str(parameter.get('observation_type', '')).lower() + ' observation of '
 
             if parameter.get('observation_type', '') == 'IMAGING':
-                filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+                filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
                 for f in filters:
                     filter_parameters = parameter.get(f, '')
                     if filter_parameters:
@@ -1159,7 +1159,7 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                    'reminder': reminder
             }
         
-        filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+        filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
         for f in filters:
             if parameter.get(f, '') and parameter.get(f, '')[0] != 0.0:
                 initial[f] = parameter.get(f, '')

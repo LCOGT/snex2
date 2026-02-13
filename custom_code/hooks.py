@@ -337,7 +337,7 @@ def sync_observation_with_snex1(snex_id, params, requestgroup_id, wrapped_sessio
     #with _get_session(db_address=_snex1_address) as db_session:
     Obslog = _load_table('obslog', db_address=settings.SNEX1_DB_URL)
     
-    filtlist = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+    filtlist = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
     if params['observation_type'] == 'IMAGING':
         filters = ''
         exptimes = ''
@@ -434,7 +434,7 @@ def sync_sequence_with_snex1(params, group_names, userid=67, comment=False, targ
     for group_name in group_names:
         groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
 
-    filtlist = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+    filtlist = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
     if params['observation_type'] == 'IMAGING':
         filters = ''
         exptimes = ''
