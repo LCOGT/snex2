@@ -49,14 +49,10 @@ def _stop_sequence(obs, user, data):
         raise Exception("The facility (LCO) rejected the cancellation request.")
     
     obs_group = obs.observationgroup_set.first()
-    comments = data.get('comment', {})
+    comment = data.get('comment', {})
 
-    if isinstance(comments, str):
-        comments = json.loads(comments)
-        
-    cancel_comment = comments.get('cancel', '')
-    if cancel_comment and obs_group:
-        save_comments(cancel_comment, obs_group.id, user)
+    if comment and obs_group:
+        save_comments(comment, obs_group.id, user)
                 
     return "Stopped"
 
@@ -141,9 +137,7 @@ def _modify_sequence(obs, user, data):
     logger.info(f'Modifying Sequence {obs.id} for target {obs.target.id}')
     
     # Cancel the current sequence
-    canceled = cancel_observation(obs)
-    if not canceled:
-        raise Exception("Could not cancel the existing sequence at the facility.")
+    _stop_sequence(obs, user, data)
 
     old_params = obs.parameters
     logger.info(f'old parameters {old_params}')
@@ -193,7 +187,7 @@ def _modify_sequence(obs, user, data):
             'reminder': data['reminder'],
             'reminder_date': new_params['reminder_date']
         })
-        
+
         new_record.save()
         
         new_obs_group.observation_records.add(new_record)
