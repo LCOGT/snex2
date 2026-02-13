@@ -146,7 +146,9 @@ def _modify_sequence(obs, user, data):
         raise Exception("Could not cancel the existing sequence at the facility.")
 
     old_params = obs.parameters
-    new_params = data['observing_parameters']
+    logger.info(f'old parameters {old_params}')
+    logger.info(f'incoming data {data}')
+    new_params = obs.parameters.copy()
 
     new_params['ipp_value'] = data['ipp_value']
     new_params['max_airmass'] = data['max_airmass']
@@ -158,7 +160,7 @@ def _modify_sequence(obs, user, data):
     new_params['reminder'] = data['reminder']
     new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
     
-    new_params['start_user'] = old_params.get('start_user', user.username)
+    new_params['start_user'] = user.username
 
     new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
     new_params['end'] = (now + timedelta(days=delay + (data['cadence_frequency']))).strftime('%Y-%m-%dT%H:%M:%S')
@@ -186,8 +188,12 @@ def _modify_sequence(obs, user, data):
             parameters=form.serialize_parameters(),
             observation_id=lco_id
         )
-        new_record.parameters['start_user'] = new_params['start_user']
-        new_record.parameters['reminder_interval'] = new_params['reminder_interval']
+        new_record.parameters.update({
+            'start_user': user.username,
+            'reminder': data['reminder'],
+            'reminder_date': new_params['reminder_date']
+        })
+        
         new_record.save()
         
         new_obs_group.observation_records.add(new_record)

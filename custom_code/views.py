@@ -737,10 +737,25 @@ def approve_or_reject_observation_view(request):
     return HttpResponse(json.dumps(response_data), content_type='application/json')
 
 def scheduling_view(request):
-    form = PhotSchedulingForm(request.GET)
+    obs_id = request.GET.get('observation_id')
+    obs = ObservationRecord.objects.get(id=obs_id)
+    
+    form = PhotSchedulingForm(request.GET, initial=obs.parameters)
     if form.is_valid():
         action = next((a for a in ['modify', 'continue', 'stop'] if a in request.GET.get('button', '')), None)
         try:
+            comment_raw = request.GET.get("comment", "")
+
+            if comment_raw.startswith('{'):
+                try:
+                    comment_data = json.loads(comment_raw)
+                    cancel_reason = comment_data.get("cancel", comment_raw)
+                except (json.JSONDecodeError, TypeError):
+                    cancel_reason = comment_raw
+            else:
+                cancel_reason = comment_raw
+            logger.info(f'comment from the scheduling page: {cancel_reason}')
+            form.cleaned_data['comment'] = cancel_reason
             result = change_obs_from_scheduling(
                 action=action,
                 obs_id=form.cleaned_data['observation_id'],
@@ -750,6 +765,7 @@ def scheduling_view(request):
             return JsonResponse({'success': result})
         except Exception as e:
             return JsonResponse({'failure': str(e)}, status=400)
+        
     return JsonResponse({'failure': 'Invalid Form', 'errors': form.errors}, status=400)
 
 

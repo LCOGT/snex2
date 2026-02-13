@@ -21,6 +21,9 @@ from django.db import transaction
 from crispy_forms.helper import FormHelper
 
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CustomTargetCreateForm(SiderealTargetCreateForm):
 
@@ -344,9 +347,27 @@ class PhotSchedulingForm(forms.Form):
     
     def __init__(self, *args, **kwargs):
         super(PhotSchedulingForm, self).__init__(*args, **kwargs)
+        initial_data = kwargs.get('initial', {})
+        logger.info(f'initial data {initial_data}')
         for f in self.filters:
-            if f in kwargs.get('initial', ''):
-                self.fields[f] = FilterField(label=f[0], required=False)
+            val = initial_data.get(f)
+            logger.info(f'filter value {val}')
+
+            if val and len(val) > 0:
+                if isinstance(val, dict):
+                    initial_list = [
+                        val.get('exposure_time'), 
+                        val.get('exposure_count'), 
+                        val.get('block_num')
+                    ]
+                else:
+                    initial_list = val
+                
+                self.fields[f] = FilterField(
+                    label=f, 
+                    initial=initial_list, 
+                    required=False
+                )
 
         self.fields['cadence_frequency'].widget.attrs['class'] = 'cadence-input'
         self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
