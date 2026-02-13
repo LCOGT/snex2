@@ -4,7 +4,7 @@ from tom_common.hooks import run_hook
 from tom_targets.models import Target
 from tom_observations.models import ObservationRecord
 from tom_nonlocalizedevents.models import EventSequence
-from custom_code.views import cancel_observation, Snex1ConnectionError
+from custom_code.scheduling_logic import cancel_observation
 from custom_code.hooks import _return_session, _load_table
 import logging
 from django.conf import settings
@@ -41,13 +41,12 @@ def cancel_gw_obs(galaxy_ids=[], sequence_id=None, wrapped_session=None):
     
     for target in targets:
         ### Cancel any observation requests for this target
-        templates = ObservationRecord.objects.filter(target=target, observation_id='template')
+        templates = ObservationRecord.objects.filter(target=target, status='PENDING')
         for template in templates:
             canceled = cancel_observation(template)
             if not canceled:
                 response_data = {'failure': 'Canceling sequence failed'}
-                raise Snex1ConnectionError(message='This sequence could not be canceled')
-            
+                logger.inf(f'failure to cancel sequence: {response_data}')            
             obs_group = template.observationgroup_set.first()
 
     if not wrapped_session:

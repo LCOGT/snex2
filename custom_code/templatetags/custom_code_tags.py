@@ -917,21 +917,21 @@ def observation_summary(context, target=None, time='previous'):
     
     else:
         if time == 'pending':
-            observations = observations.filter(observation_id='template pending')
+            observations = observations.filter(status='PENDING')
         cadences = DynamicCadence.objects.filter(active=False, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
     
     parameters = []
     for cadence in cadences:
         obsgroup = ObservationGroup.objects.get(id=cadence.observation_group_id)
         #Check if the request is pending, and if so skip it
-        pending_obs = obsgroup.observation_records.all().filter(observation_id='template pending').first()
+        pending_obs = obsgroup.observation_records.all().filter(status='PENDING').first()
         if not pending_obs and time == 'pending':
             continue
         
         if time == 'pending':
             observation = pending_obs
         else:
-            observation = obsgroup.observation_records.all().filter(observation_id='template').first()
+            observation = obsgroup.observation_records.all().filter(status='PENDING').first()
         if not observation:
             observation = obsgroup.observation_records.all().order_by('-id').first()
             first_observation = obsgroup.observation_records.all().order_by('id').first()
@@ -1261,6 +1261,8 @@ def scheduling_list_with_form(context, observation, case='notpending'):
          
     obsgroup = observation.observationgroup_set.first()
     first_obs = obsgroup.observation_records.order_by('created').first()
+    logger.info(f'scheduling list with form obsgroup: {obsgroup}')
+    logger.info(f'scheduling list with form first_obs: {first_obs}')
     
     start_val = first_obs.parameters.get('start', 'Unknown')
     start = str(start_val).replace('T', ' ')
@@ -1271,10 +1273,8 @@ def scheduling_list_with_form(context, observation, case='notpending'):
 
 
 @register.filter
-def order_by_pending_requests(queryset): #, pagenumber):
-    #queryset = queryset.exclude(status='CANCELED') 
-    #queryset = queryset.filter(observation_id='template pending').order_by('id')
-    queryset = ObservationRecord.objects.filter(observation_id='template pending')
+def order_by_pending_requests(queryset):
+    queryset = ObservationRecord.objects.filter(status='PENDING')
     return queryset
     
 

@@ -615,49 +615,49 @@ def save_comments_view(request):
     else:
         return JsonResponse({"success": False})
 
-def cancel_observation(obs):
+# def cancel_observation(obs):
      
-    last_obs = obs.observationgroup_set.first().observation_records.all().order_by('-id').first()
-    if last_obs is None:
-        # Sequence was canceled before a request was submitted to the observation portal
-        obs_group = obs.observationgroup_set.first()
-        dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
-        dynamic_cadence.active = False
-        dynamic_cadence.save()
+#     last_obs = obs.observationgroup_set.first().observation_records.all().order_by('-id').first()
+#     if last_obs is None:
+#         # Sequence was canceled before a request was submitted to the observation portal
+#         obs_group = obs.observationgroup_set.first()
+#         dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
+#         dynamic_cadence.active = False
+#         dynamic_cadence.save()
         
-        # Update the end date in the template record
-        obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-        obs.save()
+#         # Update the end date in the template record
+#         obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+#         obs.save()
         
-        return True
-    else:
-        last_obs = obs
+#         return True
+#     else:
+#         last_obs = obs
     
-    facility = get_service_class(last_obs.facility)()
-    ocs_settings = LCOSettings()
-    if last_obs.status not in ocs_settings.get_terminal_observing_states():
-        success = facility.cancel_observation(last_obs.observation_id)
-        if not success:
-            return False
+#     facility = get_service_class(last_obs.facility)()
+#     ocs_settings = LCOSettings()
+#     if last_obs.status not in ocs_settings.get_terminal_observing_states():
+#         success = facility.cancel_observation(last_obs.observation_id)
+#         if not success:
+#             return False
 
-        last_obs.status = 'CANCELED'
-        last_obs.save()
+#         last_obs.status = 'CANCELED'
+#         last_obs.save()
     
-    ## Change status of DynamicCadence
-    obs_group = obs.observationgroup_set.first()
-    dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
-    dynamic_cadence.active = False
-    dynamic_cadence.save()
+#     ## Change status of DynamicCadence
+#     obs_group = obs.observationgroup_set.first()
+#     dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
+#     dynamic_cadence.active = False
+#     dynamic_cadence.save()
 
-    ## Update sequence end time in template record
-    template = obs_group.observation_records.filter(observation_id='template').first()
-    if template:
-        template.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-        template.save()
+#     ## Update sequence end time in template record
+#     template = obs_group.observation_records.filter(observation_id='template').first()
+#     if template:
+#         template.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+#         template.save()
     
-    return True
+#     return True
 
-
+from custom_code.scheduling_logic import cancel_observation
 def observation_sequence_cancel_view(request):
     
     obsr_id = int(float(request.GET['pk']))
@@ -1137,7 +1137,7 @@ def async_scheduling_page_view(request):
     all_html = ''
     for obs_id in obs_ids:
         obs = ObservationRecord.objects.get(id=obs_id)
-        response = custom_code_tags.scheduling_list_with_form({'request': request}, obs, case='nonpending')
+        response = custom_code_tags.scheduling_list_with_form({'request': request}, obs, case='notpending')
 
         html = render_to_string(
             template_name='custom_code/scheduling_list_with_form.html',
