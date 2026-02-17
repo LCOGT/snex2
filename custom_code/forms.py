@@ -337,7 +337,7 @@ class PhotSchedulingForm(forms.Form):
     cadence_strategy = forms.CharField(widget=forms.HiddenInput(), required=False)
     observing_parameters = forms.CharField(max_length=5000, widget=forms.HiddenInput()) 
     
-    cadence_frequency = forms.FloatField(min_value=0.0, label='Cadence (Days)')
+    cadence_frequency_days = forms.FloatField(min_value=0.0, label='Cadence (Days)')
     ipp_value = forms.FloatField(min_value=0.5, max_value=2.0, label='IPP')
     max_airmass = forms.FloatField(min_value=0.0, label='Airmass Limit')
     reminder = forms.FloatField(min_value=0.0, label='Reminder Interval (Days)')
@@ -368,13 +368,15 @@ class PhotSchedulingForm(forms.Form):
                     initial=initial_list, 
                     required=False
                 )
-
-        self.fields['cadence_frequency'].widget.attrs['class'] = 'cadence-input'
+        logger.info(f'initial cadence freq in days: {initial_data["cadence_frequency_days"]}')
+        logger.info(f'initial cadence freq in hours: {initial_data.get("cadence_frequency","")}')
+        self.fields['cadence_frequency_days'].widget.attrs['class'] = 'cadence-input'
         self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
-    
+
     def clean_observing_parameters(self):
 
         data = self.cleaned_data['observing_parameters']
+
         try:
             return json.loads(data)
         except (json.JSONDecodeError, TypeError):

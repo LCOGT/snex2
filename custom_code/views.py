@@ -756,6 +756,7 @@ def scheduling_view(request):
                 cancel_reason = comment_raw
             logger.info(f'comment from the scheduling page: {cancel_reason}')
             form.cleaned_data['comment'] = cancel_reason
+            logger.info(f'cadence frequency in hours in scheduling_view: {form.cleaned_data}')
             result = change_obs_from_scheduling(
                 action=action,
                 obs_id=form.cleaned_data['observation_id'],
@@ -1283,8 +1284,8 @@ class ObservationListExtrasView(ListView):
             obsrecords = ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
             now = datetime.utcnow()
             recent_obs = obsrecords.annotate(days_since=now-Cast(KeyTextTransform('start', 'parameters'), DateTimeField()))
-            recent_obs = recent_obs.filter(parameters__cadence_frequency__gt=0.0)
-            recent_obs = recent_obs.annotate(urgency=ExpressionWrapper(F('days_since')/(Cast(KeyTextTransform('cadence_frequency', 'parameters'), FloatField())), DateTimeField()))
+            recent_obs = recent_obs.filter(parameters__cadence_frequency_days__gt=0.0)
+            recent_obs = recent_obs.annotate(urgency=ExpressionWrapper(F('days_since')/(Cast(KeyTextTransform('cadence_frequency_days', 'parameters'), FloatField())), DateTimeField()))
             return recent_obs.order_by('-urgency')
 
     
@@ -1813,7 +1814,7 @@ class ObservationGroupDetailView(DetailView):
                  'end': obs.parameters.get('end', ''),
                  'status': obs.status,
                  'obs_id': obs.observation_id,
-                 'cadence': obs.parameters['cadence_frequency'],
+                 'cadence': obs.parameters['cadence_frequency_days'],
                  'site': obs.parameters.get('site', ''),
                  'instrument': obs.parameters['instrument_type'],
                  'proposal': obs.parameters['proposal'],

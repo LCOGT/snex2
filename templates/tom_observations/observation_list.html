@@ -150,7 +150,7 @@ $("body").on("keyup", ".cadence-input", function() {
 $("body").on("keyup", ".delay-start-input", function() {
   var t = this;
   var table = t.closest(".table");
-  var cadence_input = table.querySelectorAll('input[name="cadence_frequency"]')[0];
+  var cadence_input = table.querySelectorAll('input[name="cadence_frequency_days"]')[0];
   var newreminder = 2*parseFloat(cadence_input.value) + parseFloat(t.value) + 0.7;
   var reminder = table.querySelectorAll('input[name="reminder"]')[0];
   reminder.value = newreminder;

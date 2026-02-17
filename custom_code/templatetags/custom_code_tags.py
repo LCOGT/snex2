@@ -946,8 +946,8 @@ def observation_summary(context, target=None, time='previous'):
             else:
                 title_suffix = ''
 
-            if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy' and float(parameter.get('cadence_frequency', 0.0)) > 0.0:
-                parameter_string = str(parameter.get('cadence_frequency', '')) + '-day ' + str(parameter.get('observation_type', '')).lower() + ' cadence of '
+            if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy' and float(parameter.get('cadence_frequency_days', 0.0)) > 0.0:
+                parameter_string = str(parameter.get('cadence_frequency_days', '')) + '-day ' + str(parameter.get('observation_type', '')).lower() + ' cadence of '
             else:
                 parameter_string = 'Single ' + str(parameter.get('observation_type', '')).lower() + ' observation of '
 
@@ -1096,6 +1096,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         comment_str = '{}: {}'.format(comment.user.first_name, comment.comment)
     
     parameter = observation.parameters
+    logger.info(f'get_scheduling_form observation.parameters: {parameter}')
     if parameter.get('observation_type', '') == 'IMAGING':
 
         observation_type = 'Phot'
@@ -1108,7 +1109,12 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         else:
             instrument = 'SBIG'
 
+        cadence_frequency_days = parameter.get('cadence_frequency_days', '')
         cadence_frequency = parameter.get('cadence_frequency', '')
+        logger.info(f'cadence frequency in hours from parameters? {cadence_frequency}')
+        cadence_frequency = cadence_frequency_days * 24
+        logger.info(f'how about just calculating it from days: {cadence_frequency}')
+
         #start = str(obsset.first().parameters['start']).replace('T', ' ')
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
@@ -1119,7 +1125,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         else:
             cadence_strat = '(Onetime)'
         
-        reminder = parameter.get('reminder', 2 * cadence_frequency)
+        reminder = parameter.get('reminder', 2 * cadence_frequency_days)
         observing_parameters = {
                    'instrument_type': parameter.get('instrument_type', ''),
                    'min_lunar_distance': parameter.get('min_lunar_distance', ''),
@@ -1127,6 +1133,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'observation_type': parameter.get('observation_type', ''),
                    'observation_mode': parameter.get('observation_mode', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
+                   'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
                    'reminder': reminder
             }
@@ -1144,6 +1151,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'observation_type': parameter.get('observation_type', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
                    'observing_parameters': json.dumps(observing_parameters),
+                   'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
@@ -1156,7 +1164,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                 initial[f] = parameter.get(f, '')
 
         form = PhotSchedulingForm(initial=initial)
-
+        logger.info(f'get_scheduling_form cadence frequency: {cadence_frequency_days} and in hours: {cadence_frequency}')
         parameters.append({'observation_id': observation.id,
                            'obsgroup_id': obsgroup.id,
                            'target': target,

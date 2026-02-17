@@ -54,7 +54,8 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
     filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
     max_airmass = forms.FloatField(initial=1.6, min_value=0, label='Max Airmass')
     min_lunar_distance = forms.IntegerField(min_value=0, label='Minimum Lunar Distance', initial=20, required=False)
-    cadence_frequency = forms.FloatField(required=True, min_value=0.0, initial=3.0, label='')
+    cadence_frequency_days = forms.FloatField(required=True, min_value=0.0, initial=3.0, label='')
+    cadence_frequency = forms.FloatField(widget=forms.HiddenInput(), required=False)
     ipp_value = forms.FloatField(label='IPP', min_value=0.5, max_value=2.0, initial=1.0)
     observation_mode = forms.ChoiceField(choices=(('NORMAL', 'Normal'), ('RAPID_RESPONSE', 'Rapid-Response'), ('TIME_CRITICAL', 'Time-Critical')), label='Observation Mode')
     reminder = forms.FloatField(required=True, min_value=0.0, initial=6.7, label='Reminder in')
@@ -139,7 +140,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             Div(
                 Column('name'),
                 Column('cadence_strategy'),
-                Column(AppendedText('cadence_frequency', 'Days')),
+                Column(AppendedText('cadence_frequency_days', 'Days')),
                 css_class='form-row'
             ),
             Div(
@@ -162,25 +163,26 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             - Adds the cadence strategy to the form if "repeat" was the selected "cadence_type". If "once" was
               selected, the observation is submitted as a single observation.
         """
+        # cleaned_data['cadence_frequency'] = cleaned_data['cadence_frequency_days'] * 24
+        logger.info(f"form freq in days: {self.cleaned_data.get('cadence_frequency_days')}")
+        self.cleaned_data['cadence_frequency'] = self.cleaned_data.get('cadence_frequency_days') * 24
         cleaned_data = super().clean()
-        logger.info(f'form cleaned data: {cleaned_data}')
+        logger.info(f'tom cleaned data: {cleaned_data}')
+        logger.info(f"input day cadence frequency: {cleaned_data['cadence_frequency_days']}")
+        logger.info(f"calculated hour cadence frequency: {cleaned_data['cadence_frequency']}")
         now = datetime.datetime.utcnow()
         if cleaned_data.get('delay_start'):
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days=cleaned_data['delay_amount']), '%Y-%m-%dT%H:%M:%S')
-            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']*24+cleaned_data['delay_amount']*24), '%Y-%m-%dT%H:%M:%S')
-        else:
-            cleaned_data['start'] = datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')
-            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']*24), '%Y-%m-%dT%H:%M:%S')
-        
+            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']+cleaned_data['delay_amount']*24), '%Y-%m-%dT%H:%M:%S')
+
         logger.info(f"Raw reminder interval from user: {cleaned_data.get('reminder')}")
         reminder = cleaned_data.get('reminder', 6.7)
         cleaned_data['reminder'] = reminder
         reminder_date = now + datetime.timedelta(days=reminder)
         cleaned_data['reminder_date'] = reminder_date.strftime('%Y-%m-%dT%H:%M:%S')
-        logger.info(f"Final cleaned reminder date: {cleaned_data['reminder_date']}")
         cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and v[0] == 0.0 else v) for k, v in cleaned_data.items()}
-        logger.info(f"Preserving reminder for cadence: {cleaned_data['reminder']}")
-        logger.info(f'form cleaned data with 0 exp time filters replaced with empty lists: {cleaned_data}')
+        logger.info(f"reminder in days: {cleaned_data['reminder']} and reminder date: {cleaned_data['reminder_date']}")
+        logger.info(f'snex2 cleaned data with 0 exp time filters replaced with empty lists: {cleaned_data}')
         return cleaned_data
 
     def layout(self):
@@ -417,6 +419,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         cleaned_data = super().clean()
         self.cleaned_data['instrument_type'] = '2M0-FLOYDS-SCICAM'  # SNEx only submits spectra to FLOYDS
         now = datetime.datetime.utcnow()
+        cleaned_data['cadence_frequency'] *= 24 
         if cleaned_data.get('delay_start'):
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days=cleaned_data['delay_amount']), '%Y-%m-%dT%H:%M:%S')
             cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']*24+cleaned_data['delay_amount']*24), '%Y-%m-%dT%H:%M:%S')
@@ -424,7 +427,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             cleaned_data['start'] = datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')
             cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']*24), '%Y-%m-%dT%H:%M:%S')
         cleaned_data['reminder'] = datetime.datetime.strftime(now + datetime.timedelta(days=cleaned_data['reminder']), '%Y-%m-%dT%H:%M:%S')
-
         return cleaned_data
     
     def layout(self):

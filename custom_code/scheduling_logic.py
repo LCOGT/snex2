@@ -85,6 +85,7 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
     
 
 def cancel_observation(obs):
+    logger.info(f'calling cancel_observations for {obs}')
     obs_group = obs.observationgroup_set.first()
     if not obs_group:
         return False
@@ -108,6 +109,7 @@ def cancel_observation(obs):
         logger.warning(f"No active cadence found for group {obs_group.id}")
 
     first_obs = obs_group.observation_records.order_by('created').first()
+    logger.info(f'first_obs of cancel: {first_obs}')
     if first_obs:
         first_obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
         first_obs.save()
@@ -117,7 +119,7 @@ def cancel_observation(obs):
 def _continue_sequence(obs, user, data):
     logger.info(f'Continuing Sequence {obs.id} as-is')
     
-    for key in ['ipp_value', 'max_airmass', 'cadence_frequency']:
+    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days']:
 
         if data.get(key) != obs.parameters.get(key):
             raise Exception("Parameters were modified. Please use 'Modify' instead.")
@@ -139,14 +141,14 @@ def _modify_sequence(obs, user, data):
     # Cancel the current sequence
     _stop_sequence(obs, user, data)
 
-    old_params = obs.parameters
-    logger.info(f'old parameters {old_params}')
     logger.info(f'incoming data {data}')
     new_params = obs.parameters.copy()
+    logger.info(f'old parameters {new_params}')
 
     new_params['ipp_value'] = data['ipp_value']
     new_params['max_airmass'] = data['max_airmass']
-    new_params['cadence_frequency'] = data['cadence_frequency']
+    new_params['cadence_frequency_days'] = data['cadence_frequency_days']
+    new_params['cadence_frequency'] = data['cadence_frequency_days'] * 24
 
     delay = data.get('delay_start', 0.0)
     now = datetime.utcnow()
@@ -157,7 +159,7 @@ def _modify_sequence(obs, user, data):
     new_params['start_user'] = user.username
 
     new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
-    new_params['end'] = (now + timedelta(days=delay + (data['cadence_frequency']))).strftime('%Y-%m-%dT%H:%M:%S')
+    new_params['end'] = (now + timedelta(days=delay + (data['cadence_frequency_days']))).strftime('%Y-%m-%dT%H:%M:%S')
 
     filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
     for f in filters:
@@ -184,7 +186,7 @@ def _modify_sequence(obs, user, data):
         )
         new_record.parameters.update({
             'start_user': user.username,
-            'reminder': data['reminder'],
+            'reminder': new_params['reminder'],
             'reminder_date': new_params['reminder_date']
         })
 
@@ -194,11 +196,11 @@ def _modify_sequence(obs, user, data):
 
     DynamicCadence.objects.create(
         observation_group=new_obs_group,
-        cadence_strategy=data.get('cadence_strategy', 'SnexResumeCadenceAfterFailureStrategy'),
-        cadence_parameters={'cadence_frequency': data['cadence_frequency']},
+        cadence_strategy=new_params.get('cadence_strategy', 'SnexResumeCadenceAfterFailureStrategy'),
+        cadence_parameters={'cadence_frequency': new_params['cadence_frequency']},
         active=True
     )
-
+    logger.info(f'data: {data} and new_params now modified: {new_params}')
     _sync_permissions(obs, new_obs_group)
 
     return "Modified"
@@ -208,7 +210,7 @@ def _sync_permissions(old_obs, new_group):
         object_pk=old_obs.id,
         content_type=ContentType.objects.get_for_model(ObservationRecord)
     ).values_list('group_id', flat=True).distinct()
-    
+    logger.info(f'group ids: {group_ids}')
     groups = Group.objects.filter(id__in=group_ids)
     for group in groups:
         assign_perm('tom_observations.view_observationgroup', group, new_group)

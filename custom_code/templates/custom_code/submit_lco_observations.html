@@ -57,14 +57,14 @@ $(function () {
   });
 });
 
-$("#phot_cadence_frequency").keyup(function() {
-  var cadence = document.getElementById("phot_cadence_frequency").value;
+$("#phot_cadence_frequency_days").keyup(function() {
+  var cadence = document.getElementById("phot_cadence_frequency_days").value;
   var delayamount = document.getElementById("phot_delay_amount").value;
   var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
   document.getElementById("phot_reminder").value = newreminder;
 });
 $("#phot_delay_amount").keyup(function() {
-  var cadence = document.getElementById("phot_cadence_frequency").value;
+  var cadence = document.getElementById("phot_cadence_frequency_days").value;
   var delayamount = document.getElementById("phot_delay_amount").value;
   var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
   document.getElementById("phot_reminder").value = newreminder;
