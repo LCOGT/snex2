@@ -14,6 +14,7 @@ import numpy as np
 from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
+from custom_code.scheduling_logic import save_comments
 
 from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
@@ -52,6 +53,17 @@ def _get_session(db_address):
         raise
     finally:
         session.close()
+
+def save_observation_comment(observation, previous_state):
+    logger.info('Observation change state hook: %s from %s to %s', observation, previous_state, observation.status)
+    if previous_state is None or previous_state == '':
+        comment = observation.parameters.get('comment')
+        obs_group = observation.observationgroup_set.first()
+
+        if comment and obs_group:
+            user = User.objects.filter(username=observation.parameters.get('start_user')).first()
+            save_comments(comment, obs_group.id, user)
+            logger.info(f"Comment '{comment}' by user {user} saved for NEW obs group {obs_group.id}")
 
 
 def _return_session(db_address=settings.SNEX1_DB_URL):
@@ -279,47 +291,47 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
             db_session.flush()
 
 
-def targetextra_post_save(target):
-    '''
-    Hook to sync target classifications and redshifts
-    with SNEx1
-    '''
-    if not settings.DEBUG:
-        with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-            Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-            Classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
+# def targetextra_post_save(target):
+#     '''
+#     Hook to sync target classifications and redshifts
+#     with SNEx1
+#     '''
+#     if not settings.DEBUG:
+#         with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+#             Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
+#             Classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
 
-            targetid = target.id
-            if target.classification != '': # Update the classification in the targets table in the SNex 1 db
-                classification = target.classification # Get the new classification
-                classification_query = db_session.query(Classifications).filter(Classifications.name==classification).first()
-                if classification_query:
-                    # Get the corresponding id from the classifications table
-                    classificationid = classification_query.id
-                    db_session.query(Targets).filter(Targets.id==targetid).update({'classificationid': classificationid}) # Update the classificationid in the targets table
+#             targetid = target.id
+#             if target.classification != '': # Update the classification in the targets table in the SNex 1 db
+#                 classification = target.classification # Get the new classification
+#                 classification_query = db_session.query(Classifications).filter(Classifications.name==classification).first()
+#                 if classification_query:
+#                     # Get the corresponding id from the classifications table
+#                     classificationid = classification_query.id
+#                     db_session.query(Targets).filter(Targets.id==targetid).update({'classificationid': classificationid}) # Update the classificationid in the targets table
 
-            if target.redshift != '': # Now update the targets table with the redshift info
-                db_session.query(Targets).filter(Targets.id==targetid).update({'redshift': target.redshift})
-                logger.info(f'redshift should be now changed: {db_session.query(Targets).filter(Targets.id==targetid).first().redshift}')
+#             if target.redshift != '': # Now update the targets table with the redshift info
+#                 db_session.query(Targets).filter(Targets.id==targetid).update({'redshift': target.redshift})
+#                 logger.info(f'redshift should be now changed: {db_session.query(Targets).filter(Targets.id==targetid).first().redshift}')
 
-            db_session.commit()
-    logger.info(f'Classification and Redshift target post save hook: {target}')
+#             db_session.commit()
+#     logger.info(f'Classification and Redshift target post save hook: {target}')
 
 
-def targetname_post_save(targetname, created):
-    '''
-    Hook to sync target name with SNEx1
-    '''
-    if not settings.DEBUG:
-        with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-            Names = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
+# def targetname_post_save(targetname, created):
+#     '''
+#     Hook to sync target name with SNEx1
+#     '''
+#     if not settings.DEBUG:
+#         with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+#             Names = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
 
-            targetid = int(targetname.target_id) # Get the targetid of our saved entry
-            name = targetname.name 
-            if created:
-               db_session.add(Names(targetid=targetid, name=name, datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))
-               db_session.commit()
-    logger.info('targetname post save hook: %s created: %s', targetname, created)
+#             targetid = int(targetname.target_id) # Get the targetid of our saved entry
+#             name = targetname.name 
+#             if created:
+#                db_session.add(Names(targetid=targetid, name=name, datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))
+#                db_session.commit()
+#     logger.info('targetname post save hook: %s created: %s', targetname, created)
 
 ### REMOVE 
 # def sync_observation_with_snex1(snex_id, params, requestgroup_id, wrapped_session=None):
@@ -745,90 +757,90 @@ def change_interest_in_snex1(targetid, username, status):
     logger.info('Synced {} interested in target {} with SNEx1'.format(username, targetid))
 
 
-def sync_paper_with_snex1(paper):
-    '''
-    Hook to ingest a paper into SNEx1
-    '''
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        papers = _load_table('papers', db_address=settings.SNEX1_DB_URL)
+# def sync_paper_with_snex1(paper):
+#     '''
+#     Hook to ingest a paper into SNEx1
+#     '''
+#     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+#         papers = _load_table('papers', db_address=settings.SNEX1_DB_URL)
 
-        status_dict = {'in prep': 'inprep',
-                       'submitted': 'submitted',
-                       'published': 'published'
-                    }
+#         status_dict = {'in prep': 'inprep',
+#                        'submitted': 'submitted',
+#                        'published': 'published'
+#                     }
 
-        targetid = paper.target_id
-        reference = paper.author_last_name + ' et al.'
-        status = status_dict[paper.status]
-        contents = paper.description
-        datecreated = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
+#         targetid = paper.target_id
+#         reference = paper.author_last_name + ' et al.'
+#         status = status_dict[paper.status]
+#         contents = paper.description
+#         datecreated = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
 
-        newpaper = papers(targetid=targetid, reference=reference, status=status, contents=contents, datecreated=datecreated)
-        db_session.add(newpaper)
+#         newpaper = papers(targetid=targetid, reference=reference, status=status, contents=contents, datecreated=datecreated)
+#         db_session.add(newpaper)
 
-        db_session.commit()
+#         db_session.commit()
     
-    logger.info('Synced paper {} with SNEx1'.format(paper.id))
+#     logger.info('Synced paper {} with SNEx1'.format(paper.id))
 
-def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, mode='create', wrapped_session=None):
-    '''
-    Hook to sync an observation sequence submitted through SNEx2 
-    to the obsrequests table in the SNEx1 database
-    '''
-    if wrapped_session:
-        db_session = wrapped_session
+# def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, mode='create', wrapped_session=None):
+#     '''
+#     Hook to sync an observation sequence submitted through SNEx2 
+#     to the obsrequests table in the SNEx1 database
+#     '''
+#     if wrapped_session:
+#         db_session = wrapped_session
 
-    else:
-        db_session = _return_session(settings.SNEX1_DB_URL)
-        #with _get_session(db_address=_snex1_address) as db_session:
-    Notes = _load_table('notes', db_address=settings.SNEX1_DB_URL)
-    Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
+#     else:
+#         db_session = _return_session(settings.SNEX1_DB_URL)
+#         #with _get_session(db_address=_snex1_address) as db_session:
+#     Notes = _load_table('notes', db_address=settings.SNEX1_DB_URL)
+#     Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
     
-    if userid != 67:
-        try:
-            # Get SNEx1 id corresponding to this user
-            snex2_user = User.objects.get(id=userid)
-            snex1_user = db_session.query(Users).filter(Users.name==snex2_user.username).first()
-            snex1_userid = snex1_user.id
-        except:
-            snex1_userid = 67
-    else:
-        snex1_userid = 67
+#     if userid != 67:
+#         try:
+#             # Get SNEx1 id corresponding to this user
+#             snex2_user = User.objects.get(id=userid)
+#             snex1_user = db_session.query(Users).filter(Users.name==snex2_user.username).first()
+#             snex1_userid = snex1_user.id
+#         except:
+#             snex1_userid = 67
+#     else:
+#         snex1_userid = 67
  
-    existing_comment = db_session.query(Notes).filter(and_(Notes.targetid==targetid, Notes.note==comment, Notes.tablename==tablename, Notes.tableid==snex1_rowid)).first()
-    logger.info(f'existing comment in {tablename}: {existing_comment}')
-    if existing_comment and mode == 'delete':
-        logger.info(f'deleting existing comment {existing_comment.note}')
-        db_session.delete(existing_comment)
+#     existing_comment = db_session.query(Notes).filter(and_(Notes.targetid==targetid, Notes.note==comment, Notes.tablename==tablename, Notes.tableid==snex1_rowid)).first()
+#     logger.info(f'existing comment in {tablename}: {existing_comment}')
+#     if existing_comment and mode == 'delete':
+#         logger.info(f'deleting existing comment {existing_comment.note}')
+#         db_session.delete(existing_comment)
     
-    if not existing_comment and mode == 'create':
-        logger.info(f'creating new comment {comment}')
-        newcomment = Notes(
-                targetid=targetid,
-                note=comment,
-                tablename=tablename,
-                tableid=snex1_rowid,
-                posttime=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'),
-                userid=snex1_userid,
-                datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-        )
+#     if not existing_comment and mode == 'create':
+#         logger.info(f'creating new comment {comment}')
+#         newcomment = Notes(
+#                 targetid=targetid,
+#                 note=comment,
+#                 tablename=tablename,
+#                 tableid=snex1_rowid,
+#                 posttime=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'),
+#                 userid=snex1_userid,
+#                 datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
+#         )
         
-        db_session.add(newcomment)
+#         db_session.add(newcomment)
     
-    if not wrapped_session:
-        try:
-            logger.info(f'changes committed')
-            db_session.commit()
-        except:
-            logger.info(f'changes rolled back')
-            db_session.rollback()
-        finally:
-            db_session.close()
+#     if not wrapped_session:
+#         try:
+#             logger.info(f'changes committed')
+#             db_session.commit()
+#         except:
+#             logger.info(f'changes rolled back')
+#             db_session.rollback()
+#         finally:
+#             db_session.close()
     
-    else:
-        db_session.flush()
+#     else:
+#         db_session.flush()
 
-    logger.info('Synced comment for table {} from user {}'.format(tablename, userid)) 
+#     logger.info('Synced comment for table {} from user {}'.format(tablename, userid)) 
 
 
 def get_unreduced_spectra(allspec=True):
@@ -970,59 +982,59 @@ def sync_users_with_snex1(user, created=False, old_username=''):
 
     logger.info('Synced user {} with SNEx1'.format(user.username)) 
 
-def download_test_image_from_archive():
-    """
-    Download a test image from the LCO archive to test image thumbnails.
-    NOTE: Only runs in dev
-    Creates any directories needed to store the image and thumbnail.
-    Checks if the image exists and if not, downloads it from the archive.
-    Returns the image parameters needed to display its thumbnail.
-    """
-    ### Check if thumbnail directory exists, and if not make it
-    thumbnail_directory = settings.FITS_DIR
-    if not os.path.isdir(thumbnail_directory):
-        os.makedirs(os.path.join(settings.BASE_DIR, thumbnail_directory))
+# def download_test_image_from_archive():
+#     """
+#     Download a test image from the LCO archive to test image thumbnails.
+#     NOTE: Only runs in dev
+#     Creates any directories needed to store the image and thumbnail.
+#     Checks if the image exists and if not, downloads it from the archive.
+#     Returns the image parameters needed to display its thumbnail.
+#     """
+#     ### Check if thumbnail directory exists, and if not make it
+#     thumbnail_directory = settings.FITS_DIR
+#     if not os.path.isdir(thumbnail_directory):
+#         os.makedirs(os.path.join(settings.BASE_DIR, thumbnail_directory))
 
-    if not os.path.isdir(settings.THUMB_DIR):
-        os.mkdir(os.path.join(settings.BASE_DIR, settings.THUMB_DIR))
+#     if not os.path.isdir(settings.THUMB_DIR):
+#         os.mkdir(os.path.join(settings.BASE_DIR, settings.THUMB_DIR))
 
-    ### Check if test image already exists in thumbnail directory,
-    ### and if not download it
-    # 4 test images, first 3 are public, last is of 23ixf
-    test_thumbnail_basenames = ["elp1m008-fa16-20250725-0103-e91","elp0m414-sq31-20250713-0229-e00","ogg0m455-sq30-20250712-0249-e91","tfn0m436-sq33-20250718-0265-e91"]
-    for test_thumbnail_basename in test_thumbnail_basenames:
-        if not any([test_thumbnail_basename in f for f in os.listdir(thumbnail_directory)]):
-            ### GET it from the archive
-            token = settings.FACILITIES['LCO']['api_key']
-            url = settings.FACILITIES['LCO']['archive_url']
+#     ### Check if test image already exists in thumbnail directory,
+#     ### and if not download it
+#     # 4 test images, first 3 are public, last is of 23ixf
+#     test_thumbnail_basenames = ["elp1m008-fa16-20250725-0103-e91","elp0m414-sq31-20250713-0229-e00","ogg0m455-sq30-20250712-0249-e91","tfn0m436-sq33-20250718-0265-e91"]
+#     for test_thumbnail_basename in test_thumbnail_basenames:
+#         if not any([test_thumbnail_basename in f for f in os.listdir(thumbnail_directory)]):
+#             ### GET it from the archive
+#             token = settings.FACILITIES['LCO']['api_key']
+#             url = settings.FACILITIES['LCO']['archive_url']
 
-            results = requests.get(url, 
-                                headers={'Authorization': f'Token {token}'}, 
-                                params={'basename': test_thumbnail_basename}).json()["results"]
-            thumbnail_url = results[0]["url"]
-            thumbnail_filename = results[0]["filename"]
-            # Download image and funpack it
-            urllib.request.urlretrieve(thumbnail_url, os.path.join(settings.BASE_DIR, thumbnail_directory, thumbnail_filename))
-            os.system('funpack -D '+ thumbnail_directory + thumbnail_filename)
+#             results = requests.get(url, 
+#                                 headers={'Authorization': f'Token {token}'}, 
+#                                 params={'basename': test_thumbnail_basename}).json()["results"]
+#             thumbnail_url = results[0]["url"]
+#             thumbnail_filename = results[0]["filename"]
+#             # Download image and funpack it
+#             urllib.request.urlretrieve(thumbnail_url, os.path.join(settings.BASE_DIR, thumbnail_directory, thumbnail_filename))
+#             os.system('funpack -D '+ thumbnail_directory + thumbnail_filename)
 
-    filepaths = ['','','','']
-    filenames = test_thumbnail_basenames
-    dates = ["2025-07-25","2025-07-13","2025-07-12","2025-07-11"]
-    teles = ["1m","0m4","0m4","0m4"]
-    instr = ["kb78","kb78","kb78","kb78"]
-    filters = ["B","r","g","V"]
-    exptimes = ["300s","180s","120s","90s"]
-    psfxs = [9999,9999,9999,9999]
-    psfys = [9999,9999,9999,9999]
+#     filepaths = ['','','','']
+#     filenames = test_thumbnail_basenames
+#     dates = ["2025-07-25","2025-07-13","2025-07-12","2025-07-11"]
+#     teles = ["1m","0m4","0m4","0m4"]
+#     instr = ["kb78","kb78","kb78","kb78"]
+#     filters = ["B","r","g","V"]
+#     exptimes = ["300s","180s","120s","90s"]
+#     psfxs = [9999,9999,9999,9999]
+#     psfys = [9999,9999,9999,9999]
     
-    return (
-        filepaths, 
-        filenames, 
-        dates, 
-        teles, 
-        instr,
-        filters, 
-        exptimes, 
-        psfxs, 
-        psfys,
-    )
+#     return (
+#         filepaths, 
+#         filenames, 
+#         dates, 
+#         teles, 
+#         instr,
+#         filters, 
+#         exptimes, 
+#         psfxs, 
+#         psfys,
+#     )

@@ -337,13 +337,7 @@ def submit_galaxy_observations_view(request):
                     assign_perm('tom_observations.delete_observationrecord', groups, record)
 
                 ## Add the sequence to SNEx1
-                snex_id = run_hook(
-                    'sync_sequence_with_snex1',
-                    form.serialize_parameters(),
-                    ['GWO4'],
-                    userid=request.user.id,
-                    wrapped_session=db_session
-                )
+                snex_id = 1
 
                 if len(new_observations) > 1 or form_data.get('cadence'):
                     observation_group.name = str(snex_id)

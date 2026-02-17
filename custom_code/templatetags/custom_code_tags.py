@@ -889,140 +889,84 @@ def custom_observation_plan(target, facility, length=1, interval=30, airmass_lim
         'visibility_graph': visibility_graph
     }
 
+def format_observation_summary(obs, group, time_type):
+    params = obs.parameters
+    facility = params.get('facility', '')
+    data = {'observation': obs.id, 'title': f'{facility} Sequence', 'summary': ''}
+
+    start_date = str(params.get('start', params.get('sequence_start', ''))).split('T')[0]
+    
+    if facility == 'LCO':
+        proposal = params.get('proposal', '')
+        if 'SUPA202' in proposal: data['title'] += ' [ePESSTO Proprietary]'
+        elif 'LCO2022A' in proposal: data['title'] += ' [DLT40 Proprietary]'
+
+        is_cadence = params.get('cadence_strategy') == 'SnexResumeCadenceAfterFailureStrategy'
+        obs_type = str(params.get('observation_type', '')).lower()
+        prefix = f"{params.get('cadence_frequency_days')}-day {obs_type} cadence" if is_cadence else f"Single {obs_type} observation"
+        
+        filter_parts = []
+        if params.get('observation_type') == 'IMAGING':
+            for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']:
+                val = params.get(f)
+                if val and val[0] != 0.0:
+                    filter_parts.append(f"{f} ({val[0]}x{val[1]})")
+        
+        summary = f"{prefix} of {', '.join(filter_parts)}"
+        
+        inst_map = {'2M0-FLOYDS-SCICAM': 'Floyds', '1M0-SCICAM-SINISTRO': 'Sinistro'} # ... add others
+        inst = inst_map.get(params.get('instrument_type'), params.get('instrument_type', ''))
+        
+        summary += f" with {inst}, IPP {params.get('ipp_value')} starting {start_date}"
+        data['summary'] = summary
+
+    elif facility == 'Gemini':
+        date_str = str(obs.created).split(' ')[0]
+        if 'SPECTRA' in params.get('observation_type', ''):
+            data['summary'] = f"Gemini spectrum (B:{params.get('b_exptime')}s, R:{params.get('r_exptime')}s) on {date_str}"
+        else:
+            data['summary'] = f"Gemini photometry (g,r,i,z) on {date_str}"
+
+    return data
+
 
 @register.inclusion_tag('custom_code/observation_summary.html', takes_context=True)
 def observation_summary(context, target=None, time='previous'):
-    """
-    A modification of the observation_list templatetag 
-    to display a summary of the observation records
-    for this object.
-    """
+    user = context['request'].user
+    
     if target:
-        if settings.TARGET_PERMISSIONS_ONLY:
-            observations = target.observationrecord_set.all()
+        if getattr(settings, 'TARGET_PERMISSIONS_ONLY', False):
+            obs_records = target.observationrecord_set.all()
         else:
-            observations = get_objects_for_user(
-                                context['request'].user,
-                                'tom_observations.view_observationrecord',
-                                ).filter(target=target)
+            obs_records = get_objects_for_user(user, 'tom_observations.view_observationrecord').filter(target = target)
     else:
-        observations = ObservationRecord.objects.all()
+        obs_records = ObservationRecord.objects.all()
 
-    observations = observations.order_by('parameters__start')
+    obs_groups = ObservationGroup.objects.filter(observation_records__in = obs_records, dynamiccadence__active=(time == 'ongoing')).distinct().prefetch_related('observation_records', 'dynamiccadence_set')
 
-    if time == 'ongoing':
-        cadences = DynamicCadence.objects.filter(active=True, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
-    
-    else:
-        cadences = DynamicCadence.objects.filter(active=False, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
-    
-    parameters = []
-    for cadence in cadences:
-        obsgroup = ObservationGroup.objects.get(id=cadence.observation_group_id)
-        #Check if the request is pending, and if so skip it
-        pending_obs = obsgroup.observation_records.all().filter(status='PENDING').first()
+    parameters_summary = []
+    content_type_obs_group = ContentType.objects.get_for_model(ObservationGroup)
+
+    for group in obs_groups:
+        all_obs = group.observation_records.all()
+        obs = all_obs.filter(status = 'PENDING').first() or all_obs.order_by('-id').first()
         
-        observation = obsgroup.observation_records.all().filter(status='PENDING').first()
-        if not observation:
-            observation = obsgroup.observation_records.all().order_by('-id').first()
-            first_observation = obsgroup.observation_records.all().order_by('id').first()
-            sequence_start = str(first_observation.parameters.get('start')).split('T')[0]
-            requested_str = ''
-        else:
-            sequence_start = str(observation.parameters.get('sequence_start', '')).split('T')[0]
-            if not sequence_start:
-                sequence_start = str(observation.parameters.get('start', '')).split('T')[0]
-            requested_str = ', requested by {}'.format(str(observation.parameters.get('start_user', '')))
+        if not obs:
+            continue
 
-        parameter = observation.parameters
-
-        # First do LCO observations
-        if parameter.get('facility', '') == 'LCO':
-
-            if 'SUPA202' in parameter.get('proposal', ''):
-                title_suffix = ' [ePESSTO Proprietary]'
-            elif 'LCO2022A' in parameter.get('proposal', ''):
-                title_suffix = ' [DLT40 Proprietary]'
-            else:
-                title_suffix = ''
-
-            if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy' and float(parameter.get('cadence_frequency_days', 0.0)) > 0.0:
-                parameter_string = str(parameter.get('cadence_frequency_days', '')) + '-day ' + str(parameter.get('observation_type', '')).lower() + ' cadence of '
-            else:
-                parameter_string = 'Single ' + str(parameter.get('observation_type', '')).lower() + ' observation of '
-
-            if parameter.get('observation_type', '') == 'IMAGING':
-                filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
-                for f in filters:
-                    filter_parameters = parameter.get(f, '')
-                    if filter_parameters:
-                        if filter_parameters[0] != 0.0:
-                            filter_string = f + ' (' + str(filter_parameters[0]) + 'x' + str(filter_parameters[1]) + '), '
-                            parameter_string += filter_string 
-            
-            elif parameter.get('observation_type', '') == 'SPECTRA':
-                parameter_string += str(parameter.get('exposure_time', ''))
-                parameter_string += 's '
-
-            if parameter.get('observation_mode') == 'TIME_CRITICAL':
-                parameter_string += '(time critical) '
-            elif parameter.get('observation_mode') == 'RAPID_RESPONSE':
-                parameter_string += '(rapid response) '
-
-            instrument_dict = {'2M0-FLOYDS-SCICAM': 'Floyds',
-                               '1M0-SCICAM-SINISTRO': 'Sinistro',
-                               '2M0-SCICAM-MUSCAT': 'Muscat',
-                               '2M0-SPECTRAL-AG': 'Spectral',
-                               '0M4-SCICAM-SBIG': 'SBIG',
-                               '0M4-SCICAM-QHY600': 'QHY',
-            }
-
-            if parameter.get('instrument_type') in instrument_dict.keys():
-                parameter_string += 'with ' + instrument_dict[parameter.get('instrument_type')]
-
-            parameter_string += ', IPP ' + str(parameter.get('ipp_value', ''))
-            parameter_string += ' and airmass < ' + str(parameter.get('max_airmass', ''))
-            parameter_string += ' starting on ' + sequence_start #str(parameter.get('start')).split('T')[0]
-            endtime = parameter.get('sequence_end', '')
-            if not endtime:
-                endtime = parameter.get('end', '')
-
-            if time == 'previous' and endtime:
-                parameter_string += ' and ending on ' + str(endtime).split('T')[0]
-            parameter_string += requested_str
-
-            ### Get any comments associated with this observation group
-            content_type_id = ContentType.objects.get(model='observationgroup').id
-            comments = Comment.objects.filter(object_pk=obsgroup.id, content_type_id=content_type_id).order_by('id')
-            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-
-            parameters.append({'title': 'LCO Sequence'+title_suffix,
-                               'summary': parameter_string,
-                               'comments': comment_list,
-                               'observation': observation.id,
-                               'group': obsgroup.id})
-
-        # Now do Gemini observations
-        elif parameter.get('facility', '') == 'Gemini':
-            
-            if 'SPECTRA' in parameter.get('observation_type', ''):
-                parameter_string = 'Gemini spectrum of B exposure time ' + str(parameter.get('b_exptime', '')) + 's and R exposure time ' + str(parameter.get('r_exptime', '')) + 's with airmass <' + str(parameter.get('max_airmass', '')) + ', scheduled on ' + str(observation.created).split(' ')[0]
-
-            else: # Gemini photometry
-                parameter_string = 'Gemini photometry of g (' + str(parameter.get('g_exptime', '')) + 's), r (' + str(parameter.get('r_exptime', '')) + 's), i (' + str(parameter.get('i_exptime', '')) + 's), and z (' + str(parameter.get('z_exptime', '')) + 's), with airmass < ' + str(parameter.get('max_airmass', '')) + ', scheduled on ' + str(observation.created).split(' ')[0]
-
-            parameters.append({'title': 'Gemini Sequence',
-                               'summary': parameter_string,
-                               'comments': [''], #No comment functionality for Gemini yet
-                               'observation': observation.id,
-                               'group': obsgroup.id})
+        summary_data = format_observation_summary(obs, group, time)
+        
+        comments = Comment.objects.filter(object_pk = group.id, content_type = content_type_obs_group)
+        summary_data['comments'] = [f"{c.user.first_name}: {c.comment}" for c in comments]
+        summary_data['group'] = group.id
+        
+        parameters_summary.append(summary_data)
 
     return {
-        'observations': observations,
-        'parameters': parameters,
+        'observations': obs_records,
+        'parameters': parameters_summary,
         'time': time
     }
-
 
 @register.inclusion_tag('custom_code/papers_list.html')
 def papers_list(target):
@@ -1696,18 +1640,18 @@ def image_slideshow(context, target):
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
         #NOTE: Development
-        if settings.DOWNLOAD_TEST_THUMBNAIL:
-            try:
-                filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
-            except Exception as e:
-                logger.warning("Downloading test image from archive failed", exc_info=e)
-                return {
-                    'target': target,
-                    'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
-                }
+        # if settings.DOWNLOAD_TEST_THUMBNAIL:
+        #     try:
+        #         filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
+        #     except Exception as e:
+        #         logger.warning("Downloading test image from archive failed", exc_info=e)
+        #         return {
+        #             'target': target,
+        #             'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
+        #         }
             
-        else:
-            return {
+        # else:
+        return {
                 'target': target,
                 'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
             }
@@ -1981,18 +1925,18 @@ def test_display_thumbnail(context, target):
 
     else:
         #NOTE: Development
-        if settings.DOWNLOAD_TEST_THUMBNAIL:
-            try:
-                filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
-            except Exception as e:
-                logger.warning("Downloading test image from archive failed", exc_info=e)
-                return {
-                    "top_images": [],
-                    "bottom_images": [],
-                }
+        # if settings.DOWNLOAD_TEST_THUMBNAIL:
+        #     try:
+        #         filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
+        #     except Exception as e:
+        #         logger.warning("Downloading test image from archive failed", exc_info=e)
+        #         return {
+        #             "top_images": [],
+        #             "bottom_images": [],
+        #         }
             
-        else:
-            return {
+        # else:
+        return {
                 "top_images": [],
                 "bottom_images": [],
             }

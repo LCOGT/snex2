@@ -1,10 +1,11 @@
 from django.db import transaction
 from tom_targets.models import TargetList, Target, TargetName
 from guardian.models import GroupObjectPermission
-from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
+from guardian.shortcuts import get_groups_with_perms, assign_perm
 from django.contrib.auth.models import User, Group
 from django.conf import settings
 from datetime import datetime, date, timedelta
+from django.utils import timezone
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse
 from django.contrib.contenttypes.models import ContentType
 import json
@@ -49,11 +50,12 @@ def _stop_sequence(obs, user, data):
         raise Exception("The facility (LCO) rejected the cancellation request.")
     
     obs_group = obs.observationgroup_set.first()
-    comment = data.get('comment', {})
+    comment = data.get('comment', '')
 
     if comment and obs_group:
         save_comments(comment, obs_group.id, user)
-                
+        logger.info(f"Comment {comment} by user {user} saved for obs group {obs_group.id}")
+
     return "Stopped"
 
 def save_comments(comment_text, object_id, user, model_name='observationgroup'):
@@ -72,7 +74,7 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
             user_name=user.username,
             user_email=user.email,
             comment=comment_text,
-            submit_date=datetime.now(),
+            submit_date=timezone.now(),
             is_public=True,
             is_removed=False,
             site_id=getattr(settings, 'SITE_ID', 1)
@@ -145,6 +147,10 @@ def _modify_sequence(obs, user, data):
     new_params = obs.parameters.copy()
     logger.info(f'old parameters {new_params}')
 
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        new_params['groups'] = get_groups_with_perms(obs)
+    
+    new_params['comment'] = ''
     new_params['ipp_value'] = data['ipp_value']
     new_params['max_airmass'] = data['max_airmass']
     new_params['cadence_frequency_days'] = data['cadence_frequency_days']
@@ -166,8 +172,7 @@ def _modify_sequence(obs, user, data):
         if f in data and data[f]:
             new_params[f] = data[f]
 
-    facility_class = get_service_class(obs.facility)
-    facility = facility_class()
+    facility = get_service_class(obs.facility)()
     form_class = facility.get_form(data['observation_type'])
     form = form_class(new_params)
     if not form.is_valid():
@@ -200,8 +205,8 @@ def _modify_sequence(obs, user, data):
         cadence_parameters={'cadence_frequency': new_params['cadence_frequency']},
         active=True
     )
-    logger.info(f'data: {data} and new_params now modified: {new_params}')
     _sync_permissions(obs, new_obs_group)
+    logger.info(f'data: {data} and new_params now modified: {new_params}')
 
     return "Modified"
 

@@ -9,6 +9,8 @@ from dateutil.parser import parse
 from tom_observations.facility import get_service_class
 import requests
 import datetime
+from django.utils import timezone
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +21,12 @@ class SnexResumeCadenceAfterFailureStrategy(ResumeCadenceAfterFailureStrategy):
 
         try:
             new_start = parse(observation_payload['start'])
+            if timezone.is_naive(new_start):
+                new_start = timezone.make_aware(new_start, timezone.get_current_timezone())
             
             new_reminder_dt = new_start + datetime.timedelta(days=float(reminder))
             
-            observation_payload['reminder_date'] = new_reminder_dt.strftime('%Y-%m-%dT%H:%M:%S')
+            observation_payload['reminder_date'] = new_reminder_dt.isoformat()
             
             logger.info(f"Observation start: {observation_payload['start']}")
             logger.info(f"Dynamic reminder set for: {observation_payload['reminder']}")
@@ -34,24 +38,7 @@ class SnexResumeCadenceAfterFailureStrategy(ResumeCadenceAfterFailureStrategy):
         logger.info(f"Final submission payload: {observation_payload}")
         
         return observation_payload
-    def advance_window(self, observation_payload, start_keyword='start', end_keyword='end'):
-        cadence_frequency = self.dynamic_cadence.cadence_parameters.get('cadence_frequency')
-        if not cadence_frequency:
-            raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
-        advance_window_hours = cadence_frequency
-        window_length = parse(observation_payload[end_keyword]) - parse(observation_payload[start_keyword])
-        logger.info(f"advance_window_hours = {advance_window_hours} and window_length = {window_length}")
-        new_start = parse(observation_payload[start_keyword]) + datetime.timedelta(hours=advance_window_hours)
-        if new_start < datetime.datetime.now():  # Ensure that the new window isn't in the past
-            new_start = datetime.datetime.now()
-        new_end = new_start + window_length
-        logger.info(f"new start: {new_start}, payload start: {observation_payload[start_keyword]}")
-        logger.info(f"time delta: {datetime.timedelta(hours=advance_window_hours)}")
-        logger.info(f"new start in iso: {new_start.isoformat()}")
-        observation_payload[start_keyword] = new_start.isoformat()
-        observation_payload[end_keyword] = new_end.isoformat()
 
-        return observation_payload
     # def run(self):
 
     #     # gets the most recent observation assuming the observation requests submitted from SNEx1 are being continuously sycned with SNEx2
