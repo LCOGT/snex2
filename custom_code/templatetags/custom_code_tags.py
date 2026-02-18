@@ -901,7 +901,7 @@ def format_observation_summary(obs, group, time_type):
         if 'SUPA202' in proposal: data['title'] += ' [ePESSTO Proprietary]'
         elif 'LCO2022A' in proposal: data['title'] += ' [DLT40 Proprietary]'
 
-        is_cadence = params.get('cadence_strategy') == 'SnexResumeCadenceAfterFailureStrategy'
+        is_cadence = params.get('cadence_strategy') == 'ResumeCadenceAfterFailureStrategy'
         obs_type = str(params.get('observation_type', '')).lower()
         prefix = f"{params.get('cadence_frequency_days')}-day {obs_type} cadence" if is_cadence else f"Single {obs_type} observation"
         
@@ -917,7 +917,7 @@ def format_observation_summary(obs, group, time_type):
         inst_map = {'2M0-FLOYDS-SCICAM': 'Floyds', '1M0-SCICAM-SINISTRO': 'Sinistro'} # ... add others
         inst = inst_map.get(params.get('instrument_type'), params.get('instrument_type', ''))
         
-        summary += f" with {inst}, IPP {params.get('ipp_value')} starting {start_date}"
+        summary += f" with {inst}, IPP {params.get('ipp_value')} starting {start_date} by {params.get('start_user')}"
         data['summary'] = summary
 
     elif facility == 'Gemini':
@@ -1064,7 +1064,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         if not end:
             end = str(observation.modified).split('.')[0]
 
-        if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
+        if parameter.get('cadence_strategy', '') == 'ResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'
@@ -1130,7 +1130,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         observation_type = 'Spec'
         instrument = 'Floyds'
         cadence_frequency = parameter.get('cadence_frequency', '')
-        if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
+        if parameter.get('cadence_strategy', '') == 'ResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'

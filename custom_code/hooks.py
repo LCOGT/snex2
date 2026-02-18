@@ -56,7 +56,7 @@ def _get_session(db_address):
 
 def save_observation_comment(observation, previous_state):
     logger.info('Observation change state hook: %s from %s to %s', observation, previous_state, observation.status)
-    if previous_state is None or previous_state == '':
+    if previous_state == '':
         comment = observation.parameters.get('comment')
         obs_group = observation.observationgroup_set.first()
 

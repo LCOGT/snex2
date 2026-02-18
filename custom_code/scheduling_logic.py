@@ -201,7 +201,7 @@ def _modify_sequence(obs, user, data):
 
     DynamicCadence.objects.create(
         observation_group=new_obs_group,
-        cadence_strategy=new_params.get('cadence_strategy', 'SnexResumeCadenceAfterFailureStrategy'),
+        cadence_strategy=new_params.get('cadence_strategy', 'ResumeCadenceAfterFailureStrategy'),
         cadence_parameters={'cadence_frequency': new_params['cadence_frequency']},
         active=True
     )
