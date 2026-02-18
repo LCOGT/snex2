@@ -84,7 +84,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         self.fields['name'].label = ''
         self.fields['name'].widget.attrs['placeholder'] = 'Name'
         self.fields['cadence_strategy'] = forms.ChoiceField(
-            choices=[('SnexRetryFailedObservationsStrategy', 'Once in the next'), ('ResumeCadenceAfterFailureStrategy', 'Repeating every')],
+            choices=[('ResumeCadenceAfterFailureStrategy', 'Repeating every'), ('RetryFailedObservationsStrategy', 'Once in the next')],
             required=False,
             label=''
         )
@@ -364,7 +364,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         self.fields['min_lunar_distance'].widget.attrs['placeholder'] = 'Degrees'
         self.fields['ipp_value'].label = 'IPP'
         self.fields['cadence_strategy'] = forms.ChoiceField(
-            choices=[('SnexRetryFailedObservationsStrategy', 'Once in the next'), ('ResumeCadenceAfterFailureStrategy', 'Repeating every')],
+            choices=[('ResumeCadenceAfterFailureStrategy', 'Repeating every'), ('RetryFailedObservationsStrategy', 'Once in the next')],
             required=False,
             label=''
         )
