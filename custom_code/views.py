@@ -1436,8 +1436,8 @@ def load_observations_tab_view(request):
         
         # Get all the template tag contexts
         observing_buttons_context = observing_buttons(target)
-        previous_obs_context = custom_code_tags.observation_summary(context_dict, target, 'previous')
-        ongoing_obs_context = custom_code_tags.observation_summary(context_dict, target, 'ongoing')
+        previous_obs_context = custom_code_tags.observation_summary(context_dict, target, is_active = False)
+        ongoing_obs_context = custom_code_tags.observation_summary(context_dict, target, is_active = True)
         submit_obs_context = custom_code_tags.submit_lco_observations(target)
         
         # Combine all contexts

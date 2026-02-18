@@ -886,7 +886,7 @@ def custom_observation_plan(target, facility, length=1, interval=30, airmass_lim
         'visibility_graph': visibility_graph
     }
 
-def format_lco_summary(obs, group, time_type):
+def format_lco_summary(obs, group, is_active):
     params = obs.parameters
     summary = []
 
@@ -965,7 +965,7 @@ def format_lco_summary(obs, group, time_type):
     if start_date:
         summary.append(f"starting on {start_date}")
 
-    if time_type == 'previous':
+    if not is_active:
         endtime = params.get('sequence_end') or params.get('end')
         if endtime:
             summary.append(f"ending on {str(endtime).split('T')[0]}")
@@ -1030,7 +1030,7 @@ def call_facility_formats(obs, group, time_type):
     return None
 
 @register.inclusion_tag('custom_code/observation_summary.html', takes_context=True)
-def observation_summary(context, target=None, time='previous'):
+def observation_summary(context, target = None, is_active = False):
     user = context['request'].user
     
     if target:
@@ -1041,7 +1041,7 @@ def observation_summary(context, target=None, time='previous'):
     else:
         obs_records = ObservationRecord.objects.all()
 
-    obs_groups = ObservationGroup.objects.filter(observation_records__in = obs_records, dynamiccadence__active=(time == 'ongoing')).distinct().prefetch_related('observation_records', 'dynamiccadence_set')
+    obs_groups = ObservationGroup.objects.filter(observation_records__in = obs_records, dynamiccadence__active=is_active).distinct().prefetch_related('observation_records', 'dynamiccadence_set')
 
     parameters_summary = []
     content_type_obs_group = ContentType.objects.get_for_model(ObservationGroup)
@@ -1053,7 +1053,7 @@ def observation_summary(context, target=None, time='previous'):
         if not obs:
             continue
 
-        summary_dict = call_facility_formats(obs, group, time)
+        summary_dict = call_facility_formats(obs, group, is_active)
         
         comments = Comment.objects.filter(object_pk = group.id, content_type = content_type_obs_group)
         summary_dict['comments'] = [f"{c.user.first_name}: {c.comment}" for c in comments]
@@ -1063,7 +1063,7 @@ def observation_summary(context, target=None, time='previous'):
     return {
         'observations': obs_records,
         'parameters': parameters_summary,
-        'time': time
+        'is_active': is_active
     }
 
 @register.inclusion_tag('custom_code/papers_list.html')
