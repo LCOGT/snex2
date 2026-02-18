@@ -916,7 +916,7 @@ def format_lco_summary(obs, group, is_active):
     cadence_freq = float(params.get('cadence_frequency_days', 0.0) or 0.0)
     obs_type = params.get('observation_type', '').lower()
 
-    if cadence_strategy == 'ResumeCadenceAfterFailureStrategy' and cadence_freq > 0:
+    if 'ResumeCadenceAfterFailureStrategy' in cadence_strategy and cadence_freq > 0:
         summary.append(f"{cadence_freq}-day {obs_type} cadence of")
     else:
         summary.append(f"Single {obs_type} observation of")
