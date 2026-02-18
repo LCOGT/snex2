@@ -9,17 +9,21 @@ def convert_cadence_strategy():
             obs.parameters['cadence_strategy'] = 'ResumeCadenceAfterFailureStrategy'
             logger.info(f'Converted resume strategy for {obs.target} with obs id: {obs.id}')
 
-        if obs.parameters.get('cadence_strategy') == 'SnexRetryFailedObservationsStrategy':
-            obs.parameters['cadence_strategy'] = 'RetryFailedObservationsStrategy'
-            logger.info(f'Converted single time observation strategy for {obs.target} with obs id: {obs.id}')
-    
+        # if obs.parameters.get('cadence_strategy') == 'SnexRetryFailedObservationsStrategy':
+        #     obs.parameters['cadence_strategy'] = 'RetryFailedObservationsStrategy'
+        #     logger.info(f'Converted single time observation strategy for {obs.target} with obs id: {obs.id}')
+        else:
+            logger.info(f'No conversion needed for {obs.target} with obs id: {obs.id}')
+        obs.save()
     cads = DynamicCadence.objects.all()
     for cad in cads:
         if cad.cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
             cad.cadence_strategy = 'ResumeCadenceAfterFailureStrategy'
-            logger.info(f'Converted cadence strategy for {cad.observation_group_id} with cad id: {cad.id}')
+            logger.info(f'Converted resume cadence strategy for {cad.observation_group_id} with cad id: {cad.id}')
 
-        if cad.cadence_strategy == 'SnexRetryFailedObservationsStrategy':
-            cad.cadence_strategy = 'RetryFailedObservationsStrategy'
-            logger.info(f'Converted single time cadence strategy for {cad.target} with cad id: {cad.id}')
-    
+        # if cad.cadence_strategy == 'SnexRetryFailedObservationsStrategy':
+        #     cad.cadence_strategy = 'RetryFailedObservationsStrategy'
+        #     logger.info(f'Converted single time cadence strategy for {cad.target} with cad id: {cad.id}')
+        else:
+            logger.info(f'No conversion needed for cadence {cad.observation_group_id} with cad id: {cad.id}')
+        cad.save()

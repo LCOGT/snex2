@@ -246,7 +246,7 @@ def submit_galaxy_observations_view(request):
                 observing_parameters = {}
                 observing_parameters['ipp_value'] = float(request.GET['ipp_value'])
                 observing_parameters['max_airmass'] = 2.0 #TODO: Add form field for this?
-                observing_parameters['cadence_strategy'] = 'RetryFailedObservationsStrategy'
+                observing_parameters['cadence_strategy'] = 'SnexRetryFailedObservationsStrategy'
                 observing_parameters['cadence_frequency'] = 24 #TODO: This is from SNEx1, change?
                 observing_parameters['cadence_frequency_days'] = 1.0 #TODO: This is from SNEx1, change?
                 observing_parameters['reminder'] = 1.0
