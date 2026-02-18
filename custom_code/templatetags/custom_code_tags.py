@@ -664,12 +664,9 @@ def submit_lco_observations(target):
     spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
     phot_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
     spec_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
-    logger.info(f'groups {phot_form.fields["groups"]}')
-    logger.info(f'groups {phot_form.fields["groups"].queryset}')
     if not settings.TARGET_PERMISSIONS_ONLY:
         phot_form.fields['groups'].queryset = Group.objects.all()
         spec_form.fields['groups'].queryset = Group.objects.all()
-    logger.info(f'groups after {phot_form.fields["groups"].queryset}')
     return {'object': target,
             'phot_form': phot_form,
             'spec_form': spec_form}
@@ -889,53 +886,155 @@ def custom_observation_plan(target, facility, length=1, interval=30, airmass_lim
         'visibility_graph': visibility_graph
     }
 
-def format_observation_summary(obs, group, time_type):
+def format_lco_summary(obs, group, time_type):
     params = obs.parameters
-    facility = params.get('facility', '')
-    data = {'observation': obs.id, 'title': f'{facility} Sequence', 'summary': ''}
+    summary = []
 
-    start_date = str(params.get('start', params.get('sequence_start', ''))).split('T')[0]
+    summary_dict = {
+        'observation': obs.id,
+        'group': group.id,
+        'title': 'LCO Sequence',
+        'summary': '',
+        'comments': []
+    }
+
+    proposal = params.get('proposal', '')
+    if 'SUPA202' in proposal:
+        summary_dict['title'] += ' [ePESSTO Proprietary]'
+    elif 'LCO2022A' in proposal:
+        summary_dict['title'] += ' [DLT40 Proprietary]'
+
+    sequence_start = params.get('start') #or params.get('sequence_start')
+    # if not sequence_start:
+    #     first_obs = group.observation_records.order_by('id').first()
+    #     if first_obs:
+    #         sequence_start = first_obs.parameters.get('start')
+
+    start_date = str(sequence_start).split('T')[0] if sequence_start else ''
+
+    cadence_strategy = params.get('cadence_strategy', '')
+    cadence_freq = float(params.get('cadence_frequency_days', 0.0) or 0.0)
+    obs_type = params.get('observation_type', '').lower()
+
+    if cadence_strategy == 'ResumeCadenceAfterFailureStrategy' and cadence_freq > 0:
+        summary.append(f"{cadence_freq}-day {obs_type} cadence of")
+    else:
+        summary.append(f"Single {obs_type} observation of")
+
+    if obs_type == 'imaging':
+        filter_strings = []
+        for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']:
+            val = params.get(f)
+            if val and val[0] != 0.0:
+                filter_strings.append(f"{f} ({val[0]}x{val[1]})")
+        if filter_strings:
+            summary.append(", ".join(filter_strings))
+
+    elif obs_type == 'spectra':
+        exp = params.get('exposure_time')
+        if exp:
+            summary.append(f"{exp}s")
+
+    mode = params.get('observation_mode')
+    if mode == 'TIME_CRITICAL':
+        summary.append("(time critical)")
+    elif mode == 'RAPID_RESPONSE':
+        summary.append("(rapid response)")
+
+    instrument_dict = {
+        '2M0-FLOYDS-SCICAM': 'Floyds',
+        '1M0-SCICAM-SINISTRO': 'Sinistro',
+        '2M0-SCICAM-MUSCAT': 'Muscat',
+        '2M0-SPECTRAL-AG': 'Spectral',
+        '0M4-SCICAM-SBIG': 'SBIG',
+        '0M4-SCICAM-QHY600': 'QHY',
+    }
+
+    inst = instrument_dict.get(params.get('instrument_type'))
+    if inst:
+        summary.append(f"with {inst},")
+
+    ipp = params.get('ipp_value')
+    airmass = params.get('max_airmass')
+
+    if ipp is not None:
+        summary.append(f"IPP {ipp}")
+    if airmass:
+        summary.append(f"airmass < {airmass}")
+
+    if start_date:
+        summary.append(f"starting on {start_date}")
+
+    if time_type == 'previous':
+        endtime = params.get('sequence_end') or params.get('end')
+        if endtime:
+            summary.append(f"ending on {str(endtime).split('T')[0]}")
+
+    start_user = params.get('start_user')
+    first_name = User.objects.get(username=start_user).first_name
+    if first_name:
+        summary.append(f"requested by {first_name}")
+    elif start_user:
+        summary.append(f"requested by {start_user}")
     
+    summary.append(f"on {proposal}")
+    
+    summary_dict['summary'] = " ".join(summary)
+    return summary_dict
+
+def format_gemini_summary(obs, group):
+    params = obs.parameters or {}
+
+    summary_dict = {
+        'observation': obs.id,
+        'group': group.id,
+        'title': 'Gemini Sequence',
+        'summary': '',
+        'comments': []
+    }
+
+    created_date = str(obs.created).split(' ')[0]
+    airmass = params.get('max_airmass')
+
+    if 'SPECTRA' in params.get('observation_type', ''):
+        b_exp = params.get('b_exptime')
+        r_exp = params.get('r_exptime')
+        summary_dict['summary'] = (
+            f"Gemini spectrum of B exposure time {b_exp}s "
+            f"and R exposure time {r_exp}s "
+            f"with airmass < {airmass}, "
+            f"scheduled on {created_date}"
+        )
+    else:
+        summary_dict['summary'] = (
+            f"Gemini photometry of "
+            f"g ({params.get('g_exptime')}s), "
+            f"r ({params.get('r_exptime')}s), "
+            f"i ({params.get('i_exptime')}s), "
+            f"and z ({params.get('z_exptime')}s), "
+            f"with airmass < {airmass}, "
+            f"scheduled on {created_date}"
+        )
+
+    return summary_dict
+
+def call_facility_formats(obs, group, time_type):
+    params = obs.parameters or {}
+    facility = params.get('facility', '')
+
     if facility == 'LCO':
-        proposal = params.get('proposal', '')
-        if 'SUPA202' in proposal: data['title'] += ' [ePESSTO Proprietary]'
-        elif 'LCO2022A' in proposal: data['title'] += ' [DLT40 Proprietary]'
-
-        is_cadence = params.get('cadence_strategy') == 'ResumeCadenceAfterFailureStrategy'
-        obs_type = str(params.get('observation_type', '')).lower()
-        prefix = f"{params.get('cadence_frequency_days')}-day {obs_type} cadence" if is_cadence else f"Single {obs_type} observation"
-        
-        filter_parts = []
-        if params.get('observation_type') == 'IMAGING':
-            for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']:
-                val = params.get(f)
-                if val and val[0] != 0.0:
-                    filter_parts.append(f"{f} ({val[0]}x{val[1]})")
-        
-        summary = f"{prefix} of {', '.join(filter_parts)}"
-        
-        inst_map = {'2M0-FLOYDS-SCICAM': 'Floyds', '1M0-SCICAM-SINISTRO': 'Sinistro'} # ... add others
-        inst = inst_map.get(params.get('instrument_type'), params.get('instrument_type', ''))
-        
-        summary += f" with {inst}, IPP {params.get('ipp_value')} starting {start_date} by {params.get('start_user')}"
-        data['summary'] = summary
-
+        return format_lco_summary(obs, group, time_type)
     elif facility == 'Gemini':
-        date_str = str(obs.created).split(' ')[0]
-        if 'SPECTRA' in params.get('observation_type', ''):
-            data['summary'] = f"Gemini spectrum (B:{params.get('b_exptime')}s, R:{params.get('r_exptime')}s) on {date_str}"
-        else:
-            data['summary'] = f"Gemini photometry (g,r,i,z) on {date_str}"
+        return format_gemini_summary(obs, group)
 
-    return data
-
+    return None
 
 @register.inclusion_tag('custom_code/observation_summary.html', takes_context=True)
 def observation_summary(context, target=None, time='previous'):
     user = context['request'].user
     
     if target:
-        if getattr(settings, 'TARGET_PERMISSIONS_ONLY', False):
+        if settings.TARGET_PERMISSIONS_ONLY:
             obs_records = target.observationrecord_set.all()
         else:
             obs_records = get_objects_for_user(user, 'tom_observations.view_observationrecord').filter(target = target)
@@ -954,13 +1053,12 @@ def observation_summary(context, target=None, time='previous'):
         if not obs:
             continue
 
-        summary_data = format_observation_summary(obs, group, time)
+        summary_dict = call_facility_formats(obs, group, time)
         
         comments = Comment.objects.filter(object_pk = group.id, content_type = content_type_obs_group)
-        summary_data['comments'] = [f"{c.user.first_name}: {c.comment}" for c in comments]
-        summary_data['group'] = group.id
+        summary_dict['comments'] = [f"{c.user.first_name}: {c.comment}" for c in comments]
         
-        parameters_summary.append(summary_data)
+        parameters_summary.append(summary_dict)
 
     return {
         'observations': obs_records,

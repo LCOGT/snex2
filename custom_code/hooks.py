@@ -59,7 +59,6 @@ def save_observation_comment(observation, previous_state):
     if previous_state == '':
         comment = observation.parameters.get('comment')
         obs_group = observation.observationgroup_set.first()
-
         if comment and obs_group:
             user = User.objects.filter(username=observation.parameters.get('start_user')).first()
             save_comments(comment, obs_group.id, user)

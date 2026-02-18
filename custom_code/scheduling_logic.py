@@ -67,24 +67,31 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
         }
         actual_model = model_map.get(model_name, model_name)
         content_type = ContentType.objects.get(model=actual_model)
-        newcomment = Comment.objects.create(
+
+        newcomment, created = Comment.objects.get_or_create(
             object_pk=str(object_id),
             content_type=content_type,
             user=user,
-            user_name=user.username,
-            user_email=user.email,
             comment=comment_text,
-            submit_date=timezone.now(),
-            is_public=True,
-            is_removed=False,
-            site_id=getattr(settings, 'SITE_ID', 1)
+            defaults={
+                'user_name': user.username,
+                'user_email': user.email,
+                'submit_date': timezone.now(),
+                'is_public': True,
+                'is_removed': False,
+                'site_id': getattr(settings, 'SITE_ID', 1)
+            }
         )
-        newcomment.save()
+        
+        if created:
+            logger.info(f"New comment created for {actual_model} {object_id}")
+        else:
+            logger.info(f"Comment already created for {object_id}")
+            
         return newcomment
     except Exception as e:
-        logger.error(f"Comment save failed: {e}")        
+        logger.error(f"Comment save failed: {e}")
         return False
-    
 
 def cancel_observation(obs):
     logger.info(f'calling cancel_observations for {obs}')
