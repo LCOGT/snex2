@@ -43,20 +43,39 @@
 </div>
 <script>
 $(function () {
-  $("#phot_instrument_type").change(function() {
-    if(document.getElementById("phot_instrument_type").value === '2M0-SCICAM-MUSCAT') {
-      document.getElementById("muscat-div").style.display = "block";
-      document.getElementById("non-muscat-filt-div").style.display = "none";
-      document.getElementById("w-filt-div").style.display = "none";
+  const $instType = $("#phot_instrument_type");
+  const config = {
+    '2M0-SCICAM-MUSCAT': {
+      show: ['gp', 'rp', 'ip', 'zs'],
+      defaults: {'gp': 200, 'rp': 200, 'ip': 200, 'zs': 200}
+    },
+    '1M0-SCICAM-SINISTRO': {
+      show: ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w'],
+      defaults: {'U': 300, 'B': 200, 'V': 120, 'gp': 200, 'rp': 120, 'ip': 120}
+    },
+    '0M4-SCICAM-QHY600': {
+      show: ['B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w'],
+      defaults: {'B': 200, 'V': 120, 'gp': 200, 'rp': 120, 'ip': 120}
     }
-    else {
-      document.getElementById("muscat-div").style.display = "none";
-      document.getElementById("non-muscat-filt-div").style.display = "block";
-      document.getElementById("w-filt-div").style.display = "block";
-   }
-  });
+  };
+  function updateVisibility() {
+    const val = $instType.val();
+    const settings = config[val];
+    $("[id^='row_']").hide();
+    $("[id^='phot_'][id$='_0']").val(0);
+    $("[id^='phot_'][id$='_1']").val(2);
+    $("[id^='phot_'][id$='_2']").val(1);
+    if (settings) {
+      settings.show.forEach(f => $(`#row_${f}`).show());
+      for (let f in settings.defaults) {
+        $(`#phot_${f}_0`).val(settings.defaults[f]);
+      }
+    } 
+    $("#muscat-div").toggle(val === '2M0-SCICAM-MUSCAT');
+  }
+  $instType.on('change', updateVisibility);
+  updateVisibility();
 });
-
 $("#phot_cadence_frequency_days").keyup(function() {
   var cadence = document.getElementById("phot_cadence_frequency_days").value;
   var delayamount = document.getElementById("phot_delay_amount").value;
