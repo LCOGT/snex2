@@ -1,12 +1,12 @@
 from django.conf import settings
 from django import forms
-from crispy_forms.layout import Layout, Div, HTML, Column, Row, ButtonHolder, Submit
+from crispy_forms.layout import Layout, Div, HTML, Column, Row
 from crispy_forms.bootstrap import PrependedText, AppendedText
 from astropy import units as u
 import datetime
 
 from tom_observations.facilities.ocs import make_request
-from tom_observations.facilities.lco import LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOFacility, LCOMuscatImagingObservationForm
+from tom_observations.facilities.lco import LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOFacility
 from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
 import logging
@@ -40,24 +40,12 @@ class InitialValue:
     def get_values_from_filt(self, filt):
         initial_exp_times = {'U': 300, 'B': 200, 'V': 120, 'gp': 200, 'rp': 120, 'ip': 120}
         return initial_exp_times.get(filt, 0)
-    
-class MuscatInitialValue(InitialValue):
-    def get_values_from_filt(self, filt):
-        initial_exp_times = {'gp': 200, 'rp': 200, 'ip': 200, 'zs': 200}
-        return initial_exp_times.get(filt, 0)
-
-class QHYInitialValue(InitialValue):
-    def get_values_from_filt(self, filt):
-        initial_exp_times = {'B': 200, 'V': 120, 'gp': 200, 'rp': 120, 'ip': 120}
-        return initial_exp_times.get(filt, 0)
 
 class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):    
     # Rewrite a lot of the form fields to have unique IDs between photometry and spectroscopy
     valid_instruments = ['1M0-SCICAM-SINISTRO', '0M4-SCICAM-QHY600']
     filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
-    muscat_filters = ['gp', 'rp', 'ip', 'zs']
-    qhy_filters = ['B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
-    
+
     cadence_frequency_days = forms.FloatField(required=True, min_value=0.0, initial=3.0, label='')
     cadence_frequency = forms.FloatField(widget=forms.HiddenInput(), required=False)
     reminder = forms.FloatField(required=True, min_value=0.0, initial=6.7, label='Reminder in')
@@ -112,35 +100,6 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
                     label='Data granted to')
         
         self.fields['instrument_type'] = forms.ChoiceField(choices=self.instrument_choices(), initial=('1M0-SCICAM-SINISTRO', '1.0 meter Sinistro'))
-
-       # Add the Muscat fields
-        self.fields['guider_mode'] = forms.ChoiceField(choices=self.mode_choices('guiding'), required=False)
-    
-        self.fields['exposure_mode'] = forms.ChoiceField(
-            choices=self.mode_choices('exposure'),
-            required=False
-        )
-    
-        self.fields['diffuser_g_position'] = forms.ChoiceField(
-            choices=self.diffuser_position_choices(channel='g'),
-            label='g',
-            required=False
-        )
-        self.fields['diffuser_r_position'] = forms.ChoiceField(
-            choices=self.diffuser_position_choices(channel='r'),
-            label='r',
-            required=False
-        )
-        self.fields['diffuser_i_position'] = forms.ChoiceField(
-            choices=self.diffuser_position_choices(channel='i'),
-            label='i',
-            required=False
-        )
-        self.fields['diffuser_z_position'] = forms.ChoiceField(
-            choices=self.diffuser_position_choices(channel='z'),
-            label='z',
-            required=False
-        )
        
         self.helper.layout = Layout(
             Div(
@@ -169,25 +128,17 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             - Adds the cadence strategy to the form if "repeat" was the selected "cadence_type". If "once" was
               selected, the observation is submitted as a single observation.
         """
-        # cleaned_data['cadence_frequency'] = cleaned_data['cadence_frequency_days'] * 24
-        logger.info(f"form freq in days: {self.cleaned_data.get('cadence_frequency_days')}")
         self.cleaned_data['cadence_frequency'] = self.cleaned_data.get('cadence_frequency_days') * 24
         cleaned_data = super().clean()
-        logger.info(f'tom cleaned data: {cleaned_data}')
-        logger.info(f"input day cadence frequency: {cleaned_data['cadence_frequency_days']}")
-        logger.info(f"calculated hour cadence frequency: {cleaned_data['cadence_frequency']}")
         now = datetime.datetime.utcnow()
         if cleaned_data.get('delay_start'):
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days=cleaned_data['delay_amount']), '%Y-%m-%dT%H:%M:%S')
             cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']+cleaned_data['delay_amount']*24), '%Y-%m-%dT%H:%M:%S')
-
-        logger.info(f"Raw reminder interval from user: {cleaned_data.get('reminder')}")
         reminder = cleaned_data.get('reminder', 6.7)
         cleaned_data['reminder'] = reminder
         reminder_date = now + datetime.timedelta(days=reminder)
         cleaned_data['reminder_date'] = reminder_date.strftime('%Y-%m-%dT%H:%M:%S')
-        cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and v[0] == 0.0 else v) for k, v in cleaned_data.items()}
-        logger.info(f"reminder in days: {cleaned_data['reminder']} and reminder date: {cleaned_data['reminder_date']}")
+        cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v) for k, v in cleaned_data.items()}
         logger.info(f'snex2 cleaned data with 0 exp time filters replaced with empty lists: {cleaned_data}')
         return cleaned_data
 
@@ -228,16 +179,6 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
                     css_class='form-row',
                 ),
                 Div(
-                    Row('guider_mode'),
-                    Row('exposure_mode'),
-                    Row('diffuser_g_position'),
-                    Row('diffuser_r_position'),
-                    Row('diffuser_i_position'),
-                    Row('diffuser_z_position'),
-                    css_class='form-row',
-                    css_id='muscat-div'
-                ),
-                Div(
                     groups,
                     css_class='form-row'
                 ),
@@ -246,92 +187,6 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             css_class='form-row'
         )
 
-        # # Add filters to layout
-        # filter_layout = Layout(
-        #     Row(
-        #         Column(HTML('Exposure Time')),
-        #         Column(HTML('No. of Exposures')),
-        #         Column(HTML('Block No.')),
-        #     )
-        # )
-        # sinistro_filter_layout = Div(css_class='form-row', css_id='sinistro-filt-div')
-        # muscat_filter_layout = Div(css_class='form-row', css_id='muscat-filt-div')
-        # qhy_filter_layout = Div(css_class='form-row', css_id='qhy-filt-div')
-        # filter_layout.append(sinistro_filter_layout)
-        # filter_layout.append(muscat_filter_layout)
-        # filter_layout.append(qhy_filter_layout)
-        # # for filter_name in self.filters:
-        # #     sinistro_filter_layout.append(Row(PrependedText(filter_name, filter_name)))
-        # for filter_name in self.muscat_filters:
-        #     muscat_filter_layout.append(Row(PrependedText(filter_name, filter_name), css_id=f'row_{filter_name}'))
-        
-        # # 3. Populate QHY filters (only if not already in Muscat to avoid duplicates)
-        # for filter_name in self.qhy_filters:
-        #     if filter_name not in self.muscat_filters:
-        #         qhy_filter_layout.append(Row(PrependedText(filter_name, filter_name), css_id=f'row_{filter_name}'))
-                
-        # # 4. Populate Sinistro filters (only if not in others)
-        # for filter_name in self.filters:
-        #     if filter_name not in self.muscat_filters and filter_name not in self.qhy_filters:
-        #         sinistro_filter_layout.append(Row(PrependedText(filter_name, filter_name), css_id=f'row_{filter_name}'))
-
-
-        # return Div(
-        #     Div(
-        #         filter_layout,
-        #         Row('comment'),
-        #         css_class='col-md-6'
-        #     ),
-        #     Div(
-        #         Div(
-        #             Row('max_airmass'),
-        #             Row(
-        #                 PrependedText('min_lunar_distance', '>')
-        #             ),
-        #             Row('instrument_type'),
-        #             Row('proposal'),
-        #             Row('observation_mode'),
-        #             Row('ipp_value'),
-        #             Row(AppendedText('reminder', 'days')),
-        #         ),
-        #         Div(
-        #             Row('guider_mode'),
-        #             Row('exposure_mode'),
-        #             css_class='form-row',
-        #             css_id='muscat-div'
-        #         ),
-        #         Div(
-        #             groups,
-        #             css_class='form-row'
-        #         ),
-        #         css_class='col-md-6'
-        #     ),
-        #     css_class='form-row'
-        # )
-
-    def button_layout(self):
-        target_id = self.initial.get('target_id')
-        return ButtonHolder(
-                Submit('submit', 'Submit', css_id='phot-submit')
-                #HTML(f'''<a class="btn btn-outline-primary" href={{% url 'tom_targets:detail' {target_id} %}}>
-                #         Back</a>''')
-            )
-
-    # Add the Muscat methods
-    def mode_choices(self, mode_type):
-        return sorted(set([
-            (f['code'], f['name']) for ins in LCOMuscatImagingObservationForm().get_instruments().values() for f in
-            ins['modes'].get(mode_type, {}).get('modes', [])
-            ]), key=lambda filter_tuple: filter_tuple[1])
-
-    def diffuser_position_choices(self, channel):
-        diffuser_key = f'diffuser_{channel}_positions'
-        return sorted(set([
-            (f['code'], f['name']) for ins in LCOMuscatImagingObservationForm().get_instruments().values() for f in
-            ins['optical_elements'].get(diffuser_key, []) if f.get('schedulable', False)
-        ]), key=lambda filter_tuple: filter_tuple[1])
-    
-    # Modify the instrument choices to include Muscat
     def instrument_choices(self):
         """
         This method returns only the instrument choices available in the current SNEx photometric sequence form.
@@ -339,56 +194,24 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         return sorted([(k, v['name'])
                     for k, v in self._get_instruments().items()
                     if k in self.valid_instruments],
-                    key=lambda inst: inst[1]) + LCOMuscatImagingObservationForm().instrument_choices()
+                    key=lambda inst: inst[1])
 
-    # Modify the instrument config to include Muscat
     def _build_instrument_config(self):
-        if self.cleaned_data['instrument_type'] == '2M0-SCICAM-MUSCAT':
-            instrument_config = {
-                'exposure_count': max(
-                    self.cleaned_data['gp'][1],
-                    self.cleaned_data['rp'][1],
-                    self.cleaned_data['ip'][1],
-                    self.cleaned_data['zs'][1]
-                ),
-                'exposure_time': max(
-                    self.cleaned_data['gp'][0],
-                    self.cleaned_data['rp'][0],
-                    self.cleaned_data['ip'][0],
-                    self.cleaned_data['zs'][0]
-                ),
-               'optical_elements': {
-                    'diffuser_g_position': self.cleaned_data['diffuser_g_position'],
-                    'diffuser_r_position': self.cleaned_data['diffuser_r_position'],
-                    'diffuser_i_position': self.cleaned_data['diffuser_i_position'],
-                    'diffuser_z_position': self.cleaned_data['diffuser_z_position']
-                },
-                'extra_params': {
-                    'exposure_mode': self.cleaned_data['exposure_mode'],
-                    'exposure_time_g': self.cleaned_data['gp'][0],
-                    'exposure_time_r': self.cleaned_data['rp'][0],
-                    'exposure_time_i': self.cleaned_data['ip'][0],
-                    'exposure_time_z': self.cleaned_data['zs'][0]
-                }
-            }
-            return [instrument_config]
-        
-        else:
-            instrument_config = []
-            for filter_name in self.filters:
-                if len(self.cleaned_data[filter_name]) > 0:
-                    if filter_name in ['U', 'R', 'I'] and self.cleaned_data['instrument_type'] == '0M4-SCICAM-QHY600':
-                        continue
-                    if self.cleaned_data[filter_name][0] > 0 and self.cleaned_data[filter_name][1] > 0:
-                        instrument_config.append({
-                            'exposure_count': self.cleaned_data[filter_name][1],
-                            'exposure_time': self.cleaned_data[filter_name][0],
-                            'optical_elements': {
-                                'filter': filter_name
-                            }
-                        })
+        instrument_config = []
+        for filter_name in self.filters:
+            if len(self.cleaned_data[filter_name]) > 0:
+                if filter_name in ['U', 'R', 'I'] and self.cleaned_data['instrument_type'] == '0M4-SCICAM-QHY600':
+                    continue
+                if self.cleaned_data[filter_name][0] > 0 and self.cleaned_data[filter_name][1] > 0:
+                    instrument_config.append({
+                        'exposure_count': self.cleaned_data[filter_name][1],
+                        'exposure_time': self.cleaned_data[filter_name][0],
+                        'optical_elements': {
+                            'filter': filter_name
+                        }
+                    })
 
-                return instrument_config
+        return instrument_config
 
 
 class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
@@ -441,12 +264,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             if 'Global Supernova Project' in choice[1]:
                 initial_proposal = choice
         self.fields['proposal'] = forms.ChoiceField(choices=proposal_choices, initial=initial_proposal)
-        #NOTE: I believe the below is not needed
-        ## Remove start and end because those are determined by the cadence
-        #for field_name in ['start', 'end']:
-        #    if self.fields.get(field_name):
-        #        #TODO: Figure out why start and end aren't fields sometimes, test reminder
-        #        self.fields.pop(field_name)
 
         for field_name in ['start', 'end']:
             self.fields[field_name].widget = forms.HiddenInput()
@@ -527,6 +344,10 @@ class SnexLCOFacility(LCOFacility):
     }
 
     def submit_observation(self, observation_payload):
+        for request in observation_payload.get('requests', []):
+            for config in request.get('configurations', []):
+                if not config.get('type'):
+                    config['type'] = 'EXPOSE'
         response = make_request(
             'POST',
             PORTAL_URL + '/api/requestgroups/',
