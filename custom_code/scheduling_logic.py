@@ -86,7 +86,7 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
         if created:
             logger.info(f"New comment created for {actual_model} {object_id}")
         else:
-            logger.info(f"Comment already created for {object_id}")
+            logger.info(f"Comment already created for {actual_model} {object_id}")
             
         return newcomment
     except Exception as e:
@@ -208,7 +208,7 @@ def _modify_sequence(obs, user, data):
 
     DynamicCadence.objects.create(
         observation_group=new_obs_group,
-        cadence_strategy=new_params.get('cadence_strategy', 'ResumeCadenceAfterFailureStrategy'),
+        cadence_strategy=new_params.get('cadence_strategy', 'SnexResumeCadenceAfterFailureStrategy'),
         cadence_parameters={'cadence_frequency': new_params['cadence_frequency']},
         active=True
     )

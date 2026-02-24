@@ -916,7 +916,7 @@ def format_lco_summary(obs, group, is_active):
     cadence_freq = float(params.get('cadence_frequency_days', 0.0) or 0.0)
     obs_type = params.get('observation_type', '').lower()
 
-    if 'ResumeCadenceAfterFailureStrategy' in cadence_strategy and cadence_freq > 0:
+    if 'SnexResumeCadenceAfterFailureStrategy' in cadence_strategy and cadence_freq > 0:
         summary.append(f"{cadence_freq}-day {obs_type} cadence of")
     else:
         summary.append(f"Single {obs_type} observation of")
@@ -1162,7 +1162,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         if not end:
             end = str(observation.modified).split('.')[0]
 
-        if parameter.get('cadence_strategy', '') == 'ResumeCadenceAfterFailureStrategy':
+        if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'
@@ -1228,7 +1228,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         observation_type = 'Spec'
         instrument = 'Floyds'
         cadence_frequency = parameter.get('cadence_frequency', '')
-        if parameter.get('cadence_strategy', '') == 'ResumeCadenceAfterFailureStrategy':
+        if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'

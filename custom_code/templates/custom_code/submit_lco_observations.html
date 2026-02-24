@@ -13,9 +13,6 @@
     width: 250px;
     height: 250px;
 }
-#muscat-div {
-    display: none;
-}
 #div_phot_delay_amount {
     display: none;
 }
@@ -52,6 +49,10 @@ $(function () {
     '0M4-SCICAM-QHY600': {
       show: ['B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w'],
       defaults: {'B': 200, 'V': 120, 'gp': 200, 'rp': 120, 'ip': 120}
+    },
+    '2M0-SCICAM-MUSCAT': {
+      show: ['muscat_filter'],
+      defaults: {'muscat_filter': 200}
     }
   };
   function updateVisibility() {
@@ -66,34 +67,57 @@ $(function () {
       for (let f in settings.defaults) {
         $(`#phot_${f}_0`).val(settings.defaults[f]);
       }
-    } 
+    }
+    if (val === '2M0-SCICAM-MUSCAT') {
+      $('#block-no-header').hide();
+      $('#exp-time-header, #exp-num-header').removeClass('col-md-4').addClass('col-md-6');
+      $("[id$='_2']").hide();
+      $("[id$='_2']").closest('div.col-md-4, .col').hide();
+    } else {
+      $('#block-no-header').show();
+      $('#exp-time-header, #exp-num-header').removeClass('col-md-6').addClass('col-md-4');
+      $("[id$='_2']").show();
+      $("[id$='_2']").closest('div.col-md-4, .col').show();
+    }
   }
   $instType.on('change', updateVisibility);
   updateVisibility();
 });
-$("#phot_cadence_frequency_days").keyup(function() {
-  var cadence = document.getElementById("phot_cadence_frequency_days").value;
+$("#phot_cadence_frequency_value").keyup(function() {
+  var cadence = document.getElementById("phot_cadence_frequency_value").value;
+  var cadence_unit = document.getElementById("phot_cadence_frequency_unit").value;
+  if (cadence_unit === 'hours') {
+    cadence = cadence / 24;
+  } else {
+    cadence = cadence;
+  }
+  var delayamount = document.getElementById("phot_delay_amount").value;
+  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
+  document.getElementById("phot_reminder").value = newreminder;
+});
+$("#phot_cadence_frequency_unit").change(function() {
+  var cadence = document.getElementById("phot_cadence_frequency_value").value;
+  var cadence_unit = document.getElementById("phot_cadence_frequency_unit").value;
+  if (cadence_unit === 'hours') {
+    cadence = cadence / 24;
+  } else {
+    cadence = cadence;
+  }
   var delayamount = document.getElementById("phot_delay_amount").value;
   var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
   document.getElementById("phot_reminder").value = newreminder;
 });
 $("#phot_delay_amount").keyup(function() {
-  var cadence = document.getElementById("phot_cadence_frequency_days").value;
+  var cadence = document.getElementById("phot_cadence_frequency_value").value;
+  var cadence_unit = document.getElementById("phot_cadence_frequency_unit").value;
+  if (cadence_unit === 'hours') {
+    cadence = cadence / 24;
+  } else {
+    cadence = cadence;
+  }
   var delayamount = document.getElementById("phot_delay_amount").value;
   var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
   document.getElementById("phot_reminder").value = newreminder;
-});
-$("#spec_cadence_frequency").keyup(function() {
-  var cadence = document.getElementById("spec_cadence_frequency").value;
-  var delayamount = document.getElementById("spec_delay_amount").value;
-  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
-  document.getElementById("spec_reminder").value = newreminder;
-});
-$("#spec_delay_amount").keyup(function() {
-  var cadence = document.getElementById("spec_cadence_frequency").value;
-  var delayamount = document.getElementById("spec_delay_amount").value;
-  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
-  document.getElementById("spec_reminder").value = newreminder;
 });
 $("#phot_delay_start").click(function() {
   var delayAmount = document.getElementById("div_phot_delay_amount");
@@ -103,6 +127,42 @@ $("#phot_delay_start").click(function() {
     delayAmount.style.display = "block";
   }
 })
+$("#spec_cadence_frequency_value").keyup(function() {
+  var cadence = document.getElementById("spec_cadence_frequency_value").value;
+  var cadence_unit = document.getElementById("spec_cadence_frequency_unit").value;
+  if (cadence_unit === 'hours') {
+    cadence = cadence / 24;
+  } else {
+    cadence = cadence;
+  }
+  var delayamount = document.getElementById("spec_delay_amount").value;
+  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
+  document.getElementById("spec_reminder").value = newreminder;
+});
+$("#spec_cadence_frequency_unit").change(function() {
+  var cadence = document.getElementById("spec_cadence_frequency_value").value;
+  var cadence_unit = document.getElementById("spec_cadence_frequency_unit").value;
+  if (cadence_unit === 'hours') {
+    cadence = cadence / 24;
+  } else {
+    cadence = cadence;
+  }
+  var delayamount = document.getElementById("spec_delay_amount").value;
+  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
+  document.getElementById("spec_reminder").value = newreminder;
+});
+$("#spec_delay_amount").keyup(function() {
+  var cadence = document.getElementById("spec_cadence_frequency_value").value;
+  var cadence_unit = document.getElementById("spec_cadence_frequency_unit").value;
+  if (cadence_unit === 'hours') {
+    cadence = cadence / 24;
+  } else {
+    cadence = cadence;
+  }
+  var delayamount = document.getElementById("spec_delay_amount").value;
+  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
+  document.getElementById("spec_reminder").value = newreminder;
+});
 $("#spec_delay_start").click(function() {
   var delayAmount = document.getElementById("div_spec_delay_amount");
   if (delayAmount.style.display === "block") {

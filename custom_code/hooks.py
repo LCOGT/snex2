@@ -62,8 +62,6 @@ def save_observation_comment(observation, previous_state):
         if comment and obs_group:
             user = User.objects.filter(username=observation.parameters.get('start_user')).first()
             save_comments(comment, obs_group.id, user)
-            logger.info(f"Comment '{comment}' by user {user} saved for NEW obs group {obs_group.id}")
-
 
 def _return_session(db_address=settings.SNEX1_DB_URL):
     ### This one is not run within a with loop, must be closed manually

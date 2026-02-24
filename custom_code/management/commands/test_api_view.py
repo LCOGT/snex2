@@ -26,7 +26,7 @@ class Command(BaseCommand):
         groups = json.dumps([{'name': g.name, 'id': g.id} for g in group_query])
 
         me = User.objects.get(username='cpellegrino')
-        cadence = json.dumps({'cadence_strategy': 'ResumeCadenceAfterFailureStrategy', 'cadence_frequency_days': 7.0})
+        cadence = json.dumps({'cadence_strategy': 'SnexResumeCadenceAfterFailureStrategy', 'cadence_frequency_days': 7.0})
         with open(filepath) as json_file:
             obs_to_schedule = json.load(json_file) 
         
@@ -39,7 +39,7 @@ class Command(BaseCommand):
             start = datetime.strftime(start, '%Y-%m-%dT%H:%M:%S')
             end = datetime.strftime(end, '%Y-%m-%dT%H:%M:%S')
             
-            observing_parameters = {'cadence_strategy': 'ResumeCadenceAfterFailureStrategy', 
+            observing_parameters = {'cadence_strategy': 'SnexResumeCadenceAfterFailureStrategy', 
                                     'ipp_value': 0.95, 'max_airmass': 2.0, 'facility': 'LCO', 
                                     'observation_type': 'IMAGING', 'min_lunar_distance': 20, 
                                     'observation_mode': 'NORMAL', 'cadence_frequency': 7.0, 
