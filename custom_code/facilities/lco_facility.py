@@ -7,7 +7,7 @@ import datetime
 import copy
 
 from tom_observations.facilities.ocs import make_request
-from tom_observations.facilities.lco import LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOMuscatImagingObservationForm, LCOFacility
+from tom_observations.facilities.lco import LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOFacility, LCOSettings
 from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
 import logging
@@ -100,7 +100,6 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
                     required=False,
                     widget=forms.CheckboxSelectMultiple, 
                     label='Data granted to')
-        logger.info(f"all instrument choices: {self.instrument_choices()}")
         self.fields['instrument_type'] = forms.ChoiceField(choices=self.instrument_choices(), initial=('1M0-SCICAM-SINISTRO', '1.0 meter Sinistro'))
        
         self.helper.layout = Layout(
@@ -140,40 +139,27 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         if self.cleaned_data['cadence_frequency_unit'].lower() == 'hours':
             self.cleaned_data['cadence_frequency'] = self.cleaned_data['cadence_frequency_value']
             self.cleaned_data['cadence_frequency_days'] = self.cleaned_data['cadence_frequency_value'] / 24
-            logger.info(f"input cadence frequency in hours: {self.cleaned_data['cadence_frequency']} hours, {self.cleaned_data['cadence_frequency_days']} days")
 
         else:
             self.cleaned_data['cadence_frequency'] = self.cleaned_data['cadence_frequency_value'] * 24
             self.cleaned_data['cadence_frequency_days'] = self.cleaned_data['cadence_frequency_value']
-            logger.info(f"input cadence frequency in days: {self.cleaned_data['cadence_frequency_days']} days, {self.cleaned_data['cadence_frequency']} hours")
 
         cleaned_data = super().clean()
-        existing_reminder = (
-            cleaned_data.get('reminder_date') or 
-            self.initial.get('reminder_date') or 
-            self.data.get('reminder_date'))
-        logger.info(f'existing reminder: {existing_reminder}')
-        logger.info(f"cleaned_data: {cleaned_data.get('reminder_date')}")
-        logger.info(f"self.initial: {self.initial.get('reminder_date')}")
-        logger.info(f"self.data: {self.data.get('reminder_date')}")
+        existing_reminder = self.data.get('reminder_date')
         now = datetime.datetime.utcnow()
         if cleaned_data.get('delay_start'):
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days=cleaned_data['delay_amount']), '%Y-%m-%dT%H:%M:%S')
             cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']+cleaned_data['delay_amount']*24), '%Y-%m-%dT%H:%M:%S')
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
-            logger.info(f"reminder already set: {cleaned_data['reminder']} days, reminder date on {cleaned_data['reminder_date']}")
         else:
-            logger.info(f"First submission, reminder date not set: {cleaned_data['reminder']} days from now {now}")
             reminder = cleaned_data.get('reminder')
             delay = cleaned_data.get('delay_amount', 0.0)
             
             calculated_date = now + datetime.timedelta(days=reminder + delay)
             cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
-            logger.info(f"Clean: Initial calculation: {cleaned_data['reminder_date']}")
             
         cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v) for k, v in cleaned_data.items()}
-        logger.info(f'snex2 cleaned data with 0 exp time filters replaced with empty lists: {cleaned_data}')
         return cleaned_data
 
     def layout(self):
@@ -235,16 +221,13 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
     
     def observation_payload(self):
         payload = super().observation_payload()
-        logger.info(f'observation payload: {payload}')
         instrument_type = self.cleaned_data.get('instrument_type')
         
         if instrument_type == '2M0-SCICAM-MUSCAT':
             muscat_configs = self._build_instrument_config()
-            logger.info(f'muscat_configs: {muscat_configs}')
             
             if 'requests' in payload:
                 for request in payload['requests']:
-                    logger.info(f'request: {request}')
                     for configuration in request.get('configurations', []):
                         configuration['instrument_configs'] = muscat_configs
                         configuration['instrument_type'] = instrument_type
@@ -257,7 +240,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
                     configuration['instrument_type'] = instrument_type
                     if not configuration.get('type'):
                         configuration['type'] = 'EXPOSE'
-        logger.info(f'payload after: {payload}')
+
         return payload
 
     def _build_instrument_config(self):
@@ -266,7 +249,6 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
 
         if instrument_type == '2M0-SCICAM-MUSCAT':
             muscat_data = self.cleaned_data.get('muscat_filter')
-            logger.info(f'muscat_data: {muscat_data}')
             if muscat_data and len(muscat_data) > 1 and muscat_data[0] > 0:
                 exp_time = muscat_data[0]
                 exp_count = muscat_data[1]
@@ -395,28 +377,27 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         if self.cleaned_data['cadence_frequency_unit'].lower() == 'hours':
             self.cleaned_data['cadence_frequency'] = self.cleaned_data['cadence_frequency_value']
             self.cleaned_data['cadence_frequency_days'] = self.cleaned_data['cadence_frequency_value'] / 24
-            logger.info(f"input cadence frequency in hours: {self.cleaned_data['cadence_frequency']} hours, {self.cleaned_data['cadence_frequency_days']} days")
 
         else:
             self.cleaned_data['cadence_frequency'] = self.cleaned_data['cadence_frequency_value'] * 24
             self.cleaned_data['cadence_frequency_days'] = self.cleaned_data['cadence_frequency_value']
-            logger.info(f"input cadence frequency in days: {self.cleaned_data['cadence_frequency_days']} days, {self.cleaned_data['cadence_frequency']} hours")
 
         cleaned_data = super().clean()
         self.cleaned_data['instrument_type'] = '2M0-FLOYDS-SCICAM'  # SNEx only submits spectra to FLOYDS
+        existing_reminder = self.data.get('reminder_date')
         now = datetime.datetime.utcnow()
         if cleaned_data.get('delay_start'):
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days=cleaned_data['delay_amount']), '%Y-%m-%dT%H:%M:%S')
             cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']+cleaned_data['delay_amount']*24), '%Y-%m-%dT%H:%M:%S')
-        if cleaned_data.get('reminder_date'):
-            logger.info(f"reminder already set: {cleaned_data['reminder']} days, reminder date on {cleaned_data['reminder_date']}")
+        if existing_reminder:
+            cleaned_data['reminder_date'] = existing_reminder
         else:
-            logger.info(f"First submission, reminder date not set: {cleaned_data['reminder']} days from now {now}")
-            reminder_date = now + datetime.timedelta(days=cleaned_data['reminder'])
-            cleaned_data['reminder_date'] = reminder_date.strftime('%Y-%m-%dT%H:%M:%S')
-        
-        logger.info(f'snex2 cleaned data for floyds. sequence: {cleaned_data}')
-
+            reminder = cleaned_data.get('reminder')
+            delay = cleaned_data.get('delay_amount', 0.0)
+            
+            calculated_date = now + datetime.timedelta(days=reminder + delay)
+            cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
+            
         return cleaned_data
 
     
@@ -489,24 +470,5 @@ class SnexLCOFacility(LCOFacility):
         'SPECTRA': SnexSpectroscopicSequenceForm
     }
 
-    def submit_observation(self, observation_payload):
-        for request in observation_payload.get('requests', []):
-            for config in request.get('configurations', []):
-                if not config.get('type'):
-                    config['type'] = 'EXPOSE'
-        response = make_request(
-            'POST',
-            PORTAL_URL + '/api/requestgroups/',
-            json=observation_payload,
-            headers=self._portal_headers()
-        )
-        return [r['id'] for r in response.json()['requests']]
-
-    def validate_observation(self, observation_payload):
-        response = make_request(
-            'POST',
-            PORTAL_URL + '/api/requestgroups/validate/',
-            json=observation_payload,
-            headers=self._portal_headers()
-        )
-        return response.json()['errors']
+    def __init__(self, facility_settings=LCOSettings('LCO')):
+        super().__init__(facility_settings=facility_settings)

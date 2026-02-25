@@ -343,15 +343,13 @@ class PhotSchedulingForm(forms.Form):
     reminder = forms.FloatField(min_value=0.0, label='Reminder Interval (Days)')
     delay_start = forms.FloatField(min_value=0.0, initial=0.0, label='Delay Start (Days)')
 
-    filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
+    filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']
     
     def __init__(self, *args, **kwargs):
         super(PhotSchedulingForm, self).__init__(*args, **kwargs)
         initial_data = kwargs.get('initial', {})
-        logger.info(f'initial data {initial_data}')
         for f in self.filters:
             val = initial_data.get(f)
-            logger.info(f'filter value {val}')
 
             if val and len(val) > 0:
                 if isinstance(val, dict):
@@ -368,8 +366,6 @@ class PhotSchedulingForm(forms.Form):
                     initial=initial_list, 
                     required=False
                 )
-        logger.info(f'initial cadence freq in days: {initial_data["cadence_frequency_days"]}')
-        logger.info(f'initial cadence freq in hours: {initial_data.get("cadence_frequency","")}')
         self.fields['cadence_frequency_days'].widget.attrs['class'] = 'cadence-input'
         self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
 

@@ -13,7 +13,6 @@ class SnexResumeCadenceAfterFailureStrategy(ResumeCadenceAfterFailureStrategy):
         :param observation_payload: form parameters for facility observation form
         :type observation_payload: dict
         """
-        logger.info(f"observation payload in cadence strategy: {observation_payload}")
         existing_reminder_date = self.dynamic_cadence.cadence_parameters.get('reminder_date')
         
         if existing_reminder_date:

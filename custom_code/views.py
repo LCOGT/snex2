@@ -746,20 +746,20 @@ def scheduling_view(request):
                     cancel_reason = comment_raw
             else:
                 cancel_reason = comment_raw
-            logger.info(f'comment from the scheduling page: {cancel_reason}')
             form.cleaned_data['comment'] = cancel_reason
-            logger.info(f'cadence frequency in hours in scheduling_view: {form.cleaned_data}')
-            result = change_obs_from_scheduling(
+            response_data = change_obs_from_scheduling(
                 action=action,
                 obs_id=form.cleaned_data['observation_id'],
                 user=request.user,
                 data=form.cleaned_data
             )
-            return JsonResponse({'success': result})
+            
+            return HttpResponse(json.dumps(response_data), content_type='application/json')
+
         except Exception as e:
-            return JsonResponse({'failure': str(e)}, status=400)
+            return JsonResponse({'failure': str(e)})
         
-    return JsonResponse({'failure': 'Invalid Form', 'errors': form.errors}, status=400)
+    return JsonResponse({'failure': 'Invalid Form', 'errors': form.errors})
 
 
 # def scheduling_view(request):

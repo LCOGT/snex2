@@ -1138,7 +1138,6 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         comment_str = '{}: {}'.format(comment.user.first_name, comment.comment)
     
     parameter = observation.parameters
-    logger.info(f'get_scheduling_form observation.parameters: {parameter}')
     if parameter.get('observation_type', '') == 'IMAGING':
 
         observation_type = 'Phot'
@@ -1206,7 +1205,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                 initial[f] = parameter.get(f, '')
 
         form = PhotSchedulingForm(initial=initial)
-        logger.info(f'get_scheduling_form cadence frequency: {cadence_frequency_days} and in hours: {cadence_frequency}')
+
         parameters.append({'observation_id': observation.id,
                            'obsgroup_id': obsgroup.id,
                            'target': target,

@@ -47,16 +47,16 @@ def _stop_sequence(obs, user, data):
     ## Cancel observation request in LCO portal
     canceled = cancel_observation(obs)
     if not canceled:
-        raise Exception("The facility (LCO) rejected the cancellation request.")
+        return {'failure': 'The facility (LCO) rejected the cancellation request.'}
     
     obs_group = obs.observationgroup_set.first()
     comment = data.get('comment', '')
 
     if comment and obs_group:
         save_comments(comment, obs_group.id, user)
-        logger.info(f"Comment {comment} by user {user} saved for obs group {obs_group.id}")
+        logger.info(f'Comment {comment} by user {user} saved for obs group {obs_group.id}')
 
-    return "Stopped"
+    return {'success': 'Stopped'}
 
 def save_comments(comment_text, object_id, user, model_name='observationgroup'):
     try:
@@ -84,13 +84,13 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
         )
         
         if created:
-            logger.info(f"New comment created for {actual_model} {object_id}")
+            logger.info(f'New comment created for {actual_model} {object_id}')
         else:
-            logger.info(f"Comment already created for {actual_model} {object_id}")
+            logger.info(f'Comment already created for {actual_model} {object_id}')
             
         return newcomment
     except Exception as e:
-        logger.error(f"Comment save failed: {e}")
+        logger.error(f'Comment save failed: {e}')
         return False
 
 def cancel_observation(obs):
@@ -118,7 +118,6 @@ def cancel_observation(obs):
         logger.warning(f"No active cadence found for group {obs_group.id}")
 
     first_obs = obs_group.observation_records.order_by('created').first()
-    logger.info(f'first_obs of cancel: {first_obs}')
     if first_obs:
         first_obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
         first_obs.save()
@@ -127,21 +126,22 @@ def cancel_observation(obs):
     
 def _continue_sequence(obs, user, data):
     logger.info(f'Continuing Sequence {obs.id} as-is')
+    logger.info(f'data {data}, obs {type(obs)} {obs.parameters}')
     
-    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days']:
+    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'rp', 'ip', 'zs', 'muscat_filter', 'exposure_time']:
+        if key in data.keys() and key in obs.parameters.keys():
+            logger.info(f'key in both: {key}, data {data[key]} and obs param: {obs.parameters[key]}')
+            if data[key] != obs.parameters[key]:
+                response_data = {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
+                return response_data
 
-        if data.get(key) != obs.parameters.get(key):
-            raise Exception("Parameters were modified. Please use 'Modify' instead.")
-
-    params = obs.parameters
-    params['reminder'] = data['reminder']
+    obs.parameters['reminder'] = data['reminder']
     now = datetime.utcnow()
-    params['reminder_date'] = (now + timedelta(days=data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
-    
-    obs.parameters = params
+    obs.parameters['reminder_date'] = (now + timedelta(days=data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
+
     obs.save()
-    
-    return "Continued"
+        
+    return {'success': 'Continued'}
 
 
 def _modify_sequence(obs, user, data):
@@ -184,9 +184,14 @@ def _modify_sequence(obs, user, data):
     form = form_class(new_params)
     if not form.is_valid():
         raise Exception(f"New parameters invalid for {obs.facility}: {form.errors}")
+    # observation_errors = facility.validate_observation(form.observation_payload())
+    # if observation_errors:
+    #     logger.error(msg=f'Unable to submit next cadenced observation: {observation_errors}')
+    #     response_data = {'failure': 'Unable to submit next cadenced observation'}
+    #     return response_data
 
     observation_ids = facility.submit_observation(form.observation_payload())
-    
+
     new_obs_group = ObservationGroup.objects.create(name=data['name'])
     
     for lco_id in observation_ids:
@@ -215,7 +220,7 @@ def _modify_sequence(obs, user, data):
     _sync_permissions(obs, new_obs_group)
     logger.info(f'data: {data} and new_params now modified: {new_params}')
 
-    return "Modified"
+    return {'success': 'Modified'}
 
 def _sync_permissions(old_obs, new_group):
     group_ids = GroupObjectPermission.objects.filter(
