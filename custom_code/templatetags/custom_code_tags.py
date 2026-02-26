@@ -2002,8 +2002,8 @@ def test_display_thumbnail(context, target):
         #NOTE: Production
         try:
             filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
-        except:
-            logger.info('Finding images in snex1 failed')
+        except Exception as e:
+            logger.info(f'Finding images in snex1 failed {e}')
             return {'top_images': [],
                     'bottom_images': []}
 

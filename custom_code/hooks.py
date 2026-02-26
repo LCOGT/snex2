@@ -269,14 +269,14 @@ def find_images_from_snex1(targetid, username, allimages=False):
 
         if not allimages:
             query = db_session.execute(
-                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 "
-                                "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
-                                {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
+                            "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
+                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
         else:
             query = db_session.execute(
-                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 "
-                                "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
-                                {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
+                            "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
+                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
         
         filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
         if len(filepaths)==0:
