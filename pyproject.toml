@@ -15,7 +15,6 @@ classifiers = [
 ]
 dependencies = [
     "tomtoolkit>=2.26.2",
-    "django-debug-toolbar",
     "astropy>=5",
     "astroquery",
     "requests",
