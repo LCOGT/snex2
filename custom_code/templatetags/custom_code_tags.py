@@ -1736,18 +1736,6 @@ def image_slideshow(context, target):
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
-        #NOTE: Development
-        # if settings.DOWNLOAD_TEST_THUMBNAIL:
-        #     try:
-        #         filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
-        #     except Exception as e:
-        #         logger.warning("Downloading test image from archive failed", exc_info=e)
-        #         return {
-        #             'target': target,
-        #             'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
-        #         }
-            
-        # else:
         return {
                 'target': target,
                 'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
@@ -1763,7 +1751,6 @@ def image_slideshow(context, target):
                    'psfx': psfxs[i],
                    'psfy': psfys[i]
                 }),
-                #filenames[i]) for i in range(len(filenames))]
                 '{} ({} {})'.format(dates[i], filters[i], exptimes[i])) for i in range(len(filenames))]
 
     initial = {'filenames': filenames[0],
@@ -2021,18 +2008,6 @@ def test_display_thumbnail(context, target):
                     'bottom_images': []}
 
     else:
-        #NOTE: Development
-        # if settings.DOWNLOAD_TEST_THUMBNAIL:
-        #     try:
-        #         filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
-        #     except Exception as e:
-        #         logger.warning("Downloading test image from archive failed", exc_info=e)
-        #         return {
-        #             "top_images": [],
-        #             "bottom_images": [],
-        #         }
-            
-        # else:
         return {
                 "top_images": [],
                 "bottom_images": [],

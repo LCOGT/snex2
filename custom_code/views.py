@@ -2,7 +2,7 @@ from django_filters.views import FilterView
 from django.shortcuts import redirect, render
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, CharField, Value, Max, Sum
+from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, Sum
 from django.db.models.functions import Cast
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse
 from django.views.generic.base import TemplateView, RedirectView
@@ -13,13 +13,10 @@ from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
 from django.template.context import RequestContext
 from django_comments.models import Comment
-from django_comments.signals import comment_was_posted
-from django.db.models.signals import post_delete
-from django.dispatch import receiver
 
 from tom_targets.models import TargetList, Target, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
-from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
+from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter
 from custom_code.forms import SNEx2UserCreationForm
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
@@ -32,13 +29,10 @@ from django.db.models.fields.json import KeyTextTransform
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 from astropy.time import Time
-import time
 from datetime import datetime, date, timedelta
 import json
-from io import StringIO
-import random
+from io import StringIO, BytesIO
 
-import plotly.graph_objs as go
 from tom_dataproducts.models import ReducedDatum, DataProduct
 from custom_code.templatetags import custom_code_tags
 from tom_observations.templatetags.observation_extras import observing_buttons
@@ -47,36 +41,30 @@ from tom_targets.templatetags.targets_extras import target_groups
 from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
 from custom_code.thumbnails import make_thumb
 
-from .forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm,ThumbnailForm
+from custom_code.forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm, PhotSchedulingForm
 from tom_targets.views import TargetCreateView
 from tom_common.hooks import run_hook
 
 from tom_common.views import UserUpdateView
 from tom_dataproducts.views import DataProductUploadView, DataProductDeleteView
 from tom_dataproducts.exceptions import InvalidFileFormatException
-from tom_targets.base_models import TargetMatchManager
 
 from custom_code.processors.data_processor import run_custom_data_processor
 from guardian.shortcuts import assign_perm
 
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
-from tom_observations.facility import get_service_class
-from tom_observations.facilities.lco import LCOSettings
 from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_registration.registration_flows.approval_required.views import UserApprovalView
 import base64
 import requests
 from django import forms
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit, Layout, Div, HTML, Fieldset, Row, Column
+from crispy_forms.layout import Submit, Layout, Div, HTML, Row, Column
 from django.utils import timezone
-import logging
-from io import BytesIO
 import os
 from custom_code.scheduling_logic import change_obs_from_scheduling, save_comments, cancel_observation
-from custom_code.forms import PhotSchedulingForm
 
-
+import logging
 logger = logging.getLogger(__name__)
 
 ## debug
@@ -321,19 +309,10 @@ class CustomTargetCreateView(TargetCreateView):
                 groups = [g.name for g in form.cleaned_data['groups']]
                 self.object = form.save(form)
 
-                # Sync with SNEx1
-                db_session = _return_session()
-                run_hook('target_post_save', target=self.object, created=True, group_names=groups, wrapped_session=db_session)
-                db_session.commit()
             else:
                 logger.info('Submitting target failed with errors {}'.format(form.errors))
                 return super().form_invalid(form)
 
-        # If that works, ingest extra stuff for SNEx2 target only
-        # Run in separate atomic transaction block to avoid rolling back
-        # target creation if extra data ingestion goes wrong
-        with transaction.atomic():
-            run_hook('target_post_save', target=self.object, created=False)
 
         return redirect(self.get_success_url())
 
@@ -375,7 +354,6 @@ class CustomUserUpdateView(UserUpdateView):
     def form_valid(self, form):
         old_username = self.get_object().username
         super().form_valid(form)
-        # run_hook('sync_users_with_snex1', self.get_object(), False, old_username)
         return redirect(self.get_success_url())
 
 
@@ -383,7 +361,6 @@ class SNEx2UserApprovalView(UserApprovalView):
 
     def form_valid(self, form):
         response = super().form_valid(form)
-        # run_hook("sync_users_with_snex1", self.get_object(), True)
 
         return response
 
@@ -413,7 +390,6 @@ class CustomDataProductUploadView(DataProductUploadView):
             )
             dp.save()
             try:
-                #run_hook('data_product_post_upload', dp)
 
                 ### ------------------------------------------------------------------
                 ### Create row in ReducedDatumExtras with the extra info
@@ -538,7 +514,6 @@ class PaperCreateView(FormView):
                 description=description
             )
         paper.save()
-        # run_hook('sync_paper_with_snex1', paper)
         
         return HttpResponseRedirect('/targets/{}/'.format(target.id))
 
@@ -556,35 +531,6 @@ def delete_comment_view(request):
             return JsonResponse({'error': 'Comment not found'}, status=404)
     return JsonResponse({'error': 'Invalid method'}, status=400)
 
-# def save_comments(comment, object_id, user, tablename='observationgroup'):
-
-#     try:
-#         if tablename == 'observationgroup':
-#             content_type_id = ContentType.objects.get(model='observationgroup').id
-#         else:
-#             tablename_dict = {'spec': 'reduceddatum',
-#                               'targets': 'snextarget'}
-#             snex2_model = tablename_dict[tablename]
-#             content_type_id = ContentType.objects.get(model=snex2_model).id
-
-#         newcomment = Comment(
-#             object_pk=object_id,
-#             user_name=user.username,
-#             user_email=user.email,
-#             comment=comment,
-#             submit_date=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'),
-#             is_public=True,
-#             is_removed=False,
-#             content_type_id=content_type_id,
-#             site_id=2,
-#             user_id=user.id
-#         )
-#         newcomment.save()
-#         return newcomment
-#     except:
-#         return False
-
-
 def save_comments_view(request):
     comment = request.GET['comment']
     object_id = int(request.GET['object_id'])
@@ -596,15 +542,6 @@ def save_comments_view(request):
     saved = save_comments(comment, object_id, user, tablename=tablename)
     
     if saved:
-        # if tablename == 'spec':
-            ### Save comment in SNEx1 as well
-            # spec = ReducedDatum.objects.get(id=object_id)
-            # target_id = int(spec.target_id)
-            # snex_id_row = ReducedDatumExtra.objects.filter(data_type='spectroscopy', key='snex_id', target_id=target_id, value__icontains='"snex2_id": {}'.format(object_id)).first()
-            # if snex_id_row:
-            #     snex1_id = json.loads(snex_id_row.value)['snex_id']
-            #     run_hook('sync_comment_with_snex1', comment, 'spec', user_id, target_id, snex1_id)
-        
         return JsonResponse({
             "success": True,
             "comment_id": saved.id,
@@ -614,48 +551,6 @@ def save_comments_view(request):
     
     else:
         return JsonResponse({"success": False})
-
-# def cancel_observation(obs):
-     
-#     last_obs = obs.observationgroup_set.first().observation_records.all().order_by('-id').first()
-#     if last_obs is None:
-#         # Sequence was canceled before a request was submitted to the observation portal
-#         obs_group = obs.observationgroup_set.first()
-#         dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
-#         dynamic_cadence.active = False
-#         dynamic_cadence.save()
-        
-#         # Update the end date in the template record
-#         obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-#         obs.save()
-        
-#         return True
-#     else:
-#         last_obs = obs
-    
-#     facility = get_service_class(last_obs.facility)()
-#     ocs_settings = LCOSettings()
-#     if last_obs.status not in ocs_settings.get_terminal_observing_states():
-#         success = facility.cancel_observation(last_obs.observation_id)
-#         if not success:
-#             return False
-
-#         last_obs.status = 'CANCELED'
-#         last_obs.save()
-    
-#     ## Change status of DynamicCadence
-#     obs_group = obs.observationgroup_set.first()
-#     dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
-#     dynamic_cadence.active = False
-#     dynamic_cadence.save()
-
-#     ## Update sequence end time in template record
-#     template = obs_group.observation_records.filter(observation_id='template').first()
-#     if template:
-#         template.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-#         template.save()
-    
-#     return True
 
 def observation_sequence_cancel_view(request):
     
@@ -683,50 +578,6 @@ def observation_sequence_cancel_view(request):
     
     response_data = {'success': 'Modified'}
     return HttpResponse(json.dumps(response_data), content_type='application/json')
-
-### REMOVE
-# def approve_or_reject_observation_view(request):
-    
-#     obsr_id = int(float(request.GET['pk']))
-#     status = request.GET['status']
-#     obsr = ObservationRecord.objects.get(id=obsr_id)
-#     # obsr.observation_id = 'template'
-#     obsr.save()
-
-#     obs_group = obsr.observationgroup_set.first()
-
-#     if status == 'approved':
-#         ## Set the cadence to active in SNEx2 and approve it in SNEx1
-#         cadence = DynamicCadence.objects.get(observation_group_id=obs_group.id)
-#         cadence.active = True
-#         cadence.save()
-        
-#         try:
-#             snex_id = int(obs_group.name)
-#             run_hook('approve_sequence_in_snex1', snex_id)
-#         except:
-#             response_data = {'failure': 'Error'}
-#             logger.error('This sequence was not in SNEx1 or was not canceled')
-#             return HttpResponse(json.dumps(response_data), content_type='application/json')
-    
-#     elif status == 'rejected':
-#         ## Set the end time for the template in SNEx2, and cancel it in SNEx1
-#         obsr.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-#         obsr.save()
-        
-#         comments = json.loads(request.GET['comment'])
-#         try:
-#             snex_id = int(obs_group.name)
-#             if comments.get('cancel', ''):
-#                 save_comments(comments['cancel'], obs_group.id, request.user)
- 
-#         except:
-#             response_data = {'failure': 'Error'}
-#             logger.error('This sequence was not in SNEx1 or was not canceled')
-#             return HttpResponse(json.dumps(response_data), content_type='application/json')
-     
-#     response_data = {'success': 'Modified'}
-#     return HttpResponse(json.dumps(response_data), content_type='application/json')
 
 def scheduling_view(request):
     obs_id = request.GET.get('observation_id')
@@ -760,259 +611,6 @@ def scheduling_view(request):
             return JsonResponse({'failure': str(e)})
         
     return JsonResponse({'failure': 'Invalid Form', 'errors': form.errors})
-
-
-# def scheduling_view(request):
-
-#     if 'modify' in request.GET['button']:
-#         obs_id = int(float(request.GET['observation_id']))
-#         obs = ObservationRecord.objects.get(id=obs_id)
-
-#         ## Get the new observation parameters
-#         form_data = {'name': request.GET['name'],
-#                      'target_id': int(float(request.GET['target_id'])),
-#                      'facility': request.GET['facility'],
-#                      'observation_type': request.GET['observation_type']
-#             }
-
-#         observing_parameters = json.loads(request.GET['observing_parameters'])
-#         # Append the additional info that users can change to parameters
-#         observing_parameters['ipp_value'] = float(request.GET['ipp_value'])
-#         observing_parameters['max_airmass'] = float(request.GET['max_airmass'])
-#         observing_parameters['cadence_strategy'] = request.GET.get('cadence_strategy', '')
-#         observing_parameters['cadence_frequency'] = float(request.GET['cadence_frequency'])
-#         observing_parameters['reminder'] = float(request.GET['reminder']) #Observing form turns this into timestamp
-#         observing_parameters['facility'] = obs.facility
-#         observing_parameters['name'] = form_data['name']
-#         observing_parameters['target_id'] = form_data['target_id']
-#         observing_parameters['delay_start'] = True
-#         observing_parameters['delay_amount'] = float(request.GET['delay_start'])
-        
-#         now = datetime.utcnow()
-#         observing_parameters['start'] = datetime.strftime(now + timedelta(days=float(request.GET['delay_start'])), '%Y-%m-%dT%H:%M:%S')
-#         observing_parameters['end'] = datetime.strftime(now + timedelta(hours=float(request.GET['cadence_frequency'])*24+float(request.GET['delay_start'])*24), '%Y-%m-%dT%H:%M:%S')
-
-#         if request.GET['observation_type'] == 'IMAGING':
-#             filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
-#             for f in filters:
-#                 if f+'_0' in request.GET.keys() and float(request.GET[f+'_0'][0]) > 0.0:
-#                     observing_parameters[f] = [float(request.GET[f+'_0']), int(float(request.GET[f+'_1'])), int(float(request.GET[f+'_2']))]
-
-#         elif request.GET['observation_type'] == 'SPECTRA':
-#             observing_parameters['exposure_time'] = int(float(request.GET['exposure_time']))
-
-#         if request.GET['cadence_strategy']: 
-#             cadence = {'cadence_strategy': request.GET['cadence_strategy'],
-#                        'cadence_frequency': float(request.GET['cadence_frequency'])
-#                 }
-#             form_data['cadence'] = cadence 
-#         form_data['observing_parameters'] = observing_parameters
-
-#         # Make sure at least one of the observing parameters changed
-#         dict_keys = ['ipp_value', 'max_airmass', 'cadence_frequency', 'U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'exposure_time']
-#         modified = False
-#         for key in dict_keys:
-#             if key in observing_parameters.keys() and key in obs.parameters.keys():
-#                 if observing_parameters[key] != obs.parameters[key]:
-#                     modified = True
-#                     break
-#         if not modified:
-#             response_data = {'failure': 'Sequence parameters were not modified, please modify one and try again'}
-#             return HttpResponse(json.dumps(response_data), content_type='application/json')
-
-#         ### Begin atomic transaction here
-#         try:
-#             with transaction.atomic():
-                
-#                 ### Get SNEx1 db session
-                
-#                 # Cancel the old observation
-#                 canceled = cancel_observation(obs)
-#                 if not canceled:
-#                     response_data = {'failure': 'Canceling the previous sequence failed, please try again'}
-#                     raise Snex1ConnectionError(message='Could not cancel previous sequence')
-#                     #return HttpResponse(json.dumps(response_data), content_type='application/json')
-        
-#                 # Submission follows how observation requests are submitted in TOM view
-#                 facility = get_service_class(obs.facility)()
-#                 form = facility.get_form(form_data['observation_type'])(observing_parameters)
-#                 if form.is_valid():
-#                     observation_errors = facility.validate_observation(form.observation_payload())
-#                     if observation_errors:
-#                         logger.error(msg=f'Unable to submit next cadenced observation: {observation_errors}')
-#                         response_data = {'failure': 'Unable to submit next cadenced observation'}
-#                         raise Snex1ConnectionError(message='Observation portal returned errors {}'.format(observation_errors))
-
-#                 else:
-#                     logger.error(msg=f'Unable to submit next cadenced observation: {form.errors}')
-#                     response_data = {'failure': 'Unable to submit next cadenced observation'}
-#                     raise Snex1ConnectionError(message='Observation portal returned errors {}'.format(form.errors))
-#                     #return HttpResponse(json.dumps(response_data), content_type='application/json')
-
-#                 # Creation of corresponding ObservationRecord objects for the observations
-#                 new_observations = []
-#                 for observation_id in ['template']:#observation_ids:
-#                     # Create Observation record
-#                     record = ObservationRecord.objects.create(
-#                         target=Target.objects.get(id=form_data['target_id']),
-#                         facility=facility.name,
-#                         parameters=form.serialize_parameters(),#observing_parameters,
-#                         observation_id=observation_id
-#                     )
-#                     # Add the request user
-#                     record.parameters['start_user'] = request.user.first_name
-#                     record.save()
-#                     new_observations.append(record)
-        
-#                 if len(new_observations) > 1 or form_data.get('cadence'):
-#                     observation_group = ObservationGroup.objects.create(name=form_data['name'])
-#                     observation_group.observation_records.add(*new_observations)
-#                     assign_perm('tom_observations.view_observationgroup', request.user, observation_group)
-#                     assign_perm('tom_observations.change_observationgroup', request.user, observation_group)
-#                     assign_perm('tom_observations.delete_observationgroup', request.user, observation_group)
-
-#                     if form_data.get('cadence'):
-#                         DynamicCadence.objects.create(
-#                             observation_group=observation_group,
-#                             cadence_strategy=cadence.get('cadence_strategy'),
-#                             cadence_parameters={'cadence_frequency': float(request.GET['cadence_frequency'])},
-#                             active=True
-#                         )
-
-#                 if not settings.TARGET_PERMISSIONS_ONLY:
-#                     group_id_list = list(GroupObjectPermission.objects.filter(object_pk=obs_id).values_list('group_id', flat=True).distinct())
-#                     groups = Group.objects.filter(id__in=group_id_list)
-#                     for record in new_observations:
-#                         assign_perm('tom_observations.view_observationrecord', groups, record)
-#                         assign_perm('tom_observations.change_observationrecord', groups, record)
-#                         assign_perm('tom_observations.delete_observationrecord', groups, record)
-        
-#                 ### Sync with SNEx1
-#                 ## Run hook to cancel old sequence in SNEx1
-#                 obs_group = obs.observationgroup_set.first()
-#                 snex_id = int(obs_group.name)
-            
-#                 # Get comments, if any
-#                 comments = json.loads(request.GET['comment'])
-#                 if comments.get('cancel', ''):
-#                     save_comments(comments['cancel'], obs_group.id, request.user)
-        
-#                 # Get the group ids to pass to SNEx1
-#                 group_names = []
-#                 if not settings.TARGET_PERMISSIONS_ONLY:
-#                     for group in groups:
-#                         group_names.append(group.name)
-        
-#                 # Run the hook to add the sequence to SNEx1
-#                 # Get comments, if any
-
-#                 # Change the name of the observation group, if one was created
-#                 if len(new_observations) > 1 or form_data.get('cadence'):
-#                     observation_group.save()
-
-#                     for record in new_observations:
-#                         record.save()
-            
-#                 response_data = {'success': 'Modified'}
-
-#         except Exception as e: 
-#             logger.error('something failed for target {} with error {}'.format(obs.target_id, e))
-#             response_data = {'failure': 'Unable to modify sequence: see logs for error'}
-            
-#         ### End of the atomic transaction
-#         return HttpResponse(json.dumps(response_data), content_type='application/json')
-
-#     elif 'continue' in request.GET['button']:
-#         logger.info('Continuing Sequence as-is')
-#         observation_id = int(float(request.GET['observation_id']))
-#         obs = ObservationRecord.objects.get(id=observation_id)
-        
-#         ## Check to make sure no parameters were updated
-#         observing_parameters = {}
-#         observing_parameters['ipp_value'] = float(request.GET['ipp_value'])
-#         observing_parameters['max_airmass'] = float(request.GET['max_airmass'])
-#         observing_parameters['cadence_frequency'] = float(request.GET['cadence_frequency'])
-        
-#         if request.GET['observation_type'] == 'IMAGING':
-#             filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
-#             for f in filters:
-#                 if f+'_0' in request.GET.keys() and float(request.GET[f+'_0'][0]) > 0.0:
-#                     observing_parameters[f] = [float(request.GET[f+'_0']), int(float(request.GET[f+'_1'])), int(float(request.GET[f+'_2']))]
-
-#         elif request.GET['observation_type'] == 'SPECTRA':
-#             observing_parameters['exposure_time'] = int(float(request.GET['exposure_time']))
-        
-#         dict_keys = ['ipp_value', 'max_airmass', 'cadence_frequency', 'U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'exposure_time']
-#         modified = False
-#         for key in dict_keys:
-#             if key in observing_parameters.keys() and key in obs.parameters.keys():
-#                 if observing_parameters[key] != obs.parameters[key]:
-#                     modified = True
-#                     break
-#         if modified:
-#             response_data = {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
-#             return HttpResponse(json.dumps(response_data), content_type='application/json')
-
-#         try:
-#             with transaction.atomic():
-#                 next_reminder_interval = float(request.GET['reminder'])
-#                 obs_parameters = obs.parameters
-#                 now = datetime.now()
-#                 obs_parameters['reminder'] = datetime.strftime(now + timedelta(days=next_reminder_interval), '%Y-%m-%dT%H:%M:%S')
-#                 obs_parameters['reminder_interval'] = next_reminder_interval
-#                 obs.save()
-
-#         except:
-#             message = 'The reminder was not updated'
-#             logger.error(message)
-#             response_data = {'failure': message}
-
-#         return HttpResponse(json.dumps(response_data), content_type='application/json')
-    
-#     elif 'stop' in request.GET['button']:
-#         logger.info('Stopping Sequence')
-#         ## Cancel observation request in LCO portal
-#         try:
-#             db_session = _return_session()
-#             with transaction.atomic():
-#                 obs_id = int(float(request.GET['observation_id']))
-#                 obs = ObservationRecord.objects.get(id=obs_id)
-#                 canceled = cancel_observation(obs)
-#                 if not canceled:
-#                     response_data = {'failure': 'This sequence could not be canceled in SNEx1'} 
-#                     raise Snex1ConnectionError(message='This sequence could not be canceled in SNEx1')
-#                 ## Run hook to cancel this sequence in SNEx1
-#                 obs_group = obs.observationgroup_set.first()
-#                 snex_id = int(obs_group.name)
-
-#                 # Get comments, if any
-#                 comments = json.loads(request.GET['comment'])
-#                 if comments.get('cancel', ''):
-#                     save_comments(comments['cancel'], obs_group.id, request.user)
-#                     run_hook('cancel_sequence_in_snex1', 
-#                              snex_id, 
-#                              comment=comments['cancel'],
-#                              tableid=snex_id,
-#                              userid=request.user.id,
-#                              targetid=obs.target_id,
-#                              wrapped_session=db_session)
-#                 else:
-#                     run_hook('cancel_sequence_in_snex1', snex_id, userid=request.user.id, wrapped_session=db_session)
-        
-#                 response_data = {'success': 'Stopped'}
-#                 db_session.commit()
-        
-#         except:
-#             message = 'This sequence was not in SNEx1 or was not canceled'
-#             logger.error(message)
-#             response_data = {'failure': message}
-#             db_session.rollback()
-
-#         finally:
-#             db_session.close()
-
-#         return HttpResponse(json.dumps(response_data), content_type='application/json')
-
 
 def change_target_known_to_view(request):
     action = request.GET.get('action')
@@ -1067,16 +665,12 @@ def change_interest_view(request):
         user_interest_row = InterestedPersons.objects.get(target=target, user=user)
         user_interest_row.delete()
 
-        # run_hook('change_interest_in_snex1', target.id, user.username, 'uninterested')
-
         response_data = {'success': 'Uninterested'}
         return HttpResponse(json.dumps(response_data), content_type='application/json')
 
     else:
         user_interest_row = InterestedPersons(target=target, user=user)
         user_interest_row.save()
-
-        # run_hook('change_interest_in_snex1', target.id, user.username, 'interested')
         
         response_data = {'success': 'Interested',
                          'name': user.get_full_name()
@@ -2025,50 +1619,8 @@ def sync_targetextra_view(request):
         logger.info(f'When updating alias,the target.save() just needs to happen')
     logger.info(f"Updated target {newdata['key']} to {newdata['value']}")
     target.save()
-
-    # run_hook('targetextra_post_save',target)
     
     return HttpResponse(json.dumps({'success': 'Synced'}), content_type='application/json')
-
-
-# @receiver(comment_was_posted)
-# def target_comment_receiver(sender, **kwargs):
-#     posted_comment = kwargs['comment']
-#     comment = posted_comment.comment
-#     content_type = ContentType.objects.get(id=posted_comment.content_type_id).model
-#     obj_id = int(posted_comment.object_pk)
-#     user_id = int(posted_comment.user_id)
-#     logger.info(f'comment content_type: {content_type}, content_type id: {posted_comment.content_type_id}')
-#     if content_type == 'snextarget':
-#         tablename = 'targets'
-#         snex1_id = obj_id # that target table id is the same as the targetid
-#         if not settings.DEBUG:
-#             logger.info(f"posted comment {comment} to be created")
-#             run_hook('sync_comment_with_snex1', comment, tablename, user_id, obj_id, snex1_id)
-
-# @receiver(post_delete, sender=Comment)
-# def target_comment_remove(sender, instance, **kwargs):
-#     comment = instance.comment
-#     content_type = ContentType.objects.get_for_id(instance.content_type_id).model
-#     logger.info(f'content type of deleted comment {content_type} content_type id: {instance.content_type_id}')
-#     obj_id = int(instance.object_pk)
-#     user_id = int(instance.user_id)
-#     if content_type == 'snextarget':
-#         tablename = 'targets'
-#         snex1_id = obj_id
-#         user_id = int(instance.user_id)
-#         if not settings.DEBUG:
-#             logger.info(f"posted comment {comment} to be deleted")
-#             run_hook('sync_comment_with_snex1', comment, tablename, user_id, obj_id, snex1_id, mode = 'delete')
-#     if content_type == 'reduceddatum':
-#         spec = ReducedDatum.objects.get(id=obj_id)
-#         target_id = int(spec.target_id)
-#         snex_id_row = ReducedDatumExtra.objects.filter(data_type='spectroscopy', key='snex_id', target_id=target_id, value__icontains='"snex2_id": {}'.format(obj_id)).first()
-#         if snex_id_row:
-#             snex1_id = json.loads(snex_id_row.value)['snex_id']
-#             logger.info(f"spec posted comment {comment} to be deleted")
-#             run_hook('sync_comment_with_snex1', comment, 'spec', user_id, target_id, snex1_id, mode = 'delete')
-
 
 def change_broker_target_status_view(request):
     

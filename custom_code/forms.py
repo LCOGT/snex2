@@ -1,8 +1,6 @@
-from tom_targets.forms import SiderealTargetCreateForm, TargetForm
-from tom_targets.models import Target
+from tom_targets.forms import SiderealTargetCreateForm
 from tom_dataproducts.forms import DataProductUploadForm
 from tom_observations.widgets import FilterField
-from tom_dataproducts.models import DataProduct
 from guardian.shortcuts import assign_perm, get_groups_with_perms, remove_perm
 from django import forms
 from custom_code.models import ScienceTags, TargetTags, Papers
@@ -20,7 +18,6 @@ from django.contrib.auth.models import User, Group
 from django.db import transaction
 from crispy_forms.helper import FormHelper
 
-import re
 import logging
 
 logger = logging.getLogger(__name__)

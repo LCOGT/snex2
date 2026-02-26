@@ -1,17 +1,12 @@
 from django.db import transaction
-from tom_targets.models import TargetList, Target, TargetName
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import get_groups_with_perms, assign_perm
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import Group
 from django.conf import settings
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from django.utils import timezone
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse
 from django.contrib.contenttypes.models import ContentType
-import json
 from django_comments.models import Comment
-from tom_common.hooks import run_hook
-from tom_observations.facilities.lco import LCOSettings
 from guardian.shortcuts import assign_perm
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.facility import get_service_class

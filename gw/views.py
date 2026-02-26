@@ -22,8 +22,6 @@ from tom_targets.models import Target
 from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from custom_code.hooks import _return_session, _load_table
-from gw.hooks import ingest_gw_galaxy_into_snex1
-from custom_code.views import Snex1ConnectionError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -346,9 +344,6 @@ def submit_galaxy_observations_view(request):
                     for record in new_observations:
                         record.parameters['name'] = snex_id
                         record.save()
-
-                ### Log the target in SNEx1 and ingest template images
-                ingest_gw_galaxy_into_snex1(newtarget.id, galaxy.eventlocalization.nonlocalizedevent.event_id, wrapped_session=db_session)
 
                 ### Submit pointing to TreasureMap
                 #pointings = build_tm_pointings(newtarget, observing_parameters)
