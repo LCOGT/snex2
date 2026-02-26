@@ -539,8 +539,8 @@ def save_comments_view(request):
 
     user = User.objects.get(id=user_id)
 
-    saved = save_comments(comment, object_id, user, tablename=tablename)
-    
+    saved = save_comments(comment, object_id, user, model_name=tablename)
+
     if saved:
         return JsonResponse({
             "success": True,
