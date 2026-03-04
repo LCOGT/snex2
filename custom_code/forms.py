@@ -141,7 +141,7 @@ class SNEx2RegistrationApprovalForm(RegistrationApprovalForm):
     who_you_are = forms.CharField(
         required=True,
         widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'e.g. PhD student at University X, working with Prof. Y on supernova follow-up'}),
-        label='Who you are / who you are working with',
+        label='Who you are / who you are working with and why do you want a SNEx2 account?',
         help_text='Please briefly describe who you are or which group/institution you work with.',
     )
 
