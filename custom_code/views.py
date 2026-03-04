@@ -41,7 +41,7 @@ from tom_targets.templatetags.targets_extras import target_groups
 from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
 from custom_code.thumbnails import make_thumb
 
-from custom_code.forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm, PhotSchedulingForm
+from custom_code.forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm, PhotSchedulingForm, SpecSchedulingForm
 from tom_targets.views import TargetCreateView
 from tom_common.hooks import run_hook
 
@@ -583,7 +583,10 @@ def scheduling_view(request):
     obs_id = request.GET.get('observation_id')
     obs = ObservationRecord.objects.get(id=obs_id)
     
-    form = PhotSchedulingForm(request.GET, initial=obs.parameters)
+    if obs.parameters.get('observation_type', '') == 'IMAGING':
+        form = PhotSchedulingForm(request.GET, initial=obs.parameters)
+    else:
+        form = SpecSchedulingForm(request.GET, initial=obs.parameters)
     if form.is_valid():
         action = next((a for a in ['modify', 'continue', 'stop'] if a in request.GET.get('button', '')), None)
         try:

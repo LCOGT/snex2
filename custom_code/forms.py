@@ -385,7 +385,7 @@ class SpecSchedulingForm(forms.Form):
     cadence_strategy = forms.CharField(widget=forms.HiddenInput(), required=False)
     observing_parameters = forms.CharField(max_length=1024, widget=forms.HiddenInput()) 
     
-    cadence_frequency = forms.FloatField(min_value=0.0, label='')
+    cadence_frequency_days = forms.FloatField(min_value=0.0, label='')
     ipp_value = forms.FloatField(min_value=0.5, max_value=2.0, label='')
     max_airmass = forms.FloatField(min_value=0.0, label='')
     reminder = forms.FloatField(min_value=0.0, label='')
@@ -394,8 +394,17 @@ class SpecSchedulingForm(forms.Form):
     
     def __init__(self, *args, **kwargs):
         super(SpecSchedulingForm, self).__init__(*args, **kwargs)
-        self.fields['cadence_frequency'].widget.attrs['class'] = 'cadence-input'
+        self.fields['cadence_frequency_days'].widget.attrs['class'] = 'cadence-input'
         self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
+    
+    def clean_observing_parameters(self):
+
+        data = self.cleaned_data['observing_parameters']
+
+        try:
+            return json.loads(data)
+        except (json.JSONDecodeError, TypeError):
+            raise forms.ValidationError("Invalid format for observing parameters.")
 
 
 class ReferenceStatusForm(forms.Form):

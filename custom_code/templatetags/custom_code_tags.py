@@ -1309,13 +1309,6 @@ def scheduling_list_with_form(context, observation):
     requested_str = f"{user.first_name} {user.last_name}".strip() or username
     return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
 
-# @register.filter
-# def order_by_pending_requests(queryset):
-
-#     queryset = ObservationRecord.objects.filter(status='PENDING')
-
-#     return queryset
-
 @register.filter
 def filter_current_reminders(queryset, pagenumber):
     now = datetime.datetime.now()

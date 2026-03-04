@@ -19,7 +19,7 @@ def change_obs_from_scheduling(action, obs_id, user, data):
     params:
     action: str, modify, continue, stop
     obs_id: ObservationRecord id
-    data: cleaned data from PhotSchedulingForm
+    data: cleaned data from PhotSchedulingForm or SpecSchedulingForm
     '''
     obs = ObservationRecord.objects.get(id=obs_id)
 
@@ -123,7 +123,7 @@ def _continue_sequence(obs, user, data):
     logger.info(f'Continuing Sequence {obs.id} as-is')
     logger.info(f'data {data}, obs {type(obs)} {obs.parameters}')
     
-    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'rp', 'ip', 'zs', 'muscat_filter', 'exposure_time']:
+    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
         if key in data.keys() and key in obs.parameters.keys():
             logger.info(f'key in both: {key}, data {data[key]} and obs param: {obs.parameters[key]}')
             if data[key] != obs.parameters[key]:
@@ -169,7 +169,7 @@ def _modify_sequence(obs, user, data):
     new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
     new_params['end'] = (now + timedelta(days=delay + (data['cadence_frequency_days']))).strftime('%Y-%m-%dT%H:%M:%S')
 
-    filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
+    filters = ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
     for f in filters:
         if f in data and data[f]:
             new_params[f] = data[f]
@@ -179,11 +179,6 @@ def _modify_sequence(obs, user, data):
     form = form_class(new_params)
     if not form.is_valid():
         raise Exception(f"New parameters invalid for {obs.facility}: {form.errors}")
-    # observation_errors = facility.validate_observation(form.observation_payload())
-    # if observation_errors:
-    #     logger.error(msg=f'Unable to submit next cadenced observation: {observation_errors}')
-    #     response_data = {'failure': 'Unable to submit next cadenced observation'}
-    #     return response_data
 
     observation_ids = facility.submit_observation(form.observation_payload())
 
