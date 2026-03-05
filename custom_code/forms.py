@@ -385,7 +385,7 @@ class SpecSchedulingForm(forms.Form):
     cadence_strategy = forms.CharField(widget=forms.HiddenInput(), required=False)
     observing_parameters = forms.CharField(max_length=1024, widget=forms.HiddenInput()) 
     
-    cadence_frequency_days = forms.FloatField(min_value=0.0, label='')
+    cadence_frequency_days = forms.FloatField(min_value=0.0, label='Cadence (Days)')
     ipp_value = forms.FloatField(min_value=0.5, max_value=2.0, label='')
     max_airmass = forms.FloatField(min_value=0.0, label='')
     reminder = forms.FloatField(min_value=0.0, label='')

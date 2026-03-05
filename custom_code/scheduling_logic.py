@@ -132,10 +132,14 @@ def _continue_sequence(obs, user, data):
 
     obs.parameters['reminder'] = data['reminder']
     now = datetime.utcnow()
-    obs.parameters['reminder_date'] = (now + timedelta(days=data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
-
+    reminder_date = (now + timedelta(days=data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
+    obs.parameters['reminder_date'] = reminder_date
     obs.save()
-        
+
+    cad = DynamicCadence.objects.filter(observation_group__observation_records=obs).first()
+    cad.cadence_parameters['reminder_date'] = reminder_date
+    cad.save()
+
     return {'success': 'Continued'}
 
 
@@ -204,7 +208,7 @@ def _modify_sequence(obs, user, data):
     DynamicCadence.objects.create(
         observation_group=new_obs_group,
         cadence_strategy=new_params.get('cadence_strategy', 'SnexResumeCadenceAfterFailureStrategy'),
-        cadence_parameters={'cadence_frequency': new_params['cadence_frequency']},
+        cadence_parameters={'cadence_frequency': new_params['cadence_frequency'], 'reminder_date': new_params['reminder_date']},
         active=True
     )
     _sync_permissions(obs, new_obs_group)

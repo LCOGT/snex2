@@ -1151,10 +1151,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
             instrument = 'SBIG'
 
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
-        cadence_frequency = parameter.get('cadence_frequency', '')
-        logger.info(f'cadence frequency in hours from parameters? {cadence_frequency}')
         cadence_frequency = cadence_frequency_days * 24
-        logger.info(f'how about just calculating it from days: {cadence_frequency}')
 
         #start = str(obsset.first().parameters['start']).replace('T', ' ')
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')
@@ -1226,7 +1223,10 @@ def get_scheduling_form(observation, user_id, start, requested_str):
     else: # For spectra observations
         observation_type = 'Spec'
         instrument = 'Floyds'
-        cadence_frequency = parameter.get('cadence_frequency', '')
+        
+        cadence_frequency_days = parameter.get('cadence_frequency_days', '')
+        cadence_frequency = cadence_frequency_days * 24
+
         if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
         else:
@@ -1235,6 +1235,8 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
+        
+        reminder = parameter.get('reminder', 2 * cadence_frequency_days)
 
         observing_parameters = {
                    'instrument_type': parameter.get('instrument_type', ''),
@@ -1243,13 +1245,15 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'observation_type': parameter.get('observation_type', ''),
                    'observation_mode': parameter.get('observation_mode', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
+                   'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
                    'site': parameter.get('site', ''),
                    'exposure_count': parameter.get('exposure_count', ''),
                    'acquisition_radius': parameter.get('acquisition_radius', ''),
                    'guider_mode': parameter.get('guider_mode', ''),
                    'guider_exposure_time': parameter.get('guider_exposure_time', ''),
-                   'filter': parameter.get('filter', '')
+                   'filter': parameter.get('filter', ''),
+                   'reminder': reminder
             }
 
         initial = {'name': target.name,
@@ -1259,10 +1263,11 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'observation_type': parameter.get('observation_type', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
                    'observing_parameters': json.dumps(observing_parameters),
+                   'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
-                   'reminder': 2*cadence_frequency,
+                   'reminder': reminder,
                    'exposure_time': parameter.get('exposure_time', '')
             }
         form = SpecSchedulingForm(initial=initial)
@@ -1278,7 +1283,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                            'instrument': instrument,
                            'start': start + ' by ' + requested_str,
                            'comment': comment_str,
-                           'reminder': end,
+                           'reminder_date': end,
                            'user_id': user_id
                         })
 
