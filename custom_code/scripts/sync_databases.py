@@ -868,10 +868,10 @@ def run():
     actions = ['delete', 'insert', 'update']
     for action in actions:
         logger.info(f'Updating for action: {action}')
-        update_groups(action, db_address=_SNEX2_DB)
-        logger.info('Done updating groups')
-        update_users(action, db_address=_SNEX2_DB)
-        logger.info('Done updating users')
+        # update_groups(action, db_address=_SNEX2_DB)
+        # logger.info('Done updating groups')
+        # update_users(action, db_address=_SNEX2_DB)
+        # logger.info('Done updating users')
         update_target(action, db_address=_SNEX2_DB)
         logger.info('Done updating targets')
         update_phot(action, db_address=_SNEX2_DB)

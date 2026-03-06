@@ -35,9 +35,9 @@ input[type=number]::-webkit-outer-spin-button {
 {% for parameter in parameters %}
 <form method="post" class="form" id="scheduling-form-{{ parameter.observation_id }}">
 {% if parameter.observation_type == "Phot" %}
-{% bootstrap_form form exclude='cadence_frequency,ipp_value,max_airmass,U,B,V,R,I,u,gp,rp,ip,zs,w,reminder,delay_start' %}
+{% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,U,B,V,R,I,u,gp,rp,ip,zs,w,reminder,delay_start' %}
 {% else %}
-{% bootstrap_form form exclude='cadence_frequency,ipp_value,max_airmass,exposure_time,reminder,delay_start' %}
+{% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,exposure_time,reminder,delay_start' %}
 {% endif %}
 {% if 'SUPA202' in parameter.proposal %}
 <table class="table pessto-table">
@@ -82,7 +82,7 @@ input[type=number]::-webkit-outer-spin-button {
       <td>{{ parameter.instrument }}</td>
       {% if parameter.observation_type == "Phot" %}
 	<td>
-	  <div class="row">{{ form.cadence_frequency }}</div>
+	  <div class="row">{{ form.cadence_frequency_days }}</div>
 	  <!--div class="row" style="width: 100px;">
 	    <input type="checkbox" id="delay-start-{{ parameter.observation_id }}">
 	    <label for="delay-start-{{ parameter.observation_id }}">Delay Start By</label>
@@ -109,20 +109,15 @@ input[type=number]::-webkit-outer-spin-button {
 	  <div class="row">
 	  {% csrf_token %}
 	  {% buttons %}
-	  {% if parameter.case == 'pending' %}
-	  <input onclick="approveRejectSequence({{ parameter.observation_id }}, 'approved')" class="btn" style="background-color: white; color: green; outline-color: green; outline-style: auto; width: 165px;" value="Approve Sequence" id="approve-{{ parameter.observation_id }}" readonly>
-          <input onclick="approveRejectSequence({{ parameter.observation_id }}, 'rejected')" class="btn" style="background-color: white; color: red; outline-color: red; outline-style: auto; width: 165px;" value="Reject Sequence" id="reject-{{ parameter.observation_id }}" readonly>
-	  {% else %}
 	  <input onclick="modify_sequence(this.id)" class="btn" style="background-color: white; color: green; outline-color: green; outline-style: auto;" onmouseover="style.backgroundColor='green'; style.color='white';" onmouseout="style.backgroundColor='white'; style.color='green';" value="Continue As-is" id="continue-{{ parameter.observation_id }}" readonly>
 	  <input onclick="modify_sequence(this.id)" class="btn" style="background-color: white; color: red; outline-color: red; outline-style: auto;" onmouseover="style.backgroundColor='red'; style.color='white';" onmouseout="style.backgroundColor='white'; style.color='red';" value="Stop Sequence" id="stop-{{ parameter.observation_id }}" readonly>
 	  <input onclick="modify_sequence(this.id)" class="btn btn-primary" style="background-color: white; color: #164560; outline-color: #164560; outline-style: auto;" onmouseover="style.backgroundColor='#164560'; style.color='white';" onmouseout="style.backgroundColor='white'; style.color='#164560';" value="Modify Sequence" id="modify-{{ parameter.observation_id }}" readonly>
 	  <div>and delay start by {{ form.delay_start }} days</div>
-	  {% endif %}
-          {% endbuttons %}
+    {% endbuttons %}
 	  </div>
 	</td>
       {% else %}
-	<td>{{ form.cadence_frequency }}</td>
+	<td>{{ form.cadence_frequency_days }}</td>
 	<td>{{ form.ipp_value }}</td>
 	<td>{{ form.max_airmass }}</td>
 	<td rowspan="2">
@@ -134,16 +129,11 @@ input[type=number]::-webkit-outer-spin-button {
 	  <div class="row">
 	  {% csrf_token %}
 	  {% buttons %}
-	  {% if parameter.case == 'pending' %}
-	  <input onclick="approveRejectSequence({{ parameter.observation_id }}, 'approved')" class="btn" style="background-color: white; color: green; outline-color: green; outline-style: auto;" value="Approve Sequence" id="approve-{{ parameter.observation_id }}" readonly>
-          <input onclick="approveRejectSequence({{ parameter.observation_id }}, 'rejected')" class="btn" style="background-color: white; color: red; outline-color: red; outline-style: auto;" value="Reject Sequence" id="reject-{{ parameter.observation_id }}" readonly>
-	  {% else %}
 	  <input onclick="modify_sequence(this.id)" class="btn" style="background-color: white; color: green; outline-color: green; outline-style: auto;" onmouseover="style.backgroundColor='green'; style.color='white';" onmouseout="style.backgroundColor='white'; style.color='green';" value="Continue As-is" id="continue-{{ parameter.observation_id }}" readonly>
 	  <input onclick="modify_sequence(this.id)" class="btn" style="background-color: white; color: red; outline-color: red; outline-style: auto;" onmouseover="style.backgroundColor='red'; style.color='white';" onmouseout="style.backgroundColor='white'; style.color='red';" value="Stop Sequence" id="stop-{{ parameter.observation_id }}" readonly>
 	  <input onclick="modify_sequence(this.id)" class="btn btn-primary" style="background-color: white; color: #164560; outline-color: #164560; outline-style: auto;" onmouseover="style.backgroundColor='#164560'; style.color='white';" onmouseout="style.backgroundColor='white'; style.color='#164560';" value="Modify Sequence" id="modify-{{ parameter.observation_id }}" readonly>
 	  <div>and delay start by {{ form.delay_start }} days</div>
-	  {% endif %}
-          {% endbuttons %}
+	  {% endbuttons %}
 	  </div>
 	</td>
       {% endif %}
@@ -151,7 +141,7 @@ input[type=number]::-webkit-outer-spin-button {
 	<div class="row">{{ parameter.start }}</div>
 	<div class="row">{{ parameter.comment }}</div>
       </td>
-      <td>{{ parameter.reminder }}</td>
+      <td>{{ parameter.reminder_date }}</td>
     </tr>
       <td colspan=10 style="border-top:none;">
         <div class="collapse show" id="show-both-{{parameter.target.name|cut:" "}}">

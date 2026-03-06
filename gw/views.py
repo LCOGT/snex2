@@ -22,8 +22,6 @@ from tom_targets.models import Target
 from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from custom_code.hooks import _return_session, _load_table
-from gw.hooks import ingest_gw_galaxy_into_snex1
-from custom_code.views import Snex1ConnectionError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -247,7 +245,8 @@ def submit_galaxy_observations_view(request):
                 observing_parameters['ipp_value'] = float(request.GET['ipp_value'])
                 observing_parameters['max_airmass'] = 2.0 #TODO: Add form field for this?
                 observing_parameters['cadence_strategy'] = 'SnexRetryFailedObservationsStrategy'
-                observing_parameters['cadence_frequency'] = 1.0 #TODO: This is from SNEx1, change?
+                observing_parameters['cadence_frequency'] = 24 #TODO: This is from SNEx1, change?
+                observing_parameters['cadence_frequency_days'] = 1.0 #TODO: This is from SNEx1, change?
                 observing_parameters['reminder'] = 1.0
                 observing_parameters['facility'] = 'LCO'
                 observing_parameters['name'] = newtarget.name
@@ -336,13 +335,7 @@ def submit_galaxy_observations_view(request):
                     assign_perm('tom_observations.delete_observationrecord', groups, record)
 
                 ## Add the sequence to SNEx1
-                snex_id = run_hook(
-                    'sync_sequence_with_snex1',
-                    form.serialize_parameters(),
-                    ['GWO4'],
-                    userid=request.user.id,
-                    wrapped_session=db_session
-                )
+                snex_id = 1
 
                 if len(new_observations) > 1 or form_data.get('cadence'):
                     observation_group.name = str(snex_id)
@@ -351,9 +344,6 @@ def submit_galaxy_observations_view(request):
                     for record in new_observations:
                         record.parameters['name'] = snex_id
                         record.save()
-
-                ### Log the target in SNEx1 and ingest template images
-                ingest_gw_galaxy_into_snex1(newtarget.id, galaxy.eventlocalization.nonlocalizedevent.event_id, wrapped_session=db_session)
 
                 ### Submit pointing to TreasureMap
                 #pointings = build_tm_pointings(newtarget, observing_parameters)

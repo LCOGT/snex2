@@ -21,7 +21,7 @@ def build_tm_pointings(target, observation_parameters):
                         'time': observation_parameters['start']
     }
 
-    filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+    filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
     for filt in filters:
         if filt in observation_parameters.keys():
             copy_planned_pointing = planned_pointing

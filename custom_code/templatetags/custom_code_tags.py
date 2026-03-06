@@ -9,9 +9,9 @@ from django.contrib.auth.models import User, Group
 from django_comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
+from django.core.paginator import Paginator
 
 from tom_targets.models import Target, TargetList, BaseTarget
-from tom_targets.forms import TargetVisibilityForm
 from tom_observations import utils, facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
@@ -25,12 +25,10 @@ from astropy.time import Time
 from astropy import units as u
 from astropy.coordinates import get_moon, get_sun, SkyCoord, AltAz
 import numpy as np
-import time
 import matplotlib.pyplot as plt
 
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
-from urllib.parse import urlencode
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.thumbnails import make_thumb
@@ -897,147 +895,185 @@ def custom_observation_plan(target, facility, length=1, interval=30, airmass_lim
         'visibility_graph': visibility_graph
     }
 
+def format_lco_summary(obs, group, is_active):
+    params = obs.parameters
+    summary = []
 
-@register.inclusion_tag('custom_code/observation_summary.html', takes_context=True)
-def observation_summary(context, target=None, time='previous'):
-    """
-    A modification of the observation_list templatetag 
-    to display a summary of the observation records
-    for this object.
-    """
-    if target:
-        if settings.TARGET_PERMISSIONS_ONLY:
-            observations = target.observationrecord_set.all()
-        else:
-            observations = get_objects_for_user(
-                                context['request'].user,
-                                'tom_observations.view_observationrecord',
-                                ).filter(target=target)
-    else:
-        observations = ObservationRecord.objects.all()
-
-    observations = observations.order_by('parameters__start')
-
-    if time == 'ongoing':
-        cadences = DynamicCadence.objects.filter(active=True, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
-    
-    else:
-        if time == 'pending':
-            observations = observations.filter(observation_id='template pending')
-        cadences = DynamicCadence.objects.filter(active=False, observation_group__in=ObservationGroup.objects.filter(name__in=[o.parameters.get('name', '') for o in observations]))
-    
-    parameters = []
-    for cadence in cadences:
-        obsgroup = ObservationGroup.objects.get(id=cadence.observation_group_id)
-        #Check if the request is pending, and if so skip it
-        pending_obs = obsgroup.observation_records.all().filter(observation_id='template pending').first()
-        if not pending_obs and time == 'pending':
-            continue
-        
-        if time == 'pending':
-            observation = pending_obs
-        else:
-            observation = obsgroup.observation_records.all().filter(observation_id='template').first()
-        if not observation:
-            observation = obsgroup.observation_records.all().order_by('-id').first()
-            first_observation = obsgroup.observation_records.all().order_by('id').first()
-            sequence_start = str(first_observation.parameters.get('start')).split('T')[0]
-            requested_str = ''
-        else:
-            sequence_start = str(observation.parameters.get('sequence_start', '')).split('T')[0]
-            if not sequence_start:
-                sequence_start = str(observation.parameters.get('start', '')).split('T')[0]
-            requested_str = ', requested by {}'.format(str(observation.parameters.get('start_user', '')))
-
-        parameter = observation.parameters
-
-        # First do LCO observations
-        if parameter.get('facility', '') == 'LCO':
-
-            if 'SUPA202' in parameter.get('proposal', ''):
-                title_suffix = ' [ePESSTO Proprietary]'
-            elif 'LCO2022A' in parameter.get('proposal', ''):
-                title_suffix = ' [DLT40 Proprietary]'
-            else:
-                title_suffix = ''
-
-            if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy' and float(parameter.get('cadence_frequency', 0.0)) > 0.0:
-                parameter_string = str(parameter.get('cadence_frequency', '')) + '-day ' + str(parameter.get('observation_type', '')).lower() + ' cadence of '
-            else:
-                parameter_string = 'Single ' + str(parameter.get('observation_type', '')).lower() + ' observation of '
-
-            if parameter.get('observation_type', '') == 'IMAGING':
-                filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
-                for f in filters:
-                    filter_parameters = parameter.get(f, '')
-                    if filter_parameters:
-                        if filter_parameters[0] != 0.0:
-                            filter_string = f + ' (' + str(filter_parameters[0]) + 'x' + str(filter_parameters[1]) + '), '
-                            parameter_string += filter_string 
-            
-            elif parameter.get('observation_type', '') == 'SPECTRA':
-                parameter_string += str(parameter.get('exposure_time', ''))
-                parameter_string += 's '
-
-            if parameter.get('observation_mode') == 'TIME_CRITICAL':
-                parameter_string += '(time critical) '
-            elif parameter.get('observation_mode') == 'RAPID_RESPONSE':
-                parameter_string += '(rapid response) '
-
-            instrument_dict = {'2M0-FLOYDS-SCICAM': 'Floyds',
-                               '1M0-SCICAM-SINISTRO': 'Sinistro',
-                               '2M0-SCICAM-MUSCAT': 'Muscat',
-                               '2M0-SPECTRAL-AG': 'Spectral',
-                               '0M4-SCICAM-SBIG': 'SBIG',
-                               '0M4-SCICAM-QHY600': 'QHY',
-            }
-
-            if parameter.get('instrument_type') in instrument_dict.keys():
-                parameter_string += 'with ' + instrument_dict[parameter.get('instrument_type')]
-
-            parameter_string += ', IPP ' + str(parameter.get('ipp_value', ''))
-            parameter_string += ' and airmass < ' + str(parameter.get('max_airmass', ''))
-            parameter_string += ' starting on ' + sequence_start #str(parameter.get('start')).split('T')[0]
-            endtime = parameter.get('sequence_end', '')
-            if not endtime:
-                endtime = parameter.get('end', '')
-
-            if time == 'previous' and endtime:
-                parameter_string += ' and ending on ' + str(endtime).split('T')[0]
-            parameter_string += requested_str
-
-            ### Get any comments associated with this observation group
-            content_type_id = ContentType.objects.get(model='observationgroup').id
-            comments = Comment.objects.filter(object_pk=obsgroup.id, content_type_id=content_type_id).order_by('id')
-            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-
-            parameters.append({'title': 'LCO Sequence'+title_suffix,
-                               'summary': parameter_string,
-                               'comments': comment_list,
-                               'observation': observation.id,
-                               'group': obsgroup.id})
-
-        # Now do Gemini observations
-        elif parameter.get('facility', '') == 'Gemini':
-            
-            if 'SPECTRA' in parameter.get('observation_type', ''):
-                parameter_string = 'Gemini spectrum of B exposure time ' + str(parameter.get('b_exptime', '')) + 's and R exposure time ' + str(parameter.get('r_exptime', '')) + 's with airmass <' + str(parameter.get('max_airmass', '')) + ', scheduled on ' + str(observation.created).split(' ')[0]
-
-            else: # Gemini photometry
-                parameter_string = 'Gemini photometry of g (' + str(parameter.get('g_exptime', '')) + 's), r (' + str(parameter.get('r_exptime', '')) + 's), i (' + str(parameter.get('i_exptime', '')) + 's), and z (' + str(parameter.get('z_exptime', '')) + 's), with airmass < ' + str(parameter.get('max_airmass', '')) + ', scheduled on ' + str(observation.created).split(' ')[0]
-
-            parameters.append({'title': 'Gemini Sequence',
-                               'summary': parameter_string,
-                               'comments': [''], #No comment functionality for Gemini yet
-                               'observation': observation.id,
-                               'group': obsgroup.id})
-
-    return {
-        'observations': observations,
-        'parameters': parameters,
-        'time': time
+    summary_dict = {
+        'observation': obs.id,
+        'group': group.id,
+        'title': 'LCO Sequence',
+        'summary': '',
+        'comments': []
     }
 
+    proposal = params.get('proposal', '')
+    if 'SUPA202' in proposal:
+        summary_dict['title'] += ' [ePESSTO Proprietary]'
+    elif 'LCO2022A' in proposal:
+        summary_dict['title'] += ' [DLT40 Proprietary]'
+
+    sequence_start = params.get('start') #or params.get('sequence_start')
+    # if not sequence_start:
+    #     first_obs = group.observation_records.order_by('id').first()
+    #     if first_obs:
+    #         sequence_start = first_obs.parameters.get('start')
+
+    start_date = str(sequence_start).split('T')[0] if sequence_start else ''
+
+    cadence_strategy = params.get('cadence_strategy', '')
+    cadence_freq = float(params.get('cadence_frequency_days', 0.0) or 0.0)
+    obs_type = params.get('observation_type', '').lower()
+
+    if 'SnexResumeCadenceAfterFailureStrategy' in cadence_strategy and cadence_freq > 0:
+        summary.append(f"{cadence_freq}-day {obs_type} cadence of")
+    else:
+        summary.append(f"Single {obs_type} observation of")
+
+    if obs_type == 'imaging':
+        filter_strings = []
+        for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']:
+            val = params.get(f)
+            if val and val[0] != 0.0:
+                filter_strings.append(f"{f} ({val[0]}x{val[1]})")
+        if filter_strings:
+            summary.append(", ".join(filter_strings))
+
+    elif obs_type == 'spectra':
+        exp = params.get('exposure_time')
+        if exp:
+            summary.append(f"{exp}s")
+
+    mode = params.get('observation_mode')
+    if mode == 'TIME_CRITICAL':
+        summary.append("(time critical)")
+    elif mode == 'RAPID_RESPONSE':
+        summary.append("(rapid response)")
+
+    instrument_dict = {
+        '2M0-FLOYDS-SCICAM': 'Floyds',
+        '1M0-SCICAM-SINISTRO': 'Sinistro',
+        '2M0-SCICAM-MUSCAT': 'Muscat',
+        '2M0-SPECTRAL-AG': 'Spectral',
+        '0M4-SCICAM-SBIG': 'SBIG',
+        '0M4-SCICAM-QHY600': 'QHY',
+    }
+
+    inst = instrument_dict.get(params.get('instrument_type'))
+    if inst:
+        summary.append(f"with {inst},")
+
+    ipp = params.get('ipp_value')
+    airmass = params.get('max_airmass')
+
+    if ipp is not None:
+        summary.append(f"IPP {ipp}")
+    if airmass:
+        summary.append(f"airmass < {airmass}")
+
+    if start_date:
+        summary.append(f"starting on {start_date}")
+
+    if not is_active:
+        endtime = params.get('sequence_end') or params.get('end')
+        if endtime:
+            summary.append(f"ending on {str(endtime).split('T')[0]}")
+
+    start_user = params.get('start_user')
+    first_name = User.objects.get(username=start_user).first_name
+    if first_name:
+        summary.append(f"requested by {first_name}")
+    elif start_user:
+        summary.append(f"requested by {start_user}")
+    
+    summary.append(f"on {proposal}")
+    
+    summary_dict['summary'] = " ".join(summary)
+    return summary_dict
+
+def format_gemini_summary(obs, group):
+    params = obs.parameters or {}
+
+    summary_dict = {
+        'observation': obs.id,
+        'group': group.id,
+        'title': 'Gemini Sequence',
+        'summary': '',
+        'comments': []
+    }
+
+    created_date = str(obs.created).split(' ')[0]
+    airmass = params.get('max_airmass')
+
+    if 'SPECTRA' in params.get('observation_type', ''):
+        b_exp = params.get('b_exptime')
+        r_exp = params.get('r_exptime')
+        summary_dict['summary'] = (
+            f"Gemini spectrum of B exposure time {b_exp}s "
+            f"and R exposure time {r_exp}s "
+            f"with airmass < {airmass}, "
+            f"scheduled on {created_date}"
+        )
+    else:
+        summary_dict['summary'] = (
+            f"Gemini photometry of "
+            f"g ({params.get('g_exptime')}s), "
+            f"r ({params.get('r_exptime')}s), "
+            f"i ({params.get('i_exptime')}s), "
+            f"and z ({params.get('z_exptime')}s), "
+            f"with airmass < {airmass}, "
+            f"scheduled on {created_date}"
+        )
+
+    return summary_dict
+
+def call_facility_formats(obs, group, time_type):
+    params = obs.parameters or {}
+    facility = params.get('facility', '')
+
+    if facility == 'LCO':
+        return format_lco_summary(obs, group, time_type)
+    elif facility == 'Gemini':
+        return format_gemini_summary(obs, group)
+
+    return None
+
+@register.inclusion_tag('custom_code/observation_summary.html', takes_context=True)
+def observation_summary(context, target = None, is_active = False):
+    user = context['request'].user
+    
+    if target:
+        if settings.TARGET_PERMISSIONS_ONLY:
+            obs_records = target.observationrecord_set.all()
+        else:
+            obs_records = get_objects_for_user(user, 'tom_observations.view_observationrecord').filter(target = target)
+    else:
+        obs_records = ObservationRecord.objects.all()
+
+    obs_groups = ObservationGroup.objects.filter(observation_records__in = obs_records, dynamiccadence__active=is_active).distinct().prefetch_related('observation_records', 'dynamiccadence_set')
+
+    parameters_summary = []
+    content_type_obs_group = ContentType.objects.get_for_model(ObservationGroup)
+
+    for group in obs_groups:
+        all_obs = group.observation_records.all()
+        obs = all_obs.filter(status = 'PENDING').first() or all_obs.order_by('-id').first()
+        
+        if not obs:
+            continue
+
+        summary_dict = call_facility_formats(obs, group, is_active)
+        
+        comments = Comment.objects.filter(object_pk = group.id, content_type = content_type_obs_group)
+        summary_dict['comments'] = [f"{c.user.first_name}: {c.comment}" for c in comments]
+        
+        parameters_summary.append(summary_dict)
+
+    return {
+        'observations': obs_records,
+        'parameters': parameters_summary,
+        'is_active': is_active
+    }
 
 @register.inclusion_tag('custom_code/papers_list.html')
 def papers_list(target):
@@ -1092,7 +1128,7 @@ def smart_name_list(target):
     return good_names
     
 
-def get_scheduling_form(observation, user_id, start, requested_str, case='notpending'):
+def get_scheduling_form(observation, user_id, start, requested_str):
     '''
     Used to get the initial parameters and form for scheduling current
     and pending sequences.
@@ -1123,9 +1159,11 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
         else:
             instrument = 'SBIG'
 
-        cadence_frequency = parameter.get('cadence_frequency', '')
+        cadence_frequency_days = parameter.get('cadence_frequency_days', '')
+        cadence_frequency = cadence_frequency_days * 24
+
         #start = str(obsset.first().parameters['start']).replace('T', ' ')
-        end = str(parameter.get('reminder', '')).replace('T', ' ')
+        end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
 
@@ -1133,7 +1171,8 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'
-
+        
+        reminder = parameter.get('reminder', 2 * cadence_frequency_days)
         observing_parameters = {
                    'instrument_type': parameter.get('instrument_type', ''),
                    'min_lunar_distance': parameter.get('min_lunar_distance', ''),
@@ -1141,7 +1180,9 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                    'observation_type': parameter.get('observation_type', ''),
                    'observation_mode': parameter.get('observation_mode', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
-                   'cadence_frequency': cadence_frequency
+                   'cadence_frequency_days': cadence_frequency_days,
+                   'cadence_frequency': cadence_frequency,
+                   'reminder': reminder
             }
 
         if instrument == 'Muscat':
@@ -1157,13 +1198,14 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                    'observation_type': parameter.get('observation_type', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
                    'observing_parameters': json.dumps(observing_parameters),
+                   'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
-                   'reminder': 2*cadence_frequency
+                   'reminder': reminder
             }
         
-        filters = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
+        filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
         for f in filters:
             if parameter.get(f, '') and parameter.get(f, '')[0] != 0.0:
                 initial[f] = parameter.get(f, '')
@@ -1183,23 +1225,27 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                            'instrument': instrument,
                            'start': start + ' by ' + requested_str,
                            'comment': comment_str,
-                           'reminder': end,
-                           'user_id': user_id,
-                           'case': case
+                           'reminder_date': end,
+                           'user_id': user_id
                         })
     
     else: # For spectra observations
         observation_type = 'Spec'
         instrument = 'Floyds'
-        cadence_frequency = parameter.get('cadence_frequency', '')
+        
+        cadence_frequency_days = parameter.get('cadence_frequency_days', '')
+        cadence_frequency = cadence_frequency_days * 24
+
         if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'
         #start = str(obsset.first().parameters['start']).replace('T', ' ')
-        end = str(parameter.get('reminder', '')).replace('T', ' ')
+        end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
+        
+        reminder = parameter.get('reminder', 2 * cadence_frequency_days)
 
         observing_parameters = {
                    'instrument_type': parameter.get('instrument_type', ''),
@@ -1208,13 +1254,15 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                    'observation_type': parameter.get('observation_type', ''),
                    'observation_mode': parameter.get('observation_mode', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
+                   'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
                    'site': parameter.get('site', ''),
                    'exposure_count': parameter.get('exposure_count', ''),
                    'acquisition_radius': parameter.get('acquisition_radius', ''),
                    'guider_mode': parameter.get('guider_mode', ''),
                    'guider_exposure_time': parameter.get('guider_exposure_time', ''),
-                   'filter': parameter.get('filter', '')
+                   'filter': parameter.get('filter', ''),
+                   'reminder': reminder
             }
 
         initial = {'name': target.name,
@@ -1224,10 +1272,11 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                    'observation_type': parameter.get('observation_type', ''),
                    'cadence_strategy': parameter.get('cadence_strategy', ''),
                    'observing_parameters': json.dumps(observing_parameters),
+                   'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
-                   'reminder': 2*cadence_frequency,
+                   'reminder': reminder,
                    'exposure_time': parameter.get('exposure_time', '')
             }
         form = SpecSchedulingForm(initial=initial)
@@ -1243,9 +1292,8 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
                            'instrument': instrument,
                            'start': start + ' by ' + requested_str,
                            'comment': comment_str,
-                           'reminder': end,
-                           'user_id': user_id,
-                           'case': case
+                           'reminder_date': end,
+                           'user_id': user_id
                         })
 
 
@@ -1256,70 +1304,79 @@ def get_scheduling_form(observation, user_id, start, requested_str, case='notpen
 
 
 @register.inclusion_tag('custom_code/scheduling_list_with_form.html', takes_context=True)
-def scheduling_list_with_form(context, observation, case='notpending'):
+def scheduling_list_with_form(context, observation):
     facility = observation.facility
     
-    # For now, we'll only worry about scheduling for LCO observations
     if facility != 'LCO':
         return {'observations': observation,
                 'parameters': ''}
          
     obsgroup = observation.observationgroup_set.first()
-    template_observation = obsgroup.observation_records.all().filter(observation_id='template').first()
-    if not template_observation and case!='pending':
-        obsset = obsgroup.observation_records.all()
-        obsset = obsset.order_by('parameters__start')
-        start = str(obsset.first().parameters['start']).replace('T', ' ')
-        requested_str = ''
-    else:
-        if case == 'pending':
-            template_observation = observation
-        start = str(template_observation.parameters.get('sequence_start', '')).replace('T', ' ')
-        if not start:
-            start = str(template_observation.parameters.get('start', '')).replace('T', ' ')
-        requested_str = str(template_observation.parameters.get('start_user', ''))
+    first_obs = obsgroup.observation_records.order_by('created').first()
+    logger.info(f'scheduling list with form obsgroup: {obsgroup}')
+    logger.info(f'scheduling list with form first_obs: {first_obs}')
     
-    return get_scheduling_form(observation, context['request'].user.id, start, requested_str, case=case)
-
+    start_val = first_obs.parameters.get('start', 'Unknown')
+    start = str(start_val).replace('T', ' ')
+    username = first_obs.parameters.get('start_user', 'snex2')
+    user = User.objects.filter(username = username).first()
+    requested_str = f"{user.first_name} {user.last_name}".strip() or username
+    return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
 
 @register.filter
-def order_by_pending_requests(queryset): #, pagenumber):
-    #queryset = queryset.exclude(status='CANCELED') 
-    #queryset = queryset.filter(observation_id='template pending').order_by('id')
-    queryset = ObservationRecord.objects.filter(observation_id='template pending')
-    return queryset
-    
-
-@register.filter
-def order_by_reminder_expired(queryset, pagenumber):
-    queryset = queryset.exclude(status='CANCELED')
-    from django.core.paginator import Paginator
+def filter_current_reminders(queryset, pagenumber):
     now = datetime.datetime.now()
-   
-    queryset = queryset.filter(parameters__reminder__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-    queryset = queryset.order_by('parameters__reminder')
+    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
+    queryset = queryset.order_by('parameters__reminder_date')
 
     paginator = Paginator(queryset, 25)
     page_number = pagenumber.strip('page=')
     page_obj = paginator.get_page(page_number)
     return page_obj
-    #return queryset
-
 
 @register.filter
-def order_by_reminder_upcoming(queryset, pagenumber):
-    queryset = queryset.exclude(status='CANCELED')
-    from django.core.paginator import Paginator
+def filter_upcoming_reminders(queryset, pagenumber):
     now = datetime.datetime.now()
-   
-    queryset = queryset.filter(parameters__reminder__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')) 
-    queryset = queryset.order_by('parameters__reminder')
+    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
+    queryset = queryset.order_by('parameters__reminder_date')
 
     paginator = Paginator(queryset, 25)
     page_number = pagenumber.strip('page=')
     page_obj = paginator.get_page(page_number)
     return page_obj
-    #return queryset
+    
+
+# @register.filter
+# def order_by_reminder_expired(queryset, pagenumber):
+#     queryset = queryset.exclude(status='CANCELED')
+#     from django.core.paginator import Paginator
+#     now = datetime.datetime.now()
+   
+#     queryset = queryset.filter(parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
+#     queryset = queryset.order_by('parameters__reminder')
+
+#     paginator = Paginator(queryset, 25)
+#     page_number = pagenumber.strip('page=')
+#     page_obj = paginator.get_page(page_number)
+#     return page_obj
+#     #return queryset
+
+
+# @register.filter
+# def order_by_reminder_upcoming(queryset, pagenumber):
+#     logger.info(f'queryset input to order_by_reminder_upcoming: {queryset}')
+#     queryset = queryset.exclude(status='CANCELED')
+#     from django.core.paginator import Paginator
+#     now = datetime.datetime.now()
+   
+#     queryset = queryset.filter(parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')) 
+#     queryset = queryset.order_by('parameters__reminder')
+
+#     paginator = Paginator(queryset, 25)
+#     page_number = pagenumber.strip('page=')
+#     page_obj = paginator.get_page(page_number)
+#     return page_obj
+#     #return queryset
 
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
@@ -1686,19 +1743,7 @@ def image_slideshow(context, target):
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
-        #NOTE: Development
-        if settings.DOWNLOAD_TEST_THUMBNAIL:
-            try:
-                filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
-            except Exception as e:
-                logger.warning("Downloading test image from archive failed", exc_info=e)
-                return {
-                    'target': target,
-                    'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
-                }
-            
-        else:
-            return {
+        return {
                 'target': target,
                 'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})
             }
@@ -1713,7 +1758,6 @@ def image_slideshow(context, target):
                    'psfx': psfxs[i],
                    'psfy': psfys[i]
                 }),
-                #filenames[i]) for i in range(len(filenames))]
                 '{} ({} {})'.format(dates[i], filters[i], exptimes[i])) for i in range(len(filenames))]
 
     initial = {'filenames': filenames[0],
@@ -1965,25 +2009,13 @@ def test_display_thumbnail(context, target):
         #NOTE: Production
         try:
             filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
-        except:
-            logger.info('Finding images in snex1 failed')
+        except Exception as e:
+            logger.info(f'Finding images in snex1 failed {e}')
             return {'top_images': [],
                     'bottom_images': []}
 
     else:
-        #NOTE: Development
-        if settings.DOWNLOAD_TEST_THUMBNAIL:
-            try:
-                filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('download_test_image_from_archive')
-            except Exception as e:
-                logger.warning("Downloading test image from archive failed", exc_info=e)
-                return {
-                    "top_images": [],
-                    "bottom_images": [],
-                }
-            
-        else:
-            return {
+        return {
                 "top_images": [],
                 "bottom_images": [],
             }

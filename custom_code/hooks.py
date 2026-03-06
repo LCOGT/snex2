@@ -1,19 +1,17 @@
 import os
 import requests
 import logging
-from astropy.time import Time, TimezoneInfo
-from tom_dataproducts.models import ReducedDatum
+from astropy.time import Time
 import json
 from tom_targets.models import Target
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
-from requests_oauthlib import OAuth1
-from astropy.coordinates import SkyCoord
-from astropy import units as u
-from datetime import datetime, date, timedelta
+
+from datetime import datetime, date
 import numpy as np
 from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
+from custom_code.scheduling_logic import save_comments
 
 from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
@@ -53,6 +51,14 @@ def _get_session(db_address):
     finally:
         session.close()
 
+def save_observation_comment(observation, previous_state):
+    logger.info('Observation change state hook: %s from %s to %s', observation, previous_state, observation.status)
+    if previous_state == '':
+        comment = observation.parameters.get('comment')
+        obs_group = observation.observationgroup_set.first()
+        if comment and obs_group:
+            user = User.objects.filter(username=observation.parameters.get('start_user')).first()
+            save_comments(comment, obs_group.id, user)
 
 def _return_session(db_address=settings.SNEX1_DB_URL):
     ### This one is not run within a with loop, must be closed manually
@@ -212,38 +218,6 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
 
         ### Ingest ZTF data, if a ZTF target
         get_ztf_data(target)
-  
-        ### Not currently functional
-        #gaia_name = next((name for name in target.names if 'Gaia' in name), None)
-        #if gaia_name:
-        #    base_url = 'http://gsaweb.ast.cam.ac.uk/alerts/alert'
-        #    lightcurve_url = f'{base_url}/{gaia_name}/lightcurve.csv'
-
-        #    response = requests.get(lightcurve_url)
-        #    data = response._content.decode('utf-8').split('\n')[2:-2]
-
-        #    jd = [x.split(',')[1] for x in data]
-        #    mag = [x.split(',')[2] for x in data]
-
-        #    for i in reversed(range(len(mag))):
-        #        try:
-        #            datum_mag = float(mag[i])
-        #            datum_jd = Time(float(jd[i]), format='jd', scale='utc')
-        #            value = {
-        #                'magnitude': datum_mag,
-        #                'filter': 'G_Gaia',
-        #                'error': 0 # for now
-        #            }
-        #            rd, created = ReducedDatum.objects.get_or_create(
-        #                timestamp=datum_jd.to_datetime(timezone=TimezoneInfo()),
-        #                value=value,
-        #                source_name=target.name,
-        #                source_location=lightcurve_url,
-        #                data_type='photometry',
-        #                target=target)
-        #            rd.save()
-        #        except:
-        #            pass
 
     else:
 
@@ -278,396 +252,6 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
         else:
             db_session.flush()
 
-
-def targetextra_post_save(target):
-    '''
-    Hook to sync target classifications and redshifts
-    with SNEx1
-    '''
-    if not settings.DEBUG:
-        with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-            Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-            Classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
-
-            targetid = target.id
-            if target.classification != '': # Update the classification in the targets table in the SNex 1 db
-                classification = target.classification # Get the new classification
-                classification_query = db_session.query(Classifications).filter(Classifications.name==classification).first()
-                if classification_query:
-                    # Get the corresponding id from the classifications table
-                    classificationid = classification_query.id
-                    db_session.query(Targets).filter(Targets.id==targetid).update({'classificationid': classificationid}) # Update the classificationid in the targets table
-
-            if target.redshift != '': # Now update the targets table with the redshift info
-                db_session.query(Targets).filter(Targets.id==targetid).update({'redshift': target.redshift})
-                logger.info(f'redshift should be now changed: {db_session.query(Targets).filter(Targets.id==targetid).first().redshift}')
-
-            db_session.commit()
-    logger.info(f'Classification and Redshift target post save hook: {target}')
-
-
-def targetname_post_save(targetname, created):
-    '''
-    Hook to sync target name with SNEx1
-    '''
-    if not settings.DEBUG:
-        with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-            Names = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-
-            targetid = int(targetname.target_id) # Get the targetid of our saved entry
-            name = targetname.name 
-            if created:
-               db_session.add(Names(targetid=targetid, name=name, datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))
-               db_session.commit()
-    logger.info('targetname post save hook: %s created: %s', targetname, created)
-
-
-def sync_observation_with_snex1(snex_id, params, requestgroup_id, wrapped_session=None):
-    '''
-    Hook to sync an obervation record submitted through SNEx2
-    to the obslog table in the SNEx1 database
-    '''
-
-    if wrapped_session:
-        db_session = wrapped_session
-
-    else:
-        db_session = _return_session(settings.SNEX1_DB_URL)
-
-    #with _get_session(db_address=_snex1_address) as db_session:
-    Obslog = _load_table('obslog', db_address=settings.SNEX1_DB_URL)
-    
-    filtlist = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
-    if params['observation_type'] == 'IMAGING':
-        filters = ''
-        exptimes = ''
-        numexp = ''
-        for filt in filtlist:
-            filt_params = params.get(filt)
-            if filt_params and filt_params[0]:
-                if filters:
-                    filters += ',' + filt[0]
-                else:
-                    filters += filt[0]
-                
-                if exptimes:
-                    exptimes += ',' + str(int(filt_params[0]))
-                else:
-                    exptimes += str(int(filt_params[0]))
-                
-                if numexp:
-                    numexp += ',' + str(filt_params[1])
-                else:
-                    numexp += str(filt_params[1])
-        slit = 9999
-
-    else:
-        filters = 'floyds'
-        exptimes = params['exposure_time']
-        numexp = params['exposure_count']
-        slit = 2.0
-    
-    if params.get('cadence_strategy'):
-        window = min(float(params.get('cadence_frequency')), 1)
-    else:
-        window = float(params.get('cadence_frequency'))
-
-    db_session.add(
-            Obslog(
-                user=67,
-                targetid=params['target_id'],
-                triggerjd=_str_to_jd(params['start']),
-                windowstart=_str_to_jd(params['start']),
-                windowend=_str_to_jd(params['start']) + window,
-                filters=filters,
-                exptime=exptimes,
-                numexp=numexp,
-                proposal=params['proposal'],
-                site=params.get('site', 'any'),
-                instrument=instrument_dict[params['instrument_type']],
-                sky=9999,
-                seeing=9999,
-                airmass=params['max_airmass'],
-                slit=slit,
-                priority=priority_dict.get(params['observation_mode'].replace(' ', '_'), 'normal'),
-                #priority=params['observation_mode'].lower().replace(' ', '_'),
-                ipp=params['ipp_value'],
-                requestsid=snex_id,
-                tracknumber=requestgroup_id
-            )
-    )
-
-    if not wrapped_session:
-        try:
-            db_session.commit()
-        except:
-            db_session.rollback()
-        finally:
-            db_session.close()
-
-    else:
-        db_session.flush()
-
-    logger.info('Sync observation request with SNEx1 hook: Observation for SNEx1 ID {} synced'.format(snex_id))
-
-
-def sync_sequence_with_snex1(params, group_names, userid=67, comment=False, targetid=None, wrapped_session=None):
-    '''
-    Hook to sync an observation sequence submitted through SNEx2 
-    to the obsrequests table in the SNEx1 database
-    '''
-
-    if wrapped_session:
-        db_session = wrapped_session
-
-    else:
-        db_session = _return_session(settings.SNEX1_DB_URL)
-
-    #with _get_session(db_address=_snex1_address) as db_session:
-    Obsrequests = _load_table('obsrequests', db_address=settings.SNEX1_DB_URL)
-    Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
-    Notes = _load_table('notes', db_address=settings.SNEX1_DB_URL)
-    Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
-
-    # Get the idcodes from the groups in the group_list
-    groupidcode = 0
-    for group_name in group_names:
-        groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
-
-    filtlist = ['U', 'B', 'V', 'R', 'I', 'u', 'gp', 'rp', 'ip', 'zs', 'w']
-    if params['observation_type'] == 'IMAGING':
-        filters = ''
-        exptimes = ''
-        expnums = ''
-        blocknums = ''
-        for filt in filtlist:
-            filt_params = params.get(filt)
-            if filt_params and filt_params[0]:
-                if filters:
-                    filters += ',' + filt[0]
-                else:
-                    filters += filt[0]
-                
-                if exptimes:
-                    exptimes += ',' + str(int(filt_params[0]))
-                else:
-                    exptimes += str(int(filt_params[0]))
-                
-                if expnums:
-                    expnums += ',' + str(filt_params[1])
-                else:
-                    expnums += str(filt_params[1])
-
-                if blocknums:
-                    blocknums += ',' + str(filt_params[2])
-                else:
-                    blocknums += str(filt_params[2])
-        slit = 9999
-
-    else:
-        filters = 'none'
-        exptimes = params['exposure_time']
-        expnums = params['exposure_count']
-        blocknums = '1'
-        slit = 2
-
-    if params.get('cadence_strategy') == 'SnexResumeCadenceAfterFailureStrategy':
-        cadence = float(params.get('cadence_frequency'))
-        autostop = 0
-        window = min(cadence, 1)
-    else:
-        cadence = float(params.get('cadence_frequency', 1.0))
-        autostop = 1
-        window = float(params.get('cadence_frequency', 1.0))
-
-    if params.get('reminder'):
-        nextreminder = _str_to_timestamp(params.get('reminder'))
-    else:
-        nextreminder = '0000-00-00 00:00:00'
-
-    if userid != 67:
-        try:
-            # Get SNEx1 id corresponding to this user
-            snex2_user = User.objects.get(id=userid)
-            snex1_user = db_session.query(Users).filter(Users.name==snex2_user.username).first()
-            snex1_userid = snex1_user.id
-        except:
-            snex1_userid = 67
-    else:
-        snex1_userid = 67
-    
-    newobsrequest = Obsrequests(
-                targetid=params['target_id'],
-                sequencestart=_str_to_timestamp(params['start']),
-                sequenceend='0000-00-00 00:00:00',
-                userstart=snex1_userid,
-                cadence=cadence,
-                window=window,
-                filters=filters,
-                exptimes=exptimes,
-                expnums=expnums,
-                blocknums=blocknums,
-                proposalid=params['proposal'],
-                ipp=params['ipp_value'],
-                site=params.get('site', 'any'),
-                instrument=instrument_dict[params['instrument_type']],
-                airmass=float(params['max_airmass']),
-                moondistlimit=float(params['min_lunar_distance']),
-                slit=slit,
-                acqradius=int(params.get('acquisition_radius', 0)),
-                guidermode=params.get('guider_mode', '').upper(),
-                guiderexptime=int(params.get('guider_exposure_time', 10)),
-                priority=priority_dict.get(params['observation_mode'].replace(' ', '_'), 'normal'),
-                #priority=params['observation_mode'].lower().replace(' ', '_'),
-                approved=1,
-                nextreminder=nextreminder,
-                groupidcode=groupidcode,
-                dismissed=0,
-                autostop=autostop,
-                datecreated=_str_to_timestamp(params['start']),
-                lastmodified=_str_to_timestamp(params['start'])
-    )
-    db_session.add(newobsrequest)
-
-    db_session.flush()
-    snex_id = newobsrequest.id
-    
-    if comment and targetid:
-        newcomment = Notes(
-                targetid=targetid,
-                note=comment,
-                tablename='obsrequests',
-                tableid=snex_id,
-                posttime=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'),
-                userid=snex1_userid,
-                datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-        )
-        db_session.add(newcomment)
-
-    if not wrapped_session:
-        try:
-            db_session.commit()
-        except:
-            db_session.rollback()
-        finally:
-            db_session.close()
-
-    else:
-        db_session.flush()
-
-    logger.info('Sync observation sequence with SNEx1 hook: Observation for SNEx1 ID {} synced'.format(snex_id))
-    
-    return snex_id
-
-
-def cancel_sequence_in_snex1(snex_id, comment=False, tableid=None, userid=67, targetid=None, wrapped_session=None):
-    '''
-    Hook to cancel an observation sequence in SNEx1 
-    that was canceled in SNEx2
-    '''
-    
-    if wrapped_session:
-        db_session = wrapped_session
-
-    else:
-        db_session = _return_session(settings.SNEX1_DB_URL)
-        
-    #with _get_session(db_address=_snex1_address) as db_session:
-    Obsrequests = _load_table('obsrequests', db_address=settings.SNEX1_DB_URL)
-    Notes = _load_table('notes', db_address=settings.SNEX1_DB_URL)
-    Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
-
-    if userid != 67:
-        try:
-            # Get SNEx1 id corresponding to this user
-            snex2_user = User.objects.get(id=userid)
-            snex1_user = db_session.query(Users).filter(Users.name==snex2_user.username).first()
-            snex1_userid = snex1_user.id
-        except:
-            snex1_userid = 67
-    else:
-        snex1_userid = 67
-    
-    snex1_row = db_session.query(Obsrequests).filter(Obsrequests.id==snex_id).first()
-    snex1_row.sequenceend = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    snex1_row.userend = snex1_userid
-
-    if comment and tableid and targetid:
-        newcomment = Notes(
-                targetid=targetid,
-                note=comment,
-                tablename='obsrequests',
-                tableid=tableid,
-                posttime=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'),
-                userid=snex1_userid,
-                datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-        )
-        db_session.add(newcomment)
-
-    if not wrapped_session:
-        try:
-            db_session.commit()
-        except:
-            db_session.rollback()
-        finally:
-            db_session.close()
-
-    else:
-        db_session.flush()
-
-    logger.info('Cancel sequence in SNEx1 hook: Sequence with SNEx1 ID {} synced'.format(snex_id))
-
-
-def approve_sequence_in_snex1(snex_id):
-    '''
-    Hook to approve a pending observation request in SNEx1 
-    that was approved in SNEx2
-    '''
-    
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        Obsrequests = _load_table('obsrequests', db_address=settings.SNEX1_DB_URL)
- 
-        snex1_row = db_session.query(Obsrequests).filter(Obsrequests.id==snex_id).first()
-        snex1_row.approved = 1
-        snex1_row.lastmodified = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-
-        db_session.commit()
-
-    logger.info('Approve sequence in SNEx1 hook: Sequence with SNEx1 ID {} synced'.format(snex_id))
-
-
-def update_reminder_in_snex1(snex_id, next_reminder, wrapped_session=None):
-    '''
-    Hook to update reminder for sequence in SNEx1.
-    Runs after continuing a sequence from the scheduling page.
-    '''
-
-    if wrapped_session:
-        db_session = wrapped_session
-
-    else:
-        db_session = _return_session(settings.SNEX1_DB_URL)
-    
-    #with _get_session(db_address=_snex1_address) as db_session:
-    Obsrequests = _load_table('obsrequests', db_address=settings.SNEX1_DB_URL)
-
-    snex1_row = db_session.query(Obsrequests).filter(Obsrequests.id==snex_id).first()
-    now = datetime.now()
-    snex1_row.nextreminder = datetime.strftime(now + timedelta(days=next_reminder), '%Y-%m-%d %H:%M:%S')
- 
-    if not wrapped_session:
-        try:
-            db_session.commit()
-        except:
-            db_session.rollback()
-        finally:
-            db_session.close()
-
-    else:
-        db_session.flush()
-
-    logger.info('Update reminder in SNEx1 hook: Sequence with SNEx1 ID {} synced'.format(snex_id))
-
 def find_images_from_snex1(targetid, username, allimages=False):
     '''
     Hook to find filenames of images in SNEx1,
@@ -685,14 +269,14 @@ def find_images_from_snex1(targetid, username, allimages=False):
 
         if not allimages:
             query = db_session.execute(
-                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 "
-                                "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
-                                {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
+                            "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
+                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
         else:
             query = db_session.execute(
-                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 "
-                                "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
-                                {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
+                            "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
+                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
         
         filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
         if len(filepaths)==0:
@@ -709,127 +293,6 @@ def find_images_from_snex1(targetid, username, allimages=False):
     logger.info('Found file names for target {}'.format(targetid))
 
     return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
-
-
-def change_interest_in_snex1(targetid, username, status):
-    '''
-    Hook to change the status of an interested person
-    in SNEx1
-    '''
-
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        Interests = _load_table('interests', db_address=settings.SNEX1_DB_URL)
-        Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
-
-        snex1_user = db_session.query(Users).filter(Users.name==username).first()
-        now = datetime.strftime(datetime.utcnow(), '%Y-%m-%d %H:%M:%S')
-
-        if status == 'interested':
-            oldinterest = db_session.query(Interests).filter(and_(Interests.userid==snex1_user.id, Interests.targetid==targetid)).first()
-            
-            if not oldinterest:
-                newinterest = Interests(userid=snex1_user.id, 
-                                        targetid=targetid, 
-                                        interested=now)
-                db_session.add(newinterest)
-            
-            else:
-                oldinterest.interested = now
-
-        elif status == 'uninterested':
-            oldinterest = db_session.query(Interests).filter(and_(Interests.userid==snex1_user.id, Interests.targetid==targetid)).first()
-            oldinterest.uninterested = now
-
-        db_session.commit()
-    
-    logger.info('Synced {} interested in target {} with SNEx1'.format(username, targetid))
-
-
-def sync_paper_with_snex1(paper):
-    '''
-    Hook to ingest a paper into SNEx1
-    '''
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        papers = _load_table('papers', db_address=settings.SNEX1_DB_URL)
-
-        status_dict = {'in prep': 'inprep',
-                       'submitted': 'submitted',
-                       'published': 'published'
-                    }
-
-        targetid = paper.target_id
-        reference = paper.author_last_name + ' et al.'
-        status = status_dict[paper.status]
-        contents = paper.description
-        datecreated = datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-
-        newpaper = papers(targetid=targetid, reference=reference, status=status, contents=contents, datecreated=datecreated)
-        db_session.add(newpaper)
-
-        db_session.commit()
-    
-    logger.info('Synced paper {} with SNEx1'.format(paper.id))
-
-def sync_comment_with_snex1(comment, tablename, userid, targetid, snex1_rowid, mode='create', wrapped_session=None):
-    '''
-    Hook to sync an observation sequence submitted through SNEx2 
-    to the obsrequests table in the SNEx1 database
-    '''
-    if wrapped_session:
-        db_session = wrapped_session
-
-    else:
-        db_session = _return_session(settings.SNEX1_DB_URL)
-        #with _get_session(db_address=_snex1_address) as db_session:
-    Notes = _load_table('notes', db_address=settings.SNEX1_DB_URL)
-    Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
-    
-    if userid != 67:
-        try:
-            # Get SNEx1 id corresponding to this user
-            snex2_user = User.objects.get(id=userid)
-            snex1_user = db_session.query(Users).filter(Users.name==snex2_user.username).first()
-            snex1_userid = snex1_user.id
-        except:
-            snex1_userid = 67
-    else:
-        snex1_userid = 67
- 
-    existing_comment = db_session.query(Notes).filter(and_(Notes.targetid==targetid, Notes.note==comment, Notes.tablename==tablename, Notes.tableid==snex1_rowid)).first()
-    logger.info(f'existing comment in {tablename}: {existing_comment}')
-    if existing_comment and mode == 'delete':
-        logger.info(f'deleting existing comment {existing_comment.note}')
-        db_session.delete(existing_comment)
-    
-    if not existing_comment and mode == 'create':
-        logger.info(f'creating new comment {comment}')
-        newcomment = Notes(
-                targetid=targetid,
-                note=comment,
-                tablename=tablename,
-                tableid=snex1_rowid,
-                posttime=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S'),
-                userid=snex1_userid,
-                datecreated=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')
-        )
-        
-        db_session.add(newcomment)
-    
-    if not wrapped_session:
-        try:
-            logger.info(f'changes committed')
-            db_session.commit()
-        except:
-            logger.info(f'changes rolled back')
-            db_session.rollback()
-        finally:
-            db_session.close()
-    
-    else:
-        db_session.flush()
-
-    logger.info('Synced comment for table {} from user {}'.format(tablename, userid)) 
-
 
 def get_unreduced_spectra(allspec=True):
     '''
@@ -917,58 +380,6 @@ def get_standards_from_snex1(target_id):
         )
 
     return [dict(r._mapping) for r in standard_info]
-
-
-def sync_users_with_snex1(user, created=False, old_username=''):
-    """
-    Sync a new or updated user with SNEx1
-    
-    Parameters
-    ----------
-    user: User database object
-    created: boolean, True if this user was just created
-    old_username: str, to track the old username of the user prior to update
-    """
-
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-
-        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
-        Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
-
-        # Get all groups this user belongs to
-        groups = user.groups.all()
-
-        # Get the idcodes from the groups in the group_list
-        groupidcode = 0
-        for group in groups:
-            groupidcode += int(db_session.query(Groups).filter(Groups.name==group.name).first().idcode)
-
-        if created:
-            newuser = Users(
-                name=user.username,
-                pw=user.password, ### Hash?
-                groupidcode=groupidcode,
-                firstname=user.first_name,
-                lastname=user.last_name,
-                email=user.email,
-                datecreated=user.date_joined
-            )
-            db_session.add(newuser)
-            db_session.commit()
-
-        else:
-            db_session.query(Users).filter(
-                Users.name==old_username
-            ).update(
-                {'name': user.username,
-                # 'pw': 'crypt$$'+user.password,
-                'firstname': user.first_name,
-                'lastname': user.last_name,
-                'email': user.email}
-            )
-            db_session.commit()
-
-    logger.info('Synced user {} with SNEx1'.format(user.username)) 
 
 def download_test_image_from_archive():
     """
