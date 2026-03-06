@@ -9,6 +9,23 @@ STATUS_CHOICES = (
     ('published', 'Published')
 )
 
+
+class UserRegistrationInfo(models.Model):
+    """
+    Extra information collected at registration (e.g. who you are / who you work with).
+    One-to-one with User; created when the user registers.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='registration_info')
+    who_you_are = models.TextField(
+        verbose_name='Who you are / who you are working with',
+        help_text='Please briefly describe who you are or which group/institution you work with.',
+        blank=False,
+    )
+
+    def __str__(self):
+        return f'Registration info for {self.user.username}'
+
+
 class TNSTarget(models.Model):
     
     name = models.CharField(

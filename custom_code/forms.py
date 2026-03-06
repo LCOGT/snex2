@@ -5,7 +5,7 @@ from tom_observations.widgets import FilterField
 from tom_dataproducts.models import DataProduct
 from guardian.shortcuts import assign_perm, get_groups_with_perms, remove_perm
 from django import forms
-from custom_code.models import ScienceTags, TargetTags, Papers
+from custom_code.models import ScienceTags, TargetTags, Papers, UserRegistrationInfo
 from django.conf import settings
 from django.db.models.functions import Lower
 from django.core.exceptions import ValidationError
@@ -18,6 +18,7 @@ from django.contrib.auth.forms import UsernameField
 from django.contrib.auth.models import User, Group
 from django.db import transaction
 from crispy_forms.helper import FormHelper
+from tom_registration.registration_flows.approval_required.forms import RegistrationApprovalForm
 
 import re
 
@@ -130,6 +131,28 @@ class SNEx2UserCreationForm(UserCreationForm):
         has_changed |= super().has_changed()
 
         return has_changed
+
+
+class SNEx2RegistrationApprovalForm(RegistrationApprovalForm):
+    """
+    Registration form with an extra required field: who you are / who you are working with.
+    Saves the extra field to UserRegistrationInfo after creating the user.
+    """
+    who_you_are = forms.CharField(
+        required=True,
+        widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'e.g. PhD student at University X, working with Prof. Y on supernova follow-up'}),
+        label='Who you are / who you are working with and why do you want a SNEx2 account?',
+        help_text='Please briefly describe who you are or which group/institution you work with.',
+    )
+
+    def save(self, commit=True):
+        user = super().save(commit=commit)
+        if commit and user and hasattr(self, 'cleaned_data') and self.cleaned_data.get('who_you_are'):
+            UserRegistrationInfo.objects.update_or_create(
+                user=user,
+                defaults={'who_you_are': self.cleaned_data['who_you_are']},
+            )
+        return user
 
 
 class ReducerGroupWidget(forms.widgets.MultiWidget):

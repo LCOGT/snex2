@@ -616,6 +616,15 @@ def science_tags_dropdown(target):
            'sciencetags': tags}
 
 @register.filter
+def registration_who_you_are(user):
+    """Return the registration 'who you are' text for a user, or empty string if none."""
+    try:
+        return user.registration_info.who_you_are or ''
+    except (AttributeError, UserRegistrationInfo.DoesNotExist):
+        return ''
+
+
+@register.filter
 def get_target_tags(target):
     #try:
     # Optimize query with select_related to avoid N+1 queries
