@@ -326,10 +326,10 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             required=False,
             label=''
         )
+        logger.info(f'instrument choices {self.instrument_choices()}, type {type(self.instrument_choices())} and dir {dir(self.instrument_choices())}')
         self.fields['instrument_type'] = forms.ChoiceField(choices=self.instrument_choices(),
                                                            required=False,
-                                                           initial='2M0-FLOYDS-SCICAM',
-                                                           widget=forms.HiddenInput())
+                                                           initial='2M0-FLOYDS-SCICAM')
 
         self.fields['start'] = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}))
         self.fields['end'] = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}))
@@ -372,6 +372,9 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             self.layout(),
             self.button_layout()
         )
+
+    def instrument_choices(self):
+        return [('2M0-FLOYDS-SCICAM', '2.0 meter FLOYDS'), ('SOAR_GHTS_REDCAM', 'Goodman Spectrograph Redcam'), ('SOAR_GHTS_BLUECAM', 'Goodman Spectrograph Bluecam'), ('SOAR_TRIPLESPEC', 'Soar TripleSpec')]
 
     def clean(self):
         if self.cleaned_data['cadence_frequency_unit'].lower() == 'hours':
@@ -420,6 +423,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
                 css_class='col-md-6'
             ),
             Div(
+                Row('instrument_type'),
                 Row('acquisition_radius'),
                 Row('proposal'),
                 Row('observation_mode'),

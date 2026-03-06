@@ -171,4 +171,18 @@ $("#spec_delay_start").click(function() {
     delayAmount.style.display = "block";
   }
 })
+$(function () {
+  const $proposalField = $("#spec_proposal");
+  const $instrumentDiv = $("#div_spec_instrument_type");
+  function toggleInstrumentVisibility() {
+    const proposalValue = $proposalField.val() || ""; 
+    if (proposalValue.includes("SOAR")) {
+      $instrumentDiv.show();
+    } else {
+      $instrumentDiv.hide();
+    }
+  }
+  toggleInstrumentVisibility();
+  $proposalField.on('change', toggleInstrumentVisibility);
+});
 </script>
