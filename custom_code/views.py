@@ -16,8 +16,8 @@ from django_comments.models import Comment
 
 from tom_targets.models import TargetList, Target, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
-from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter
-from custom_code.forms import SNEx2UserCreationForm
+from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
+from custom_code.forms import SNEx2UserCreationForm, SNEx2RegistrationApprovalForm
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
 from django.contrib.auth.models import User, Group
@@ -54,7 +54,7 @@ from guardian.shortcuts import assign_perm
 
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.views import ObservationCreateView, ObservationListView
-from tom_registration.registration_flows.approval_required.views import UserApprovalView
+from tom_registration.registration_flows.approval_required.views import UserApprovalView, ApprovalRegistrationView
 import base64
 import requests
 from django import forms
@@ -355,6 +355,11 @@ class CustomUserUpdateView(UserUpdateView):
         old_username = self.get_object().username
         super().form_valid(form)
         return redirect(self.get_success_url())
+
+
+class SNEx2ApprovalRegistrationView(ApprovalRegistrationView):
+    """Registration view that uses our custom form with the who_you_are field."""
+    form_class = SNEx2RegistrationApprovalForm
 
 
 class SNEx2UserApprovalView(UserApprovalView):
