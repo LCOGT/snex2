@@ -4,7 +4,7 @@ from tom_common.hooks import run_hook
 from tom_targets.models import Target
 from tom_observations.models import ObservationRecord
 from tom_nonlocalizedevents.models import EventSequence
-from custom_code.scheduling_logic import cancel_observation
+from custom_code.scheduling import cancel_observation
 from custom_code.hooks import _return_session, _load_table
 import logging
 from django.conf import settings

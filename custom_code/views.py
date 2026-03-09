@@ -62,7 +62,7 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout, Div, HTML, Row, Column
 from django.utils import timezone
 import os
-from custom_code.scheduling_logic import change_obs_from_scheduling, save_comments, cancel_observation
+from custom_code.scheduling import change_obs_from_scheduling, save_comments, cancel_observation
 
 import logging
 logger = logging.getLogger(__name__)

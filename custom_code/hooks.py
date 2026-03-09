@@ -11,7 +11,7 @@ import numpy as np
 from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
-from custom_code.scheduling_logic import save_comments
+from custom_code.scheduling import save_comments
 
 from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
