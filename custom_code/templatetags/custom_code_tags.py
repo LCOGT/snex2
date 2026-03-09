@@ -594,10 +594,7 @@ def target_data_with_user(context, target):
 def classifications_dropdown(target):
     classifications = [i for i in settings.TARGET_CLASSIFICATIONS]
     target_classification = target.classification
-    # if target_classification is None:
-    #     target_class = None
-    # else:
-    #     target_class = target_classification
+
     return {'target': target,
             'classifications': classifications,
             'target_class': target_classification}
@@ -624,7 +621,6 @@ def registration_who_you_are(user):
 
 @register.filter
 def get_target_tags(target):
-    #try:
     # Optimize query with select_related to avoid N+1 queries
     target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
     tags = ''
@@ -632,8 +628,7 @@ def get_target_tags(target):
         tag_name = i.tag.tag
         tags+=(str(tag_name) + ',')
     return json.dumps(tags)
-    #except:
-    #    return json.dumps(None)
+
 
 
 @register.inclusion_tag('custom_code/custom_upload_dataproduct.html', takes_context=True)
@@ -913,11 +908,7 @@ def format_lco_summary(obs, group, is_active):
     elif 'LCO2022A' in proposal:
         summary_dict['title'] += ' [DLT40 Proprietary]'
 
-    sequence_start = params.get('start') #or params.get('sequence_start')
-    # if not sequence_start:
-    #     first_obs = group.observation_records.order_by('id').first()
-    #     if first_obs:
-    #         sequence_start = first_obs.parameters.get('start')
+    sequence_start = params.get('start')
 
     start_date = str(sequence_start).split('T')[0] if sequence_start else ''
 
@@ -1162,7 +1153,6 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
         cadence_frequency = cadence_frequency_days * 24
 
-        #start = str(obsset.first().parameters['start']).replace('T', ' ')
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
@@ -1240,7 +1230,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'
-        #start = str(obsset.first().parameters['start']).replace('T', ' ')
+
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
@@ -1344,40 +1334,6 @@ def filter_upcoming_reminders(queryset, pagenumber):
     page_number = pagenumber.strip('page=')
     page_obj = paginator.get_page(page_number)
     return page_obj
-    
-
-# @register.filter
-# def order_by_reminder_expired(queryset, pagenumber):
-#     queryset = queryset.exclude(status='CANCELED')
-#     from django.core.paginator import Paginator
-#     now = datetime.datetime.now()
-   
-#     queryset = queryset.filter(parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-#     queryset = queryset.order_by('parameters__reminder')
-
-#     paginator = Paginator(queryset, 25)
-#     page_number = pagenumber.strip('page=')
-#     page_obj = paginator.get_page(page_number)
-#     return page_obj
-#     #return queryset
-
-
-# @register.filter
-# def order_by_reminder_upcoming(queryset, pagenumber):
-#     logger.info(f'queryset input to order_by_reminder_upcoming: {queryset}')
-#     queryset = queryset.exclude(status='CANCELED')
-#     from django.core.paginator import Paginator
-#     now = datetime.datetime.now()
-   
-#     queryset = queryset.filter(parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')) 
-#     queryset = queryset.order_by('parameters__reminder')
-
-#     paginator = Paginator(queryset, 25)
-#     page_number = pagenumber.strip('page=')
-#     page_obj = paginator.get_page(page_number)
-#     return page_obj
-#     #return queryset
-
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
 def dash_spectra_page(context, target):

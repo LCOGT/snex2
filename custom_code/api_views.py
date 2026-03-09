@@ -128,7 +128,6 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
         Endpoint for submitting a new observation with syncing with SNEx1.
         """
         with transaction.atomic():
-            # db_session = _return_session()
             # Initialize the observation form, validate the form data, and submit to the observatory
             observation_ids = []
             try:
