@@ -110,7 +110,7 @@
     <a class="nav-link tab-loading" id="detail-tab" href="#detail" role="tab" data-toggle="tab" data-tab-name="details">Details</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link tab-loading" id="observations-tab" href="#observations" role="tab" data-toggle="tab" data-tab-name="observations">Observations</a>
+    <a class="nav-link" id="observations-tab" href="#observations" role="tab" data-toggle="tab" data-tab-name="observations">Observations</a>
   </li>
   <li class="nav-item">
     <a class="nav-link tab-loading" id="manage-data-tab" href="#manage-data" role="tab" data-toggle="tab" data-tab-name="manage-data">Manage Data</a>
@@ -184,7 +184,30 @@
         <div style="text-align: center; padding: 50px;">Loading details...</div>
       </div>
       <div class="tab-pane" id="observations">
-        <div style="text-align: center; padding: 50px;">Loading observations...</div>
+        <h4>Schedule Observations</h4>
+        {% observing_buttons object %}
+        <hr/>
+        <button onclick="display_obs()" class="btn" style="background-color: white; color: black; font-size: 16px; border: none; outline: none; box-shadow: none;">Show Previous Observations</button>
+        <div class="row" id="previous-obs" style="display: none; color: gray;">
+          {% observation_summary object 'previous' %}
+        </div>
+        <div class="row" id="ongoing-obs" style="display: block">
+          {% observation_summary object 'ongoing' %}
+        </div>
+        <div class="row" id="pending-obs" style="display: block; color: orange;">
+          {% observation_summary object 'pending' %}
+        </div>
+        {% submit_lco_observations object %}
+        <script>
+        function display_obs() {
+          var x = document.getElementById("previous-obs");
+          if (x.style.display === "none") {
+            x.style.display = "block";
+          } else {
+            x.style.display = "none";
+          }
+        }
+        </script>
       </div>
       <div class="tab-pane" id="manage-data">
         <div style="text-align: center; padding: 50px;">Loading manage data...</div>
@@ -273,7 +296,7 @@ $(document).ready(function() {
   // Load all tabs in background after a short delay
   setTimeout(function() {
     var targetId = {{ target.id }};
-    var tabsToLoad = ['details', 'observations', 'manage-data', 'observing-runs', 'images', 'photometry', 'spectroscopy'];
+    var tabsToLoad = ['details', 'manage-data', 'observing-runs', 'images', 'photometry', 'spectroscopy'];
     
     tabsToLoad.forEach(function(tabName, index) {
       // Stagger the loading to avoid overwhelming the server
@@ -657,6 +680,12 @@ function setupDashErrorMonitoring() {
   function monitorIframe($iframe) {
     var iframeSrc = $iframe.attr('src');
     if (!iframeSrc || !iframeSrc.includes('/django_plotly_dash/')) {
+      return;
+    }
+    
+    // Skip monitoring for iframes inside the observations tab
+    if ($iframe.closest('#observations').length > 0) {
+      console.log('Skipping Dash monitoring for observations tab iframe');
       return;
     }
     
