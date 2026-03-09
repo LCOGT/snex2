@@ -25,10 +25,8 @@
       <button class="btn" id="next-img" style="font-size: 20px; display: none;" onclick="nextImg()">Next &raquo;</button>
     </div>
     <div class="row justify-content-center mt-3">
-      <form method="get" action="{% url 'download-fits' %}">
-      <input type="hidden" id="download-filename" name="filename" value="">
-      <button type="submit" class="btn btn-primary" style="width: 200px;" onclick="downloadFile()">Download Fits</button>
-      </form>
+      <input type="hidden" id="download-filename" name="filename">
+      <button type="button" class="btn btn-primary" onclick="downloadFile()">Download Fits</button>
     </div>
   </div>
   <div class="col-md-2">
@@ -114,8 +112,7 @@
   };
   async function downloadFile() {
     const downloadButton = document.querySelector("button[onclick='downloadFile()']");
-    const filenameVal = document.getElementById("download-filename").value;
-
+    const filenameVal = document.getElementById("id_filenames").value;
     const fileData = JSON.parse(filenameVal);
     const finalFilename = fileData.filename + '.fits';
 
@@ -140,6 +137,10 @@
     downloadButton.disabled = false;
   }
   document.addEventListener("DOMContentLoaded", function() {
+    const filenameSelect = document.getElementById("id_filenames");
+    const hiddenInput = document.getElementById("download-filename");
+
+    hiddenInput.value = filenameSelect.value;
     makeThumbnail();
   });
 </script>
