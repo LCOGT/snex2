@@ -17,7 +17,21 @@ class SpecProcessor(SpectroscopyProcessor):
     FITS_MIMETYPES = ['image/fits', 'application/fits']
     PLAINTEXT_MIMETYPES = ['text/plain', 'text/csv', 'text/ascii']
     DEFAULT_FLUX_CONSTANT = (1 * units.erg) / units.cm ** 2 / units.second / units.angstrom
- 
+    field_keywords = {
+        "objname": ["object", "objname", "target"],
+        "date_obs": ["mjd", "mjd-obs", "mjd_obs", "mjdobs", "obsmjd",
+                     "jd", "jd-obs", "jd_obs", "jdobs", "obsjd",
+                     "date-obs", "dateobs", "obs-date", "obsdate",
+                     "utshut", "utc-obs", "utc"],        
+        "telescope": ["telescope", "telescop", "observat"],
+        "instrument": ["instrument", "instrume"],
+        "slit": ["slit", "aperture", "slitname"],
+        "exptime": ["exptime", "exposure", "itot"],
+        "airmass": ["airmass", "am", "tcs_am"],
+        "grism": ["grism"],
+        "observer": ["observer"],
+        "reducer": ["reducer", "reducedby"],
+    }
 
     def process_data(self, data_product, extras, rd_extras):
         mimetype = mimetypes.guess_type(data_product.data.name)[0]
@@ -40,7 +54,7 @@ class SpecProcessor(SpectroscopyProcessor):
         data_aws = default_storage.open(data_product.data.name, 'rb')
                 
         flux, header = fits.getdata(data_aws.open(), header=True)
-        
+
         for facility_class in get_service_classes():
             facility = get_service_class(facility_class)()
             if facility.is_fits_facility(header):
@@ -49,28 +63,39 @@ class SpecProcessor(SpectroscopyProcessor):
                 break
         else:
             flux_constant = self.DEFAULT_FLUX_CONSTANT
-            if 'date_obs' in rd_extras.keys() and rd_extras.get('date_obs', '') != '':
-                date_obs = rd_extras['date_obs']
+            if 'date_obs' in rd_extras.keys() and rd_extras.get('date_obs', ''):
+                date_obs = Time(rd_extras['date_obs']).to_datetime
             else:
-                date_obs = datetime.now()
+                date_obs = Time(datetime.now()).to_datetime
 
-        for keyword in rd_extras.keys():
-            if not rd_extras.get(keyword):
-                rd_extras[keyword] = header.get(keyword.upper().replace('_', '-'), '')
+        for keyword, possibles in self.field_keywords.items():
+            for possible in possibles:
+                if possible in header:
+                    value = header[possible]
+                    if keyword == "date_obs":
+                        k_lower = possible.lower()
+                        if "mjd" in k_lower:
+                            value = Time(float(value), format="mjd").to_datetime()
+                        elif "jd" in k_lower:
+                            value = Time(float(value), format="jd").to_datetime()
+                        else:
+                            value = Time(value).to_datetime()
+                        date_obs = value
+                    rd_extras[keyword] = value
+                    break
         dim = len(flux.shape)
         if dim == 3:
             flux = flux[0, 0, :]
         elif flux.shape[0] == 2:
             flux = flux[0, :]
         flux = flux * flux_constant
-
         header['CUNIT1'] = 'Angstrom'
         wcs = WCS(header=header, naxis=1)
 
         spectrum = Spectrum1D(flux=flux, wcs=wcs)
         rd_extras.pop('date_obs')
 
-        return spectrum, Time(date_obs).to_datetime(), rd_extras
+        return spectrum, date_obs, rd_extras
 
 
     def _process_spectrum_from_plaintext(self, data_product, rd_extras):
