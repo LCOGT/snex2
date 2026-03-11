@@ -214,11 +214,9 @@ def update_phot(action, db_address=_SNEX2_DB):
                     db_session.commit()
                     
             else:
-                logger.info("action is not delete")
                 targetid = phot_row.targetid
                 dobs = phot_row.dateobs
                 tobs = phot_row.ut
-                #logger.info("targetid defined")
                 if tobs is None:
                     tobs = '00:00:00'
                 if dobs is None:
@@ -226,7 +224,6 @@ def update_phot(action, db_address=_SNEX2_DB):
                 time = '{} {}'.format(dobs, tobs) 
                 
                 if int(phot_row.mag) != 9999:
-                    #logger.info("magnitude != 9999")
                     if int(phot_row.filetype) == 1:
                         phot = {'magnitude': float(phot_row.mag), 'filter': phot_row.filter, 'error': float(phot_row.dmag), 'snex_id': int(id_), 'background_subtracted': False, 'telescope': phot_row.telescope, 'instrument': phot_row.instrument}
                     elif int(phot_row.filetype) == 3 and phot_row.difftype is not None:
@@ -244,7 +241,6 @@ def update_phot(action, db_address=_SNEX2_DB):
                     else:
                         phot = {'snex_id': int(id_)}
                 else:
-                    #logger.info("magnitude == 9999")
                     phot = {'snex_id': int(id_)}
 
                 phot_groupid = phot_row.groupidcode
@@ -259,6 +255,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_ids = [x.id for x in standard_list]
                     logger.info("got session")
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
+                    logger.info(f'phot dictionary: {phot}')
                     rd = ReducedDatum.objects.get_or_create(
                         target_id=targetid,
                         data_type='photometry',
@@ -271,7 +268,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                     if phot_groupid is not None:
                         update_permissions(int(phot_groupid), 'view_reduceddatum', rd, snex1_groups)
 
-            delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
+                delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except Exception as e:
             logger.exception(f"Failed to process photometry for db_changes row {result.id} photlco {result.rowid}")
