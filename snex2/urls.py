@@ -30,6 +30,7 @@ custom_router.register(r'submit-observation', CustomObservationRecordViewSet, 's
 
 urlpatterns = [
     path('accounts/register/', SNEx2ApprovalRegistrationView.as_view(), name='register'),
+    path('accounts/', include('django.contrib.auth.urls')),
     path('', include('tom_common.urls')),
     path('targets/', TargetListView.as_view(), name='list'),
     path('redirect/', target_redirect_view, name='redirect'),
