@@ -146,11 +146,7 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
             )
             observation_form = observation_form_class(observing_parameters)
             if observation_form.is_valid():
-                logger.info(
-                    f'Submitting observation to {facility} with parameters {observation_form.observation_payload}'
-                )
                 observation_ids = facility.submit_observation(observation_form.observation_payload())
-                logger.info(f'Successfully submitted to {facility}, received observation ids {observation_ids}')
             else:
                 logger.warning(f'Unable to submit observation due to errors: {observation_form.errors}')
                 raise ValidationError(observation_form.errors)
@@ -168,7 +164,6 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 assign_perm('tom_observations.view_observationgroup', self.request.user, observation_group)
                 assign_perm('tom_observations.change_observationgroup', self.request.user, observation_group)
                 assign_perm('tom_observations.delete_observationgroup', self.request.user, observation_group)
-                logger.info(f'Created ObservationGroup {observation_group}.')
 
                 cadence_parameters = json.loads(cadence)
                 if cadence_parameters is not None:
@@ -187,14 +182,12 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                                 cadence_parameters=cadence_parameters,
                                 active=True
                             )
-                            logger.info(f'Created DynamicCadence {dynamic_cadence}.')
                         else:
                             observation_group.delete()
                             raise ValidationError(cadence_form.errors)
 
             # Create the serializer data used to create the observation records
             serializer_data = []
-            logger.info(f'in api_views, observation ids?: {observation_ids}')
 
             for obsr_id in observation_ids:
                 obsr_data = {  # TODO: at present, submitted fields have to be added to this dict manually, maybe fix?

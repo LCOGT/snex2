@@ -904,8 +904,6 @@ class CustomObservationCreateView(ObservationCreateView):
         form.helper.form_action = reverse(
             'submit-lco-obs', kwargs={'facility': 'LCO'}
         )
-        if self.request.method == 'POST' and form.is_valid():
-            logger.info(f"VIEW: Final payload to be saved: {form.cleaned_data}")
         return form
     
     def form_valid(self, form):
@@ -1500,25 +1498,6 @@ def query_swift_observations_view(request):
    t = Target.objects.get(id=target_id)
    ra, dec = t.ra, t.dec
 
-   #from swifttools.swift_too import Swift_ObsQuery
-   #username, shared_secret = os.environ['SWIFT_USERNAME'], os.environ['SWIFT_SECRET']
-   #query = Swift_ObsQuery()
-   #query.username = username
-   #query.shared_secret = shared_secret
-   #query.ra, query.dec = ra, dec
-   #query.radius = 5 / 60 #5 arcmin
-
-   #if query.submit():
-   #    logger.info('Queried Swift for target {}'.format(target_id))
-   #else:
-   #    logger.info('Querying Swift failed with status {}'.format(query.status))
-   #    content_response = {'success': 'Failed'}
-
-   #if len(query):
-   #    content_response = {'success': 'Yes'}
-   #else:
-   #    content_response = {'success': 'No'}
-
    ### NOT CURRENTLY FUNCTIONAL
    content_response = {'success': 'No'}
 
@@ -1528,7 +1507,6 @@ def query_swift_observations_view(request):
 def make_thumbnail_view(request):
 
     filename_dict = json.loads(request.GET['filenamedict'])
-    logger.info(f'filename_dict: {filename_dict}')
     zoom = float(request.GET['zoom'])
     sigma = float(request.GET['sigma'])
 
@@ -1623,8 +1601,6 @@ def sync_targetextra_view(request):
         if newdata['value'] == '':
             newz = None
         target.redshift = newz
-    elif newdata['key'] == 'name':
-        logger.info(f'When updating alias,the target.save() just needs to happen')
     logger.info(f"Updated target {newdata['key']} to {newdata['value']}")
     target.save()
     
