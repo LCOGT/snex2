@@ -446,7 +446,7 @@ def update_spec(action, db_address=_SNEX2_DB):
             delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except Exception as e:
-            logger.exception(f"Failed to process spectrum for db_changes row {spec_result.rowid}")
+            logger.exception(f"Failed to process spectrum for db_changes row {result.rowid}")
             continue
 
 
