@@ -35,7 +35,7 @@ input[type=number]::-webkit-outer-spin-button {
 {% for parameter in parameters %}
 <form method="post" class="form" id="scheduling-form-{{ parameter.observation_id }}">
 {% if parameter.observation_type == "Phot" %}
-{% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,U,B,V,R,I,u,gp,rp,ip,zs,w,reminder,delay_start' %}
+{% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,U,B,V,R,I,u,gp,rp,ip,zs,w,muscat_filter,reminder,delay_start' %}
 {% else %}
 {% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,exposure_time,reminder,delay_start' %}
 {% endif %}
@@ -91,8 +91,13 @@ input[type=number]::-webkit-outer-spin-button {
 	<td>{{ form.ipp_value }}</td>
 	<td>{{ form.max_airmass }}</td>
 	<td rowspan="3" class="col-md-12">
-	  <div class="exposure-row">Exposure Time&nbsp;&nbsp; Exposures&nbsp;&nbsp;  Block No.</div>
-	  <div class="exposure-row" style="text-align:center;"><span>{{ form.U.label }}</span> {{ form.U }}</div>
+    <div class="exposure-row" style="display: flex;">
+      {% if parameter.instrument == 'Muscat' %} <span style="visibility: hidden; min-width: 85px;">Spacer</span> {% endif %}
+      <div style="flex-grow: 1;">
+        Exposure Time&nbsp;&nbsp; Exposures&nbsp;&nbsp; {% if parameter.instrument != 'Muscat' %} Block No. {% endif %}
+      </div>
+    </div>
+    <div class="exposure-row" style="text-align:center;"><span>{{ form.U.label }}</span> {{ form.U }}</div>
 	  <div class="exposure-row" style="text-align:center;"><span>{{ form.B.label }}</span> {{ form.B }}</div>
 	  <div class="exposure-row" style="text-align:center;"><span>{{ form.V.label }}</span> {{ form.V }}</div>
 	  <div class="exposure-row" style="text-align:center;"><span>{{ form.R.label }}</span> {{ form.R }}</div>
@@ -103,6 +108,7 @@ input[type=number]::-webkit-outer-spin-button {
 	  <div class="exposure-row" style="text-align:center;"><span>{{ form.ip.label }}</span> {{ form.ip }}</div>
 	  <div class="exposure-row" style="text-align:center;"><span>{{ form.zs.label }}</span> {{ form.zs }}</div>
 	  <div class="exposure-row" style="text-align:center;"><span>{{ form.w.label }}</span> {{ form.w }}</div>
+	  <div class="exposure-row" style="text-align:center;"><span>{{ form.muscat_filter.label }}</span> {{ form.muscat_filter }}</div>
 	</td>
 	<td style="padding-right: 40px;" rowspan="3">
 	  <div class="row">{{ form.reminder }} days</div>

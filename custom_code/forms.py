@@ -380,12 +380,25 @@ class PhotSchedulingForm(forms.Form):
                     ]
                 else:
                     initial_list = val
-                
-                self.fields[f] = FilterField(
-                    label=f, 
-                    initial=initial_list, 
-                    required=False
-                )
+                if f == 'muscat_filter':
+                    label = 'gp, rp, ip, zs'
+                    initial_list = initial_list[:2]
+                    self.fields[f] = FilterField(
+                        label=label, 
+                        initial=initial_list, 
+                        required=False
+                    )
+                    self.fields[f].widget.widgets = self.fields[f].widget.widgets[:2]
+                    self.fields[f].fields = self.fields[f].fields[:2]
+
+                else:
+                    label = f
+                    self.fields[f] = FilterField(
+                        label=label, 
+                        initial=initial_list, 
+                        required=False
+                    )
+
         self.fields['cadence_frequency_days'].widget.attrs['class'] = 'cadence-input'
         self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
 

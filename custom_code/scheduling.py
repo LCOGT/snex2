@@ -37,7 +37,7 @@ def change_obs_from_scheduling(action, obs_id, user, data):
         return None
     
 def _stop_sequence(obs, user, data):
-    logger.info('Stopping Sequence')
+    logger.info(f'Stopping Sequence {obs.id} for target {obs.target.id}')
     
     ## Cancel observation request in LCO portal
     canceled = cancel_observation(obs)
@@ -89,7 +89,6 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
         return False
 
 def cancel_observation(obs):
-    logger.info(f'calling cancel_observations for {obs}')
     obs_group = obs.observationgroup_set.first()
     if not obs_group:
         return False
@@ -120,12 +119,10 @@ def cancel_observation(obs):
     return True
     
 def _continue_sequence(obs, user, data):
-    logger.info(f'Continuing Sequence {obs.id} as-is')
-    logger.info(f'data {data}, obs {type(obs)} {obs.parameters}')
+    logger.info(f'Continuing Sequence {obs.id} for target {obs.target.id} as-is')
     
     for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
         if key in data.keys() and key in obs.parameters.keys():
-            logger.info(f'key in both: {key}, data {data[key]} and obs param: {obs.parameters[key]}')
             if data[key] != obs.parameters[key]:
                 response_data = {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
                 return response_data
@@ -149,9 +146,7 @@ def _modify_sequence(obs, user, data):
     # Cancel the current sequence
     _stop_sequence(obs, user, data)
 
-    logger.info(f'incoming data {data}')
     new_params = obs.parameters.copy()
-    logger.info(f'old parameters {new_params}')
 
     if not settings.TARGET_PERMISSIONS_ONLY:
         new_params['groups'] = get_groups_with_perms(obs)
@@ -212,7 +207,6 @@ def _modify_sequence(obs, user, data):
         active=True
     )
     _sync_permissions(obs, new_obs_group)
-    logger.info(f'data: {data} and new_params now modified: {new_params}')
 
     return {'success': 'Modified'}
 
@@ -221,7 +215,6 @@ def _sync_permissions(old_obs, new_group):
         object_pk=old_obs.id,
         content_type=ContentType.objects.get_for_model(ObservationRecord)
     ).values_list('group_id', flat=True).distinct()
-    logger.info(f'group ids: {group_ids}')
     groups = Group.objects.filter(id__in=group_ids)
     for group in groups:
         assign_perm('tom_observations.view_observationgroup', group, new_group)

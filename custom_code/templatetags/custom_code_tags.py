@@ -1194,8 +1194,8 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'max_airmass': parameter.get('max_airmass', ''),
                    'reminder': reminder
             }
-        
-        filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
+
+        filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']
         for f in filters:
             if parameter.get(f, '') and parameter.get(f, '')[0] != 0.0:
                 initial[f] = parameter.get(f, '')
@@ -1303,9 +1303,7 @@ def scheduling_list_with_form(context, observation):
          
     obsgroup = observation.observationgroup_set.first()
     first_obs = obsgroup.observation_records.order_by('created').first()
-    logger.info(f'scheduling list with form obsgroup: {obsgroup}')
-    logger.info(f'scheduling list with form first_obs: {first_obs}')
-    
+
     start_val = first_obs.parameters.get('start', 'Unknown')
     start = str(start_val).replace('T', ' ')
     username = first_obs.parameters.get('start_user', 'snex2')
