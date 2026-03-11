@@ -175,7 +175,6 @@ def update_phot(action, db_address=_SNEX2_DB):
     #pdb.set_trace()
     i = 0
     for result in phot_result:
-        logger.info("result rowid:" + str(result.rowid))
         i += 1
         logger.info(f"i={i}/{len([change.rowid for change in phot_result])}")
         try:
@@ -256,14 +255,16 @@ def update_phot(action, db_address=_SNEX2_DB):
                     logger.info("got session")
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
                     logger.info(f'phot dictionary: {phot}')
-                    rd = ReducedDatum.objects.get_or_create(
-                        target_id=targetid,
-                        data_type='photometry',
-                        value__snex_id=phot['snex_id'])
-                    rd.value = phot
-                    rd.source_name = ''
-                    rd.source_location = ''
-                    rd.save()
+                    rd, created = ReducedDatum.objects.update_or_create(
+                        target_id = targetid,
+                        data_type = 'photometry',
+                        value__snex_id = id_,
+                        defaults = {
+                            'value': phot,
+                            'source_name': '',
+                            'source_location': '',
+                        })
+
 
                     if phot_groupid is not None:
                         update_permissions(int(phot_groupid), 'view_reduceddatum', rd, snex1_groups)
