@@ -174,11 +174,10 @@ def update_phot(action, db_address=_SNEX2_DB):
     #import pdb
     #pdb.set_trace()
     i = 0
-    logger.info("photlco:" + str(Photlco))
     for result in phot_result:
         logger.info("result rowid:" + str(result.rowid))
         i += 1
-        logger.info("i=" + str(i))
+        logger.info(f"i={i}/{len([change.rowid for change in phot_result])}")
         try:
             id_ = result.rowid # The ID of the row in the photlco table
             #logger.info("before phot_row defined")
@@ -189,29 +188,16 @@ def update_phot(action, db_address=_SNEX2_DB):
             #logger.info("line 181")
             if action=='delete':
                 logger.info("action = delete")
-                #Look up the dataproductid from the datum_extra table
-                with get_session(db_address=db_address) as db_session:
-                    
-                    # #snex2_id_query = db_session.query(Datum).filter(and_(Datum.target_id==targetid, Datum.data_type=='photometry')).all()
-                    # snex2_id_query = db_session.query(Datum).filter(Datum.data_type=='photometry').order_by(Datum.id.desc()).all()
-                    # for snex2_row in snex2_id_query:
-                    #     value = snex2_row.value
-                    #     if type(value) == str:
-                    #         value = json.loads(snex2_row.value)
-                    #     if id_ == value.get('snex_id', ''):
-                    #         db_session.delete(snex2_row)
-                    #         break
-                    # t = Target.objects.filter(px=targetid)[0]
-                    # r = ReducedDatum.objects.filter(target=t,value={'snex_id': id_})
-                    # if len(r) > 0:
-                    #     r[0].delete()
-
-                    snex2_id_query = db_session.query(Datum).filter(
-                        Datum.value['snex_id'].astext == str(id_)
-                    ).first()
-                    if snex2_id_query is not None:
-                        db_session.delete(snex2_id_query)
-                    db_session.commit()
+                rd_extra = ReducedDatumExtra.objects.get(
+                    data_type = 'photometry',
+                    key = 'snex_id',
+                    value__icontains = f'"snex_id": {id_}')
+                rd_pk = json.load(rd_extra.value).get('snex2_id','')
+                rd = ReducedDatum.objects.get(pk = rd_pk)
+                dp = rd.data_product
+                rd.delete()
+                dp.delete()
+                rd_extra.delete()
 
                     #snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.snex_id==id_, Datum_Extra.data_type=='photometry')).first()
                     #if snex2_id_query is not None: #Is none if row gets inserted and deleted in same 5 min block
@@ -273,73 +259,23 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_ids = [x.id for x in standard_list]
                     logger.info("got session")
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
-                    if 'background_subtracted' in phot.keys():
-                        logger.info("background subtracted key exists")
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted'])
-                        #if len(data_point) == 2:
-                        #    if data_point[0].value == data_point[1].value:
-                        #        data_point[0].delete()
-                        if len(data_point) > 1:
-                            logger.info(f"{len(data_point)} data points, trying to consolidate")
-                            
-                            for x, point in enumerate(data_point):
-                                try:
-                                    print(x)
-                                    if point.value == data_point[x+1].value:
-                                        point.delete()
-                                        logger.info(f"deleted point {x}")
-                                except:
-                                    logger.info("x+1 indexing for multiple data points failed")
-                                    continue
-
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first()
-
-                    else:
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'])
-                        #if len(data_point) == 2:
-                        #    if data_point[0].value == data_point[1].value:
-                        #        data_point[0].delete()
-                        if len(data_point) > 1:
-                            logger.info(f"{len(data_point)} data points, trying to consolidate")
-                            
-                            for x, point in enumerate(data_point):
-                                try:
-                                    print(x)
-                                    if point.value == data_point[x+1].value:
-                                        point.delete()
-                                        logger.info(f"deleted point {x}")
-                                except:
-                                    logger.info("x+1 indexing for multiple data points failed")
-                                    continue
-
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id']).first()
-                        #taking the first one of the list
-
-                    #update
-                    #logger.info("line 218 update")
-                    if data_point:
-                        logger.info(f'Existing Phot point for target {targetid}: {data_point}, timestamp:{time}, value: {data_point.value}')
-                        data_point.value = phot
-                        data_point.source_name = ''
-                        data_point.source_location = ''
-                        #logger.info("Before data_point.save()")
-                        data_point.save()
-
-                    #insert
-                    else:
-                        #logger.info("line 290 insert")
-                        data_point = ReducedDatum.objects.create(target_id=targetid, timestamp=time, data_type='photometry', value=phot, source_name='', source_location='')
+                    rd = ReducedDatum.objects.get_or_create(
+                        target_id=targetid,
+                        data_type='photometry',
+                        value__snex_id=phot['snex_id'])
+                    rd.value = phot
+                    rd.source_name = ''
+                    rd.source_location = ''
+                    rd.save()
 
                     if phot_groupid is not None:
-                        #logger.info("phot_groupid is not None")
-                        update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
-                    db_session.commit()
-                delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
+                        update_permissions(int(phot_groupid), 'view_reduceddatum', rd, snex1_groups)
 
-        except:
-            #logger.info("except, line 302")
-            raise #continue
+            delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
+        except Exception as e:
+            logger.exception(f"Failed to process photometry for db_changes row {result.id} photlco {result.rowid}")
+            continue
 
 def read_spec(filename):
     """
@@ -445,7 +381,7 @@ def update_spec(action, db_address=_SNEX2_DB):
             delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except Exception as e:
-            logger.exception(f"Failed to process spectrum for db_changes row {result.rowid} with exception {e}")
+            logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid}")
             continue
 
 
@@ -587,67 +523,6 @@ def update_target(action, db_address=_SNEX2_DB):
         
         except:
             raise #continue
-
-
-def update_target_extra(action, db_address=_SNEX2_DB):
-    """
-    Queries the Targetextra table in the SNex2 db with any changes made to the Targets table, along with info from the Classifications table, in the SNex1 db
-
-    Parameters
-    ----------
-    action: str, one of 'update', 'insert', or 'delete'
-    db_address: str, sqlalchemy address to the SNex2 db
-    """
-    target_result = query_db_changes('targets', action, db_address=settings.SNEX1_DB_URL)
-
-    for tresult in target_result:
-        try:
-            target_id = tresult.rowid # The ID of the row in the targets table
-            target_row = get_current_row(Targets, target_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to target_id in the targets table
-
-            #t_id = target_row.id
-            value = target_row.redshift
-            if value is not None:
-                with get_session(db_address=db_address) as db_session:
-                    z_criteria = and_(Target_Extra.target_id==target_id, Target_Extra.key=='redshift') # Criteria for updating the redshift info in the targetextra table
-                    
-                    if action=='update' or action=='insert':
-                        if db_session.query(Target_Extra).filter(z_criteria).first() is not None:
-                            db_session.query(Target_Extra).filter(z_criteria).update({'value': str(value), 'float_value': float(value)})
-                        else:
-                            db_session.add(Target_Extra(target_id=target_id, key='redshift', value=str(value), float_value=float(value)))
-
-                    #Don't think the below are necessary, but need to double check
-                    #elif action=='insert':
-                        #db_session.add(Target_Extra(target_id=target_id, key='redshift', value=str(value), float_value=float(value)))
-                    
-                    elif action=='delete':
-                        db_session.query(Target_Extra).filter(z_criteria).delete()
-                    db_session.commit()
-
-            class_id = target_row.classificationid
-            if class_id is not None:
-                class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
-                with get_session(db_address=db_address) as db_session:
-                    c_criteria = and_(Target_Extra.target_id==target_id, Target_Extra.key=='classification') # Criteria for updating the classification info in the targetextra table
-                    if action=='update':
-                        if db_session.query(Target_Extra).filter(c_criteria).first() is not None:
-                            db_session.query(Target_Extra).filter(c_criteria).update({'value': class_name})
-                        else:
-                            db_session.add(Target_Extra(target_id=target_id, key='classification', value=class_name))
-
-                    elif action=='insert':
-                        db_session.add(Target_Extra(target_id=target_id, key='classification', value=class_name))
-
-                    elif action=='delete':
-                        db_session.query(Target_Extra).filter(c_criteria).delete()
-
-                    db_session.commit()
-            delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
-
-        except:
-            raise #continue
-
 
 def update_users(action, db_address=_SNEX2_DB):
     """
