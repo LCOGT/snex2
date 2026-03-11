@@ -366,8 +366,12 @@ TARGET_PERMISSIONS_ONLY = False
 # URLs that should be allowed access even with AUTH_STRATEGY = LOCKED
 # for example: OPEN_URLS = ['/', '/about']
 OPEN_URLS = [
+    '/accounts/login/',
+    '/accounts/password_reset/',
+    '/accounts/password_reset/done/',
+    '/accounts/reset/done/',
+    '/accounts/reset/'
     '/accounts/register/',
-    '/snex2/tnstargets/',
     '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
 ]
