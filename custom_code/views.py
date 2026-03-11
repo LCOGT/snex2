@@ -399,7 +399,7 @@ class SNEx2UserApprovalView(UserApprovalView):
 class CustomDataProductUploadView(DataProductUploadView):
 
     form_class = CustomDataProductUploadForm
-
+    
     def form_valid(self, form):
 
         target = form.cleaned_data['target']
@@ -453,7 +453,8 @@ class CustomDataProductUploadView(DataProductUploadView):
                 if used_in:
                     rdextra_value['used_in'] = int(used_in.id)
                 rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
-                reduced_data = run_custom_data_processor(dp, extras, rdextra_value)
+                reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value)
+
                 reduced_datum_extra = ReducedDatumExtra(
                     target = target,
                     data_type = dp_type,
@@ -465,7 +466,12 @@ class CustomDataProductUploadView(DataProductUploadView):
                 ### -------------------------------------------------------------------
                 
                 if not settings.TARGET_PERMISSIONS_ONLY:
-                    for group in form.cleaned_data['groups']:
+                    if self.request.user.is_superuser:
+                        user_groups = Group.objects.all()
+                    else:
+                        user_groups = self.request.user.groups.all()
+
+                    for group in user_groups:
                         assign_perm('tom_dataproducts.view_dataproduct', group, dp)
                         assign_perm('tom_dataproducts.delete_dataproduct', group, dp)
                         assign_perm('tom_dataproducts.view_reduceddatum', group, reduced_data)

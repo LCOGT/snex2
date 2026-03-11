@@ -652,12 +652,8 @@ def custom_upload_dataproduct(context, obj):
         initial['observation_record'] = obj
         initial['referrer'] = reverse('tom_observations:detail', args=(obj.id,))
         
-    form = CustomDataProductUploadForm(initial=initial)
-    if not settings.TARGET_PERMISSIONS_ONLY:
-        if user.is_superuser:
-            form.fields['groups'].queryset = Group.objects.all()
-        else:
-            form.fields['groups'].queryset = user.groups.all()
+    form = CustomDataProductUploadForm(initial = initial)
+
     return {'data_product_form': form}
 
 
