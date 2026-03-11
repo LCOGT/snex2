@@ -12,8 +12,11 @@ import datetime
 from django.conf import settings
 from tom_targets.models import Target
 from tom_dataproducts.models import DataProduct, data_product_path, ReducedDatum
+from django.contrib.auth.models import Group
 from custom_code.utils import powers_of_two
 from custom_code.utils import update_permissions
+from custom_code.models import ReducedDatumExtra
+from guardian.shortcuts import assign_perm
 
 import logging
 logger = logging.getLogger(__name__)
@@ -324,34 +327,29 @@ def update_spec(action, db_address=_SNEX2_DB):
             id_ = result.rowid # The ID of the row in the spec table
             if action=='delete':
                 #Look up the dataproductid from the datum_extra table
-                with get_session(db_address=db_address) as db_session:
-                    
-                    snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.data_type=='spectroscopy', Datum_Extra.key=='snex_id')).all()
+                rd_extra = ReducedDatumExtra.objects.get(
+                    data_type = 'spectroscopy',
+                    key = 'snex_id',
+                    value__icontains = f'"snex_id": {id_}')
+                rd_pk = json.load(rd_extra.value).get('snex2_id','')
+                
+                rd = ReducedDatum.objects.get(pk = rd_pk)
+                dp = rd.data_product
+                rd.delete()
+                dp.delete() #might only need data product to delete, then will cascade to rd
 
-                    for snex2_row in snex2_id_query:
-                        value = json.loads(snex2_row.value)
-                        if id_ == value.get('snex_id', ''):
-                            snex2_id = value.get('snex2_id', '')
-                            spec = db_session.query(Datum).filter(and_(Datum.data_type=='spectroscopy', Datum.id==snex2_id)).first()
-                            if not spec.data_product_id:
-                                db_session.delete(spec)
-                            else:
-                                data_product_id = spec.data_product_id
-                                db_session.delete(spec)
-                                db_session.query(Data_Product).filter(Data_Product.id == data_product_id).delete()
-                            
-                            break
-                    db_session.commit()
+                ReducedDatumExtra.objects.get(
+                    target_id = targetid,
+                    data_type = 'spectroscopy',
+                    value__icontains = f'"snex_id": {id_}').delete()
 
             else:
-                spec_row = get_current_row(Spec, id_, db_address=settings.SNEX1_DB_URL)
-
+                spec_row = get_current_row(Spec, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the spec table
                 if not spec_row:
                     delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
                     continue
 
                 targetid = spec_row.targetid
-                time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
                 spec_groupid = spec_row.groupidcode
@@ -365,99 +363,46 @@ def update_spec(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid==standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids:
-                    if action=='update':
-                        logger.info("action: update")
-                        with get_session(db_address=db_address) as db_session:
-                            snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.target_id==targetid, Datum_Extra.key=='snex_id', Datum_Extra.data_type=='spectroscopy')).all()
-                            for snex2_row in snex2_id_query:
-                                value = json.loads(snex2_row.value)
-                                if id_ == value.get('snex_id', ''):
-                                    snex2_id = value.get('snex2_id', '')
+                    #created True means new DataProduct was made, created False is object already existed, like just "get"
+                    data_product, dp_created = DataProduct.objects.get_or_create(
+                        target_id = targetid, 
+                        product_id = spec_row.filename.replace('.fits', '.ascii'),
+                        data_product_type = 'spectroscopy', 
+                        data = spec_row.filename.replace('.fits', '.ascii'))
+                    
+                    if dp_created:
+                        data_product.data = data_product_path(data_product, data_product.data)
+                        data_product.save()
 
-                                    original_rd = ReducedDatum.objects.filter(id=snex2_id).first()
+                    reduced_datum, rd_created = ReducedDatum.objects.get_or_create(
+                        target_id = targetid, 
+                        data_product = data_product, 
+                        value = spec, 
+                        data_type = 'spectroscopy', 
+                        source_name = '', 
+                        source_location = '')
 
-                                    logger.info(f"Original ReducedDatum: {original_rd}")
+                    newspec_extra_value = json.dumps({'snex_id': int(id_), 'snex2_id': int(reduced_datum.id)})
+                    RDExtras_snex_id, rd_snexid_created =  ReducedDatumExtra.objects.get_or_create(
+                        target_id = targetid,
+                        data_type = 'spectroscopy',
+                        key = 'snex_id',
+                        value__icontains = f'"snex_id": {id_}')
 
-                                    find_dup_query = ReducedDatum.objects.filter(target_id=original_rd.target_id, data_type='spectroscopy',timestamp=original_rd.timestamp,value=original_rd.value)
-                                    
-                                    logger.info(f"Looking for duplicates:{find_dup_query}")
+                    RDExtras_snex_id.value = newspec_extra_value
+                    RDExtras_snex_id.save()
 
-                                    if len(find_dup_query) > 1:
+                    if spec_groupid is not None:
+                        update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
+                        assign_perm('tom_dataproducts.view_dataproduct', Group.objects.get(name = "LCOGT"), data_product) # LCOGT group view and edit all dataproducts
+                        assign_perm('tom_dataproducts.delete_dataproduct', Group.objects.get(name = "LCOGT"), data_product)
 
-                                        logger.info(f"Duplicate found. {len(find_dup_query)} data points, trying to consolidate")
-                                        
-                                        for point in find_dup_query:
-                                            if (point.value == original_rd.value) & (point.timestamp == original_rd.timestamp):
-                                                if point.id != snex2_id:
-                                                    logger.info(f"Deleted extraneous point {point}")
-                                                    point.delete()
-                                                else:
-                                                    logger.info(f"Point {point} not deleted")
-                                           
-                                    data_point = ReducedDatum.objects.get(id=snex2_id)
-                                    logger.info(f"single data_point:{data_point}")
 
-                                    data_point.target_id = targetid
-
-                                    data_point.timestamp = time
-
-                                    data_point.value = spec
-                                    data_point.data_type = 'spectroscopy'
-                                    data_point.source_name = ''
-                                    data_point.source_location = ''
-
-                                    data_point.save()
-                                    logger.info("data_point has been saved")
-                                    if spec_groupid is not None:
-                                        update_permissions(int(spec_groupid), 'view_reduceddatum', data_point, snex1_groups) #View reduceddatum
-                                    break
-
-                    elif action=='insert':
-                        with get_session(db_address=db_address) as db_session:
-                            # First create the dataproduct for this spectra linking to the ascii file
-                            newdp = Data_Product(
-                                target_id=targetid, 
-                                product_id=spec_row.filename.replace('.fits', '.ascii'), 
-                                data_product_type='spectroscopy', 
-                                data=spec_row.filename.replace('.fits', '.ascii'),
-                                extra_data='',
-                                created=time,
-                                modified=time,
-                                featured=False)
-                            db_session.add(newdp)
-                            db_session.flush()
-
-                        data_point, created = ReducedDatum.objects.get_or_create(target_id=targetid, data_product_id=newdp.id, timestamp=time, value=spec, data_type='spectroscopy', source_name='', source_location='')
-                        # Then create the reduced datum referencing the data product
-
-                        if spec_groupid is not None:
-                            update_permissions(int(spec_groupid), 'view_reduceddatum', data_point, snex1_groups) #View reduceddatum
-
-                        newspec_extra_value = json.dumps({'snex_id': int(id_), 'snex2_id': int(data_point.id)})
-                        newspec_extra = Datum_Extra(target_id=targetid, data_type='spectroscopy', key='snex_id', value=newspec_extra_value)
-                        db_session.add(newspec_extra)
-
-                        spec_extras = {}
-                        for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
-                            if getattr(spec_row, key):
-                                spec_extras[key] = getattr(spec_row, key)
-                        spec_extras['snex_id'] = int(id_)
-                        spec_extras_row = Datum_Extra(data_type='spectroscopy', key='spec_extras', value=json.dumps(spec_extras), target_id=targetid)
-                        db_session.add(spec_extras_row)
-
-                    db_session.commit()
-                    if action == 'insert':
-                        # Finally update the newly created dataproduct using the Django path
-                        # This is normally done automatically using the Django ORM,
-                        # but since we're using sqlalchemy we have to do it manually
-                        snex2_dp = DataProduct.objects.get(id=newdp.id)
-                        snex2_dp.data = data_product_path(snex2_dp, snex2_dp.data)
-                        snex2_dp.save()
-                        
             delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
-        except:
-            raise #continue
+        except Exception as e:
+            logger.exception(f"Failed to process spectrum for db_changes row {result.rowid}")
+            continue
 
 
 def update_target(action, db_address=_SNEX2_DB):

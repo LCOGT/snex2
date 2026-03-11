@@ -92,7 +92,7 @@ class CustomDataProductViewSet(DataProductViewSet):
         if response.status_code == status.HTTP_201_CREATED:
             dp = DataProduct.objects.get(pk=response.data['id'])
             try:
-                reduced_data = run_custom_data_processor(dp, extras)
+                reduced_data, extras = run_custom_data_processor(dp, extras)
                 if not settings.TARGET_PERMISSIONS_ONLY:
                     for group_name in settings.DEFAULT_GROUPS:#response.data['group']:
                         group = Group.objects.get(name=group_name)
