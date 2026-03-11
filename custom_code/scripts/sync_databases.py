@@ -412,11 +412,10 @@ def update_spec(action, db_address=_SNEX2_DB):
                     data_product, dp_created = DataProduct.objects.get_or_create(
                         target_id = targetid, 
                         product_id = spec_row.filename.replace('.fits', '.ascii'),
-                        data_product_type = 'spectroscopy', 
-                        data = spec_row.filename.replace('.fits', '.ascii'))
+                        data_product_type = 'spectroscopy')
                     
                     if dp_created:
-                        data_product.data = data_product_path(data_product, data_product.data)
+                        data_product.data = data_product_path(data_product, spec_row.filename.replace('.fits', '.ascii'))
                         data_product.save()
 
                     reduced_datum, rd_created = ReducedDatum.objects.get_or_create(
