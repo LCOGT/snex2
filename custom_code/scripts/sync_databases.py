@@ -178,34 +178,12 @@ def update_phot(action, db_address=_SNEX2_DB):
         i += 1
         logger.info(f"i={i}/{len([change.rowid for change in phot_result])}")
         try:
-            id_ = result.rowid # The ID of the row in the photlco table
-            #logger.info("before phot_row defined")
-            # AttributeError: 'NoneType' object has no attribute 'id' error on phot_row definition
-            # so Photlco table has no attribute 'id' -- did the name of column get changed?
-            phot_row = get_current_row(Photlco, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the photlco table    
-            #targetid = phot_row.targetid
-            #logger.info("line 181")
+            id_ = result.rowid
+            phot_row = get_current_row(Photlco, id_, db_address=settings.SNEX1_DB_URL)
             if action=='delete':
                 logger.info("action = delete")
-                rd_extra = ReducedDatumExtra.objects.get(
-                    data_type = 'photometry',
-                    key = 'snex_id',
-                    value__icontains = f'"snex_id": {id_}')
-                rd_pk = json.load(rd_extra.value).get('snex2_id','')
-                rd = ReducedDatum.objects.get(pk = rd_pk)
-                dp = rd.data_product
-                rd.delete()
-                dp.delete()
-                rd_extra.delete()
+                ReducedDatum.objects.filter(data_type = 'photometry', value__snex_id = id_).delete()
 
-                    #snex2_id_query = db_session.query(Datum_Extra).filter(and_(Datum_Extra.snex_id==id_, Datum_Extra.data_type=='photometry')).first()
-                    #if snex2_id_query is not None: #Is none if row gets inserted and deleted in same 5 min block
-                    #    #snex2_id = snex2_id_query.reduced_datum_id
-                    #    #datum = db_session.query(Datum).filter(Datum.id==snex2_id).first()
-                    #    #db_session.delete(datum)
-                    #db_session.commit()
-
-                     #Delete all other rows corresponding to this dataproduct in the db_changes table
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
                     all_other_rows = db_session.query(Db_Changes).filter(and_(Db_Changes.tablename=='photlco', Db_Changes.rowid==id_))
                     for row in all_other_rows:
@@ -258,6 +236,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                     rd, created = ReducedDatum.objects.update_or_create(
                         target_id = targetid,
                         data_type = 'photometry',
+                        timestamp = time,
                         value__snex_id = id_,
                         defaults = {
                             'value': phot,
@@ -320,6 +299,13 @@ def update_spec(action, db_address=_SNEX2_DB):
                 ReducedDatumExtra.objects.get(
                     target_id = targetid,
                     data_type = 'spectroscopy',
+                    key = 'snex_id',
+                    value__icontains = f'"snex_id": {id_}').delete()
+                
+                ReducedDatumExtra.objects.get(
+                    target_id = targetid,
+                    data_type = 'spectroscopy',
+                    key = 'spec_extras',
                     value__icontains = f'"snex_id": {id_}').delete()
 
             else:
@@ -329,6 +315,7 @@ def update_spec(action, db_address=_SNEX2_DB):
                     continue
 
                 targetid = spec_row.targetid
+                time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
                 spec_groupid = spec_row.groupidcode
@@ -350,12 +337,16 @@ def update_spec(action, db_address=_SNEX2_DB):
                     
                     if dp_created:
                         data_product.data = data_product_path(data_product, spec_row.filename.replace('.fits', '.ascii'))
+                        data_product.created = time
+                        data_product.modified = time
+                        data_product.featured = False
                         data_product.save()
 
                     reduced_datum, rd_created = ReducedDatum.objects.get_or_create(
                         target_id = targetid, 
                         data_product = data_product, 
-                        value = spec, 
+                        value = spec,
+                        timestamp = time,
                         data_type = 'spectroscopy', 
                         source_name = '', 
                         source_location = '')
@@ -369,6 +360,20 @@ def update_spec(action, db_address=_SNEX2_DB):
 
                     RDExtras_snex_id.value = newspec_extra_value
                     RDExtras_snex_id.save()
+
+                    spec_extras = {}
+                    for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
+                        if getattr(spec_row, key):
+                            spec_extras[key] = getattr(spec_row, key)
+                    spec_extras['snex_id'] = int(id_)
+                    RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
+                        data_type='spectroscopy',
+                        key='spec_extras',
+                        value__icontains=f'"snex_id": {id_}',
+                        target_id=targetid)
+
+                    RDExtras_spec.value = spec_extras
+                    RDExtras_spec.save()
 
                     if spec_groupid is not None:
                         update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
