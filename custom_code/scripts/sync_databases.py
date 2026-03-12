@@ -236,10 +236,10 @@ def update_phot(action, db_address=_SNEX2_DB):
                     rd, created = ReducedDatum.objects.update_or_create(
                         target_id = targetid,
                         data_type = 'photometry',
-                        timestamp = time,
                         value__snex_id = id_,
                         defaults = {
                             'value': phot,
+                            'timestamp': time,
                             'source_name': '',
                             'source_location': '',
                         })
