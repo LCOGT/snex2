@@ -230,7 +230,6 @@ def update_phot(action, db_address=_SNEX2_DB):
                         standard_classification_id = -1
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
-                    logger.info("got session")
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
                     logger.info(f'phot dictionary: {phot}')
 
