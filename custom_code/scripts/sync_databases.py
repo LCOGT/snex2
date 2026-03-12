@@ -172,24 +172,15 @@ def update_phot(action, db_address=_SNEX2_DB):
     logger.info(f'Total photometry changes {len([change.rowid for change in phot_result])}')
 
     i = 0
-    logger.info("photlco:" + str(Photlco))
     for result in phot_result:
-        logger.info("result rowid:" + str(result.rowid))
         i += 1
-        logger.info("i=" + str(i))
+        logger.info(f"i={i}/{len([change.rowid for change in phot_result])}")
         try:
-            id_ = result.rowid 
-            phot_row = get_current_row(Photlco, id_, db_address=settings.SNEX1_DB_URL) 
+            id_ = result.rowid
+            phot_row = get_current_row(Photlco, id_, db_address=settings.SNEX1_DB_URL)
             if action=='delete':
                 logger.info("action = delete")
-                with get_session(db_address=db_address) as db_session:
-
-                    snex2_id_query = db_session.query(Datum).filter(
-                        Datum.value['snex_id'].astext == str(id_)
-                    ).first()
-                    if snex2_id_query is not None:
-                        db_session.delete(snex2_id_query)
-                    db_session.commit()
+                ReducedDatum.objects.filter(data_type = 'photometry', value__snex_id = id_).delete()
 
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
                     all_other_rows = db_session.query(Db_Changes).filter(and_(Db_Changes.tablename=='photlco', Db_Changes.rowid==id_))
@@ -198,7 +189,6 @@ def update_phot(action, db_address=_SNEX2_DB):
                     db_session.commit()
                     
             else:
-                logger.info("action is not delete")
                 targetid = phot_row.targetid
                 dobs = phot_row.dateobs
                 tobs = phot_row.ut
@@ -239,62 +229,41 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
-                    if 'background_subtracted' in phot.keys():
-                        logger.info("background subtracted key exists")
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted'])
+                    logger.info(f'phot dictionary: {phot}')
 
-                        if len(data_point) > 1:
-                            logger.info(f"{len(data_point)} data points, trying to consolidate")
-                            
-                            for x, point in enumerate(data_point):
-                                try:
-                                    print(x)
-                                    if point.value == data_point[x+1].value:
-                                        point.delete()
-                                        logger.info(f"deleted point {x}")
-                                except:
-                                    logger.info("x+1 indexing for multiple data points failed")
-                                    continue
+                    #check if there is a duplicate:
+                    rds = ReducedDatum.objects.filter(target_id = targetid,data_type = 'photometry',value__snex_id = id_)
+                    logger.info(f'how many reduced datums for snexid: {id_}? {len(rds)}')
+                    for rd in rds:
+                        logger.info(f'value for rd {rd.id}: {rd.value}')
+                    rd_just_snex1 = [rd for rd in rds if 'snex_id' in rd.value and len(rd.value) == 1]
+                    logger.info(f'reduceddatum(s) that only have snex1 id {rd_just_snex1}')
+                    if len(rd_just_snex1) < len(rds):
+                        logger.info(f'there is an extra reduceddatum with only snex1 id')
+                        for rd in rd_just_snex1:
+                            logger.info(f'deleting {rd} with value {rd.value}')
+                            rd.delete()
 
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'], value__background_subtracted=phot['background_subtracted']).first()
+                    rd, created = ReducedDatum.objects.update_or_create(
+                        target_id = targetid,
+                        data_type = 'photometry',
+                        value__snex_id = id_,
+                        defaults = {
+                            'value': phot,
+                            'timestamp': time,
+                            'source_name': '',
+                            'source_location': '',
+                        })
 
-                    else:
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id'])
-                        if len(data_point) > 1:
-                            logger.info(f"{len(data_point)} data points, trying to consolidate")
-                            
-                            for x, point in enumerate(data_point):
-                                try:
-                                    print(x)
-                                    if point.value == data_point[x+1].value:
-                                        point.delete()
-                                        logger.info(f"deleted point {x}")
-                                except:
-                                    logger.info("x+1 indexing for multiple data points failed")
-                                    continue
-
-                        data_point = ReducedDatum.objects.filter(target_id=targetid, timestamp=time, data_type='photometry', value__snex_id=phot['snex_id']).first()
-
-                    #update
-                    if data_point:
-                        logger.info(f'Existing Phot point for target {targetid}: {data_point}, timestamp:{time}, value: {data_point.value}')
-                        data_point.value = phot
-                        data_point.source_name = ''
-                        data_point.source_location = ''
-                        data_point.save()
-
-                    #insert
-                    else:
-                        data_point = ReducedDatum.objects.create(target_id=targetid, timestamp=time, data_type='photometry', value=phot, source_name='', source_location='')
 
                     if phot_groupid is not None:
-                        update_permissions(int(phot_groupid), 'view_reduceddatum', data_point, snex1_groups)
-                    db_session.commit()
+                        update_permissions(int(phot_groupid), 'view_reduceddatum', rd, snex1_groups)
+
                 delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
-        except:
-            raise #continue
-
+        except Exception as e:
+            logger.info(f"Failed to process photometry for db_changes row {result.id} photlco {result.rowid} with exception {e}")
+            continue
 
 def read_spec(filename):
     """
@@ -341,6 +310,13 @@ def update_spec(action, db_address=_SNEX2_DB):
                 ReducedDatumExtra.objects.get(
                     target_id = targetid,
                     data_type = 'spectroscopy',
+                    key = 'snex_id',
+                    value__icontains = f'"snex_id": {id_}').delete()
+                
+                ReducedDatumExtra.objects.get(
+                    target_id = targetid,
+                    data_type = 'spectroscopy',
+                    key = 'spec_extras',
                     value__icontains = f'"snex_id": {id_}').delete()
 
             else:
@@ -350,6 +326,7 @@ def update_spec(action, db_address=_SNEX2_DB):
                     continue
 
                 targetid = spec_row.targetid
+                time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
                 spec_groupid = spec_row.groupidcode
@@ -367,17 +344,20 @@ def update_spec(action, db_address=_SNEX2_DB):
                     data_product, dp_created = DataProduct.objects.get_or_create(
                         target_id = targetid, 
                         product_id = spec_row.filename.replace('.fits', '.ascii'),
-                        data_product_type = 'spectroscopy', 
-                        data = spec_row.filename.replace('.fits', '.ascii'))
+                        data_product_type = 'spectroscopy')
                     
                     if dp_created:
-                        data_product.data = data_product_path(data_product, data_product.data)
+                        data_product.data = data_product_path(data_product, spec_row.filename.replace('.fits', '.ascii'))
+                        data_product.created = time
+                        data_product.modified = time
+                        data_product.featured = False
                         data_product.save()
 
                     reduced_datum, rd_created = ReducedDatum.objects.get_or_create(
                         target_id = targetid, 
                         data_product = data_product, 
-                        value = spec, 
+                        value = spec,
+                        timestamp = time,
                         data_type = 'spectroscopy', 
                         source_name = '', 
                         source_location = '')
@@ -392,6 +372,20 @@ def update_spec(action, db_address=_SNEX2_DB):
                     RDExtras_snex_id.value = newspec_extra_value
                     RDExtras_snex_id.save()
 
+                    spec_extras = {}
+                    for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
+                        if getattr(spec_row, key):
+                            spec_extras[key] = getattr(spec_row, key)
+                    spec_extras['snex_id'] = int(id_)
+                    RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
+                        data_type='spectroscopy',
+                        key='spec_extras',
+                        value__icontains=f'"snex_id": {id_}',
+                        target_id=targetid)
+
+                    RDExtras_spec.value = spec_extras
+                    RDExtras_spec.save()
+
                     if spec_groupid is not None:
                         update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
                         assign_perm('tom_dataproducts.view_dataproduct', Group.objects.get(name = "LCOGT"), data_product) # LCOGT group view and edit all dataproducts
@@ -401,7 +395,7 @@ def update_spec(action, db_address=_SNEX2_DB):
             delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except Exception as e:
-            logger.exception(f"Failed to process spectrum for db_changes row {result.rowid}")
+            logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid} with exception {e}")
             continue
 
 
@@ -528,7 +522,7 @@ def update_target(action, db_address=_SNEX2_DB):
                                 db_session.add(Targetname(name=t_name, target_id=n_id, created=datetime.datetime.utcnow(), modified=datetime.datetime.utcnow()))
 
                     db_session.commit()
-
+            
             delete_row(Db_Changes, nresult.id, db_address=settings.SNEX1_DB_URL)
         
         except:

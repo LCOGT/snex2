@@ -8,7 +8,7 @@
       <table class="table table-striped">
         <thead>
           <tr>
-            <th>Username</th><th>Name</th><th>Email</th><th>Who you are / working with</th><th>Admin</th>
+            <th>Username</th><th>Name</th><th>Email</th><th>Admin</th>
             {% if request.user.is_superuser %}
             <th>Edit</th><th>Delete</th><th>Change Password</th>
             {% endif %}
@@ -20,7 +20,6 @@
             <td>{{ user.username }}</td>
             <td>{{ user.first_name }} {{ user.last_name }}</td>
             <td>{{ user.email }}</td>
-            <td>{{ user|registration_who_you_are }}</td>
             <td>{% if user.is_superuser %} yes {% endif %}</td>
             {% if request.user.is_superuser %}
             <td><a href="{% url 'user-update' user.id %}" class="btn btn-primary">Edit</a></td>
