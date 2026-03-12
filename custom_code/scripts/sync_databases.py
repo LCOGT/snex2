@@ -235,13 +235,13 @@ def update_phot(action, db_address=_SNEX2_DB):
 
                     #check if there is a duplicate:
                     rds = ReducedDatum.objects.filter(target_id = targetid,data_type = 'photometry',value__snex_id = id_)
-                    logger.info(f'how many reduced datums for snexid: {id_}? {rds}')
+                    logger.info(f'how many reduced datums for snexid: {id_}? {len(rds)}')
                     for rd in rds:
                         logger.info(f'value for rd {rd.id}: {rd.value}')
                     rd_just_snex1 = [rd for rd in rds if 'snex_id' in rd.value and len(rd.value) == 1]
-                    logger.info(f'reduceddatum(s) that only has snex1 id {rd_just_snex1}')
+                    logger.info(f'reduceddatum(s) that only have snex1 id {rd_just_snex1}')
                     if len(rd_just_snex1) < len(rds):
-                        logger.info(f'there is a reduceddatum with only snex1 id')
+                        logger.info(f'there is an extra reduceddatum with only snex1 id')
                         for rd in rd_just_snex1:
                             logger.info(f'deleting {rd} with value {rd.value}')
                             rd.delete()
@@ -264,7 +264,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                 delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except Exception as e:
-            logger.exception(f"Failed to process photometry for db_changes row {result.id} photlco {result.rowid}")
+            logger.exception(f"Failed to process photometry for db_changes row {result.id} photlco {result.rowid} with exception {e}")
             continue
 
 def read_spec(filename):
@@ -397,7 +397,7 @@ def update_spec(action, db_address=_SNEX2_DB):
             delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         except Exception as e:
-            logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid}")
+            logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid} with exception {e}")
             continue
 
 
@@ -525,16 +525,6 @@ def update_target(action, db_address=_SNEX2_DB):
 
                     db_session.commit()
             
-            #TODO: Delete currently doesn't work because targetname_criteria doesn't work
-            #      need to figure out how to find the name that was deleted from SNEx1
-
-            #elif action=='delete': 
-            #    with get_session(db_address=db_address) as db_session:
-            #        targetname_criteria = and_(Targetname.name==t_name, Targetname.target_id==n_id)
-            #        name_delete = db_session.query(Targetname).filter(targetname_criteria).first()
-            #        db_session.delete(name_delete)
-            #    db_session.commit()
-
             delete_row(Db_Changes, nresult.id, db_address=settings.SNEX1_DB_URL)
         
         except:
