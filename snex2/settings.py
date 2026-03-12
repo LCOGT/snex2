@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.sites',
     'django_extensions',
+    'django_htmx',
     'guardian',
     'tom_common',
     'django_comments',
@@ -88,6 +89,7 @@ SITE_ID = 2
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'django_htmx.middleware.HtmxMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -370,7 +372,7 @@ OPEN_URLS = [
     '/accounts/password_reset/',
     '/accounts/password_reset/done/',
     '/accounts/reset/done/',
-    '/accounts/reset/'
+    '/accounts/reset/*'
     '/accounts/register/',
     '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
@@ -473,7 +475,7 @@ HINT_LEVEL = 20
 PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
-    'django.contrib.auth.hashers.CryptPasswordHasher',
+    # 'django.contrib.auth.hashers.CryptPasswordHasher',
     #'django.contrib.auth.hashers.Argon2PasswordHasher',
     #'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
 ]
