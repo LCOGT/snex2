@@ -233,6 +233,20 @@ def update_phot(action, db_address=_SNEX2_DB):
                     logger.info("got session")
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
                     logger.info(f'phot dictionary: {phot}')
+
+                    #check if there is a duplicate:
+                    rds = ReducedDatum.objects.filter(target_id = targetid,data_type = 'photometry',value__snex_id = id_)
+                    logger.info(f'how many reduced datums for snexid: {id_}? {rds}')
+                    for rd in rds:
+                        logger.info(f'value for rd {rd.id}: {rd.value}')
+                    rd_just_snex1 = [rd for rd in rds if 'snex_id' in rd.value and len(rd.value) == 1]
+                    logger.info(f'reduceddatum(s) that only has snex1 id {rd_just_snex1}')
+                    if len(rd_just_snex1) < len(rds):
+                        logger.info(f'there is a reduceddatum with only snex1 id')
+                        for rd in rd_just_snex1:
+                            logger.info(f'deleting {rd} with value {rd.value}')
+                            rd.delete()
+
                     rd, created = ReducedDatum.objects.update_or_create(
                         target_id = targetid,
                         data_type = 'photometry',
