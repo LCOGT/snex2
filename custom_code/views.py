@@ -4,7 +4,8 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, Sum
 from django.db.models.functions import Cast
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest
+from django.views.decorators.http import require_POST
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView
@@ -1548,7 +1549,53 @@ def download_fits_view(request):
     data = requests.get(results[0]["url"]).content
 
     return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
+
+@require_POST
+def download_all_view(request):
+    files = json.loads(request.POST.get("files"))
+    token = settings.FACILITIES['LCO']['api_key']
+    url = settings.FACILITIES['LCO']['archive_url']
+
+    basenames = [f['filename'] for f in files]
+    frame_ids = []
+    target_name = 'target'
+    for basename in basenames:
+        try:
+            result = requests.get(url,
+                                  headers={'Authorization': f'Token {token}'},
+                                  params={'basename_exact': basename}).json()['results'][0]
+            
+            if result:
+                frame_ids.append(result['id'])
+                target_name = result['OBJECT']
+        except Exception as e:
+            logger.warning(f'Error fetching basename from archive {basename} with exception {e}')
+            continue
+    logger.info(f'FRAME IDS FOUND: {frame_ids}, for basename: {basenames}')
+    logger.info(f'target name: {target_name}')
+    try:
+        zip_resp = requests.post(
+            f"{url}zip/",
+            headers={"Authorization": f"Token {token}"},
+            json={"frame_ids": frame_ids, "uncompress": False},
+            stream=True,
+            timeout=60,
+        )
+        zip_resp.raise_for_status()
+    except Exception as e:
+        return HttpResponseBadRequest(f"Failed to fetch zip from archive: {e}")
+
+    response = StreamingHttpResponse(
+    zip_resp.iter_content(chunk_size=8192),
+    content_type="application/zip",
+    )
+    response["Content-Disposition"] = f'attachment; filename="snex_{target_name}_images.zip"'
+
+    if 'Content-Length' in zip_resp.headers:
+        response['Content-Length'] = zip_resp.headers['Content-Length']
     
+    return response
+
 class InterestingTargetsView(ListView):
 
     template_name = 'custom_code/interesting_targets.html'

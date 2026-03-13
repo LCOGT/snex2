@@ -1710,7 +1710,7 @@ def image_slideshow(context, target):
                 }),
                 '{} ({} {})'.format(dates[i], filters[i], exptimes[i])) for i in range(len(filenames))]
 
-    initial = {'filenames': filenames[0],
+    initial = {'filenames': thumbdict[0][0],
                'zoom': 1.0,
                'sigma': 4.0
             }
