@@ -350,6 +350,107 @@ def get_unreduced_spectra(allspec=True):
     return targetids, propids, dateobs, paths, filenames, imgpaths
 
 
+def get_metadata(authtoken={}, limit=None, **kwargs):
+    '''Get the list of files meeting criteria in kwargs (From LCOGTingest.py in lcogtsnpipe)'''
+    url = 'https://archive-api.lco.global/frames/?' + '&'.join(
+            [key + '=' + str(val) for key, val in kwargs.items() if val is not None])
+    url = url.replace('False', 'false')
+    url = url.replace('True', 'true')
+    logger.info(url)
+
+    response = requests.get(url, headers=authtoken, stream=True).json()
+    frames = response['results']
+    while response['next'] and (limit is None or len(frames) < limit):
+        logger.info(response['next'])
+        response = requests.get(response['next'], headers=authtoken, stream=True).json()
+        frames += response['results']
+    return frames[:limit]
+
+def get_banzai_spectra(allspec=True):
+    '''
+    Hook to find banzai-reduced spectra for FLOYDS inbox
+    '''
+    token = os.environ['LCO_APIKEY']
+    # banzai-floyds.lco.earth
+    response = requests.get('https://observe.lco.global/api/proposals?active=True&limit=50/',
+                             headers={'Authorization': 'Token ' + token}).json()
+    authtoken = {'Authorization': 'Token ' + token}
+    proposals = [prop['id'] for prop in response['results']]
+    # Query archive for data with reduction level 'banzai'
+    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+        # 
+
+        # ### GET it from the archive
+        # token = settings.FACILITIES['LCO']['api_key']
+        # url = settings.FACILITIES['LCO']['archive_url']
+        # if 'e91-1d' in filename: # only ingest the banzai floyds directly into spec
+        #     table_reduced = 'spec' # this table will track version control of spectra that get re-reduced
+        # results = requests.get(url, 
+        #                     headers={'Authorization': f'Token {token}'}, 
+        #                     params={'reduction': 'reduction_level=91'}).json()["results"]
+        # # can I query for just data with reduction level banzai using params? https://archive.lco.global/?reduction_level=91
+        # spectra_url = results[0]["url"]
+        
+        # spectra_imagename = results[0]["Image Name"]
+        # spectra_obs_date = results[0]["Time"]
+        # spectra_object = results[0]["Object"]
+        # spectra_proposal = results[0]["Proposal"]
+
+        speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
+        targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
+        targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
+        classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
+        spec = _load_table('spec', db_address=settings.SNEX1_DB_URL)
+
+        # banzai_original_filenames = [s.original for s in db_session.query(spec).filter(and_(spec.original!='None', spec.original!=None))]
+
+        frames = get_metadata(authtoken, INSTRUME='en06', basename = 'e91-1d', public=False)        # all FTN spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
+        frames += get_metadata(authtoken, INSTRUME='en05',  basename = 'e91-1d', public=False)        # all FTS spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
+        frames += get_metadata(authtoken, INSTRUME='en12',  basename = 'e91-1d', public=False)        # all FTS spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
+        # frames are just response["results"] from response.get
+
+        # banzai_spectra = db_session.query(spec).join(
+        #         targets, spec.targetid==targets.id
+        # ).join(
+        #         targetnames, spec.targetid==targetnames.targetid
+        # ).join(
+        #         classifications, targets.classificationid==classifications.id, isouter=True
+        # ).filter(
+        #     and_(
+        #         not_(spec.filename.in_(banzai_original_filenames)), 
+        #         spec.propid.in_(proposals),
+        #         spec.filename.contains('e91-1d'),
+        #         or_(
+        #             classifications.name != 'Standard', 
+        #             classifications.name == None
+        #         ), 
+        #         or_(
+        #             and_(
+        #                 spec.type != 'LAMPFLAT', 
+        #                 spec.type != 'ARC'
+        #             ), 
+        #         spec.type == None
+        #     ), 
+        #     not_(spec.filepath.contains('bad')), 
+        #     not_(targetnames.name.contains('test_'))
+        #     )
+        # )
+        # targetids = [s.targetid for s in banzai_spectra]
+        # propids = [s.propid for s in banzai_spectra]
+        # dateobs = [s.dateobs for s in banzai_spectra]
+        # paths = [s.filepath for s in banzai_spectra]
+        # filenames = [s.filename for s in banzai_spectra]
+        targetids = [s.targetid for s in frames]
+        propids = [s.propid for s in frames]
+        dateobs = [s.dateobs for s in frames]
+        paths = [s.filepath for s in frames]
+        filenames = [s.filename for s in frames]
+        #imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in banzai_spectra]
+
+    return targetids, propids, dateobs, paths, filenames, frames#, imgpaths
+
+
+
 def get_standards_from_snex1(target_id):
     
     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:

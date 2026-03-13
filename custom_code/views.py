@@ -29,16 +29,22 @@ from django.db.models.fields.json import KeyTextTransform
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 from astropy.time import Time
+from astropy.io import fits
+import time
 from datetime import datetime, date, timedelta
 import json
-from io import StringIO, BytesIO
+from io import StringIO
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+import base64
 
 from tom_dataproducts.models import ReducedDatum, DataProduct
 from custom_code.templatetags import custom_code_tags
 from tom_observations.templatetags.observation_extras import observing_buttons
 from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
 from tom_targets.templatetags.targets_extras import target_groups
-from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
+from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1, get_banzai_spectra
 from custom_code.thumbnails import make_thumb
 
 from custom_code.forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm, PhotSchedulingForm, SpecSchedulingForm
@@ -1654,11 +1660,101 @@ class FloydsInboxView(TemplateView):
 
     template_name = 'custom_code/floyds_inbox.html'
 
+    # def get_context_data(self, **kwargs):
+
+    #     context = super().get_context_data(**kwargs)
+
+    #     targetids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
+
+    #     inbox_rows = []
+    #     for i in range(len(targetids)):
+    #         current_dict = {}
+    #         t = Target.objects.get(id=targetids[i])
+    #         current_dict['targetid'] = targetids[i]
+    #         current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
+    #         current_dict['propid'] = propids[i]
+    #         current_dict['dateobs'] = dateobs[i]
+    #         current_dict['path'] = paths[i]
+    #         current_dict['filename'] = filenames[i]
+            
+    #         with open(imgpaths[i], 'rb') as imagefile:
+    #             b64_image = base64.b64encode(imagefile.read())
+    #             thumb = b64_image.decode('utf-8')
+    #         current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
+            
+    #         inbox_rows.append(current_dict)
+
+    #     context['inbox_rows'] = inbox_rows
+
+    #     return context
+
+
+    # def make_combined_extraction_plot(frame_1d):
+    #     """ Taken from banzai-floyds-ui/gui/plots.py"""
+    #     extraction_data = frame_1d['SPECTRUM'].data
+    #     extraction_data.sort(order='wavelength')
+    #     figure_data = dict(type='scatter', x=extraction_data['wavelength'], y=extraction_data['flux'],
+    #                     line=dict(color=DARK_BLUE), mode='lines')
+    #     layout = {
+    #         'template': PLOTLY_TEMPLATE,
+    #         'title': dict(text=f'Combined Extraction: {frame_1d[0].header["ORIGNAME"].replace("-e00", "-e91-1d")}'),
+    #         'showlegend': False,
+    #         'yaxis': {
+    #             'title': {'text': f'Flux ({ERGS_PER_SECOND_PER_CM2_PER_ANGSTROM})'},
+    #             'exponentformat': 'power'
+    #         },
+    #         'xaxis': {'title': dict(text=f'Wavelength ({ANGSTROM})'), 'tickformat': '.0f'}
+    #     }
+    #     return {'data': [figure_data,], 'layout': layout}
+    
+    def make_spec_thumb(filename):
+
+
+        with fits.open(filename) as hdul:
+            hdul.info()  # see what extensions exist
+            
+            # Typically flux is in extension 0 or 1
+            # Wavelength may be in a separate extension or derived from header WCS
+            flux = hdul[0].data  # or hdul['FLUX'].data
+            
+            # Option A: wavelength from a dedicated extension
+            wavelength = hdul['WAVELENGTH'].data  # or hdul[1].data
+            
+            # Option B: wavelength from WCS header keywords
+            header = hdul[0].header
+            crval = header['CRVAL1']   # starting wavelength
+            cdelt = header['CDELT1']   # wavelength step per pixel
+            naxis = header['NAXIS1']   # number of pixels
+            wavelength = crval + cdelt * np.arange(naxis)
+
+
+            fig, ax = plt.subplots(figsize=(12, 4))
+            ax.plot(wavelength, flux, color='#1a3a5c', linewidth=0.8)
+
+            ax.set_xlabel('Wavelength (Å)', fontsize=12)
+            ax.set_ylabel('Flux (erg s⁻¹ cm⁻² Å⁻¹)', fontsize=12)
+            ax.set_title(f'Combined Extraction: {filename}', 
+                        fontsize=12, color='steelblue')
+
+            ax.set_xlim(wavelength.min(), wavelength.max())
+            ax.set_ylim(0, None)
+            ax.set_facecolor('#dce8f5')
+            fig.patch.set_facecolor('white')
+            ax.grid(True, color='white', linewidth=0.8)
+
+            plt.tight_layout()
+
+            buf = BytesIO()
+            fig.savefig(buf, format='png')
+            return buf
+            
+            
+        
     def get_context_data(self, **kwargs):
 
         context = super().get_context_data(**kwargs)
 
-        targetids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
+        targetids, propids, dateobs, paths, filenames, frames = get_banzai_spectra()
 
         inbox_rows = []
         for i in range(len(targetids)):
@@ -1670,10 +1766,18 @@ class FloydsInboxView(TemplateView):
             current_dict['dateobs'] = dateobs[i]
             current_dict['path'] = paths[i]
             current_dict['filename'] = filenames[i]
+            current_dict['frame'] = frames[i]
             
-            with open(imgpaths[i], 'rb') as imagefile:
-                b64_image = base64.b64encode(imagefile.read())
-                thumb = b64_image.decode('utf-8')
+            # with open(imgpaths[i], 'rb') as imagefile:
+            #     b64_image = base64.b64encode(imagefile.read())
+            #     thumb = b64_image.decode('utf-8')
+            combined_sci_plot = self.make_spec_thumb(filenames[i])
+
+            combined_sci_plot.seek(0)
+
+            b64_image = base64.b64encode(combined_sci_plot.read())
+            thumb = b64_image.decode('utf-8')
+
             current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
             
             inbox_rows.append(current_dict)
