@@ -85,7 +85,6 @@ Targets = load_table('targets', db_address=settings.SNEX1_DB_URL)
 Target_Names = load_table('targetnames', db_address=settings.SNEX1_DB_URL)
 Classifications = load_table('classifications', db_address=settings.SNEX1_DB_URL)
 Groups = load_table('groups', db_address=settings.SNEX1_DB_URL)
-Users = load_table('users', db_address=settings.SNEX1_DB_URL)
 
 ### Make a dictionary of the groups in the SNex1 db
 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
