@@ -1,4 +1,6 @@
 from tom_alerts.alerts import GenericQueryForm, GenericAlert, GenericBroker
+from django import forms
+from dataclasses import dataclass
 import requests
 import os
 
