@@ -26,7 +26,7 @@ class Command(BaseCommand):
         groups = json.dumps([{'name': g.name, 'id': g.id} for g in group_query])
 
         me = User.objects.get(username='cpellegrino')
-        cadence = json.dumps({'cadence_strategy': 'SnexResumeCadenceAfterFailureStrategy', 'cadence_frequency': 7.0})
+        cadence = json.dumps({'cadence_strategy': 'SnexResumeCadenceAfterFailureStrategy', 'cadence_frequency_days': 7.0})
         with open(filepath) as json_file:
             obs_to_schedule = json.load(json_file) 
         

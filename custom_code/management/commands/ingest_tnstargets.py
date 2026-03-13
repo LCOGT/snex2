@@ -88,26 +88,6 @@ class Command(BaseCommand):
                 counter += 1
             all_phot = json.dumps(all_phot)
 
-            ### Check if it's in TESS
-            #NOTE: Currently not working
-
-            #params = {
-            #'ra': obj_data['radeg'],
-            #'dec': obj_data['decdeg']
-            #}
-            #tess_url = "https://mast.stsci.edu/tesscut/api/v0.1/sector"
-
-            #tess_response = requests.get(tess_url, params=params)
-            #tess_response = tess_response.json()['results']
-            #tess_response = sorted([x['sectorName'] for x in tess_response])
-            #
-            #if tess_response:
-            #    tess_response = '{tess}'.format(tess=[str(x) for x in tess_response])
-            #
-            #else:
-            #    tess_response = None
-            ##print(tess_response)
-
             try:
                 source_group = obj_data['reporting_group']['group_name']
             except:

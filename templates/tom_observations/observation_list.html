@@ -42,23 +42,12 @@
 	<label for="checkbox-dlt40">Show DLT40 Sequences</label>
       </div>
     </div>
-    {% with filter.qs|order_by_pending_requests as pending_requests %}
-    {% if pending_requests|length > 0 %}
-    <div class="row">
-      <h4>Pending Requests</h4>
-    </div>
-    {% for q in pending_requests %}
-    {#% schedule_pending_request q %#}
-    {% scheduling_list_with_form q 'pending' %}
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
     <div class="row">
       <h4>Current Reminders</h4>
     </div>
     {% with pagenumber=request.GET.urlencode %}
-    {% for q in filter.qs|order_by_reminder_expired:pagenumber %}
-    {% scheduling_list_with_form q 'notpending' %}
+    {% for q in filter.qs|filter_current_reminders:pagenumber %}
+    {% scheduling_list_with_form q %}
     {% endfor %}
     <div class="row">
       <h4>Upcoming Reminders</h4>
@@ -66,9 +55,6 @@
     <div class="row" id="load-upcoming-reminders">
       <button id="load-upcoming-reminders-btn" class="btn" style="background-color: white; color: #174460; border-color: #174460;" onclick="loadUpcomingReminders()">Load Upcoming Reminders</button>
     </div>
-    {#% for q in filter.qs|order_by_reminder_upcoming:pagenumber %#}
-    {#% scheduling_list_with_form q 'notpending' %#}
-    {#% endfor %#}
     {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
     {% endwith %}
   </div>
@@ -88,7 +74,7 @@ function loadUpcomingReminders() {
   document.getElementById("load-upcoming-reminders-btn").innerHTML = "Loading...";
   var obs_ids = [];
   {% with pagenumber=request.GET.urlencode %}
-  {% for q in filter.qs|order_by_reminder_upcoming:pagenumber %}
+  {% for q in filter.qs|filter_upcoming_reminders:pagenumber %}
     obs_ids.push({{ q.id }});
   {% endfor %}
   {% endwith %}
@@ -102,7 +88,7 @@ function loadUpcomingReminders() {
       upcomingRow.insertAdjacentHTML('afterend', response['html_from_view'])
       document.getElementById("load-upcoming-reminders-btn").style.display = "none";
       {% with pagenumber=request.GET.urlencode %}
-      {% for q in filter.qs|order_by_reminder_upcoming:pagenumber %}
+      {% for q in filter.qs|filter_upcoming_reminders:pagenumber %}
         $.ajax({
           url: '{% url "targetlist_collapse" %}',
           data: {'target_id': {{ q.target_id }},
@@ -153,31 +139,6 @@ function modify_sequence(clickedId) {
     }
   });
 }
-function approveRejectSequence(observationId, decision) {
-  if (decision === 'rejected') {
-      var cancelComment=prompt('Reason for stopping observations:', '');
-      var comment = {'cancel': cancelComment};
-      var commentJSON = JSON.stringify(comment);
-  } else {
-      var commentJSON = JSON.stringify({});
-  }
-  $.ajax({
-    url: '{% url "custom_code:approve-or-reject-observation" %}',
-    data: {'pk': observationId,
-           'comment': commentJSON,
-           'status': decision},
-    dataType: 'json',
-    success: function(response) {
-      if (response.success === 'Modified') {
-        if (decision === 'rejected') {
-          document.getElementById('reject-' + observationId).value = 'Rejected';
-        } else {
-          document.getElementById('approve-' + observationId).value = 'Approved';
-        }
-      }
-    }
-  })
-}
 $("body").on("keyup", ".cadence-input", function() {
   var t = this;
   var table = t.closest(".table");
@@ -189,7 +150,7 @@ $("body").on("keyup", ".cadence-input", function() {
 $("body").on("keyup", ".delay-start-input", function() {
   var t = this;
   var table = t.closest(".table");
-  var cadence_input = table.querySelectorAll('input[name="cadence_frequency"]')[0];
+  var cadence_input = table.querySelectorAll('input[name="cadence_frequency_days"]')[0];
   var newreminder = 2*parseFloat(cadence_input.value) + parseFloat(t.value) + 0.7;
   var reminder = table.querySelectorAll('input[name="reminder"]')[0];
   reminder.value = newreminder;

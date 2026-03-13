@@ -366,49 +366,29 @@ TARGET_PERMISSIONS_ONLY = False
 # URLs that should be allowed access even with AUTH_STRATEGY = LOCKED
 # for example: OPEN_URLS = ['/', '/about']
 OPEN_URLS = [
+    '/accounts/login/',
+    '/accounts/password_reset/',
+    '/accounts/password_reset/done/',
+    '/accounts/reset/done/',
+    '/accounts/reset/'
     '/accounts/register/',
-    '/snex2/tnstargets/',
     '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
 ]
 if DEBUG:
     HOOKS = {
         'target_post_save': '',
-        'observation_change_state': '',
-        'targetextra_post_save': '',
-        'targetname_post_save': '',
-        'sync_observation_with_snex1': '',
-        'sync_sequence_with_snex1': '',
-        'cancel_sequence_in_snex1': '',
-        'update_reminder_in_snex1': '',
-        'approve_sequence_in_snex1': '',
-        'find_images_from_snex1': '',
-        'change_interest_in_snex1': '',
-        'sync_paper_with_snex1': '',
-        'sync_comment_with_snex1': '',
         'cancel_gw_obs': '',
         'ingest_gw_galaxy_into_snex1': '',
-        'sync_users_with_snex1': '',
+        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
         'download_test_image_from_archive': 'custom_code.hooks.download_test_image_from_archive',
     }
 else:
     HOOKS = {
         'target_post_save': 'custom_code.hooks.target_post_save',
-        'observation_change_state': 'tom_common.hooks.observation_change_state',
-        'targetextra_post_save': 'custom_code.hooks.targetextra_post_save',
-        'targetname_post_save': 'custom_code.hooks.targetname_post_save',
-        'sync_observation_with_snex1': 'custom_code.hooks.sync_observation_with_snex1',
-        'sync_sequence_with_snex1': 'custom_code.hooks.sync_sequence_with_snex1',
-        'cancel_sequence_in_snex1': 'custom_code.hooks.cancel_sequence_in_snex1',
-        'update_reminder_in_snex1': 'custom_code.hooks.update_reminder_in_snex1',
-        'approve_sequence_in_snex1': 'custom_code.hooks.approve_sequence_in_snex1',
-        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
-        'change_interest_in_snex1': 'custom_code.hooks.change_interest_in_snex1',
-        'sync_paper_with_snex1': 'custom_code.hooks.sync_paper_with_snex1',
-        'sync_comment_with_snex1': 'custom_code.hooks.sync_comment_with_snex1',
         'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
+        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
         'ingest_gw_galaxy_into_snex1': 'gw.hooks.ingest_gw_galaxy_into_snex1',
-        'sync_users_with_snex1': 'custom_code.hooks.sync_users_with_snex1',
     }
 
 
@@ -434,12 +414,13 @@ TOM_FACILITY_CLASSES = [
 
 TOM_HARVESTER_CLASSES = [
     'custom_code.harvesters.tns_harvester.TNSHarvester',
-    'custom_code.harvesters.mars_harvester.MARSHarvester',
     'tom_catalogs.harvesters.simbad.SimbadHarvester',
     'tom_catalogs.harvesters.ned.NEDHarvester',
 ]
 
 TOM_CADENCE_STRATEGIES = [
+    'tom_observations.cadences.retry_failed_observations.RetryFailedObservationsStrategy',
+    'tom_observations.cadences.resume_cadence_after_failure.ResumeCadenceAfterFailureStrategy',
     'custom_code.cadences.snex_retry_failed_observations.SnexRetryFailedObservationsStrategy',
     'custom_code.cadences.snex_resume_cadence_after_failure.SnexResumeCadenceAfterFailureStrategy'
 ]

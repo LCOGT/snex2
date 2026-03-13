@@ -431,7 +431,6 @@ def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, hei
                 newfile = tmpfile.split('/')[-1].replace('.fits', '.webp')
             else:
                 newfile = tmpfile.split('/')[-1].replace('.fits', 'grow{}sig{}.webp'.format(grow, sig))
-            logger.info(f'file to make image {tmpfile}')
             outfile = os.path.join(settings.THUMB_DIR,newfile)
             logger.info(f'out file {outfile}')
             f = open(outfile, 'wb')
