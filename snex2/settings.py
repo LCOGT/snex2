@@ -414,7 +414,6 @@ TOM_FACILITY_CLASSES = [
 
 TOM_HARVESTER_CLASSES = [
     'custom_code.harvesters.tns_harvester.TNSHarvester',
-    'custom_code.harvesters.mars_harvester.MARSHarvester',
     'tom_catalogs.harvesters.simbad.SimbadHarvester',
     'tom_catalogs.harvesters.ned.NEDHarvester',
 ]

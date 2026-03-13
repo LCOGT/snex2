@@ -217,7 +217,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                 Target.objects.filter(pk=target.pk).update(first_detection=det_value)
 
         ### Ingest ZTF data, if a ZTF target
-        get_ztf_data(target)
+        # get_ztf_data(target) #want to test first with new url before implementing
 
     else:
 

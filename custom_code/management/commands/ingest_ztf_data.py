@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 def get_ztf_data(target):
 
     filters = {1: 'g_ZTF', 2: 'r_ZTF', 3: 'i_ZTF'}
-    url = 'https://mars.lco.global/'
     
     ztf_name = next((name for name in target.names if 'ZTF' in name), None)
     if not ztf_name:
         return []
-    
+    url = f'http://api.alerce.online/ztf/v1/objects/{ztf_name}/lightcurve'
+
     request = {'queries':
         [
             {'objectId': ztf_name}

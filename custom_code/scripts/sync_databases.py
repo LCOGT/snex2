@@ -1,19 +1,16 @@
 #!/usr/bin/env python
 
-from sqlalchemy import create_engine, and_, update, insert, pool, select
+from sqlalchemy import create_engine, and_, pool
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.sql import func
 
 import json
 from contextlib import contextmanager
 import os
 import datetime
 from django.conf import settings
-from tom_targets.models import Target
 from tom_dataproducts.models import DataProduct, data_product_path, ReducedDatum
 from django.contrib.auth.models import Group
-from custom_code.utils import powers_of_two
 from custom_code.utils import update_permissions
 from custom_code.models import ReducedDatumExtra
 from guardian.shortcuts import assign_perm
@@ -90,18 +87,6 @@ Classifications = load_table('classifications', db_address=settings.SNEX1_DB_URL
 Groups = load_table('groups', db_address=settings.SNEX1_DB_URL)
 Users = load_table('users', db_address=settings.SNEX1_DB_URL)
 
-### And our SNex2 tables
-Data_Product = load_table('tom_dataproducts_dataproduct', db_address=_SNEX2_DB)
-Datum = load_table('tom_dataproducts_reduceddatum', db_address=_SNEX2_DB)
-TargetTable = load_table('tom_targets_basetarget', db_address=_SNEX2_DB)
-Target_Extra = load_table('tom_targets_targetextra', db_address=_SNEX2_DB)
-Targetname = load_table('tom_targets_targetname', db_address=_SNEX2_DB)
-Auth_Group = load_table('auth_group', db_address=_SNEX2_DB)
-Group_Perm = load_table('guardian_groupobjectpermission', db_address=_SNEX2_DB)
-Datum_Extra = load_table('custom_code_reduceddatumextra', db_address=_SNEX2_DB)
-Auth_User = load_table('auth_user', db_address=_SNEX2_DB)
-Auth_User_Group = load_table('auth_user_groups', db_address=_SNEX2_DB)
-
 ### Make a dictionary of the groups in the SNex1 db
 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
     snex1_groups = {}
@@ -119,10 +104,10 @@ def query_db_changes(table, action, db_address=settings.SNEX1_DB_URL):
     action: str, one of 'update', 'insert', or 'delete'
     db_address: str, sqlalchemy address to the database containing table
     """
-    #table_dict = {'photlco': Photlco, 'spec': Spec, 'targets': Targets, 'targetnames': Target_Names}
+    #table_dict = {'photlco': Photlco, 'spec': Spec}
     with get_session(db_address=db_address) as db_session:
         criteria = and_(Db_Changes.tablename==table, Db_Changes.action==action)
-        record = db_session.query(Db_Changes).filter(criteria)#.order_by(Db_Changes.id.desc()).all()
+        record = db_session.query(Db_Changes).filter(criteria)
     return record
 
 
@@ -167,7 +152,7 @@ def update_phot(action, db_address=_SNEX2_DB):
     action: str, one of 'update', 'insert', or 'delete'
     db_address: str, sqlalchemy address to the SNex2 db
     """
-    logger.info('Updating Photometry. . .')
+    logger.info(f'{action} to photometry. . .')
     phot_result = query_db_changes('photlco', action, db_address=settings.SNEX1_DB_URL)
     logger.info(f'Total photometry changes {len([change.rowid for change in phot_result])}')
 
@@ -288,7 +273,7 @@ def update_spec(action, db_address=_SNEX2_DB):
     action: str, one of 'update', 'insert', or 'delete'
     db_address: str, sqlalchemy address to the SNex2 db
     """
-    logger.info('Updating Spectra. . .')
+    logger.info(f'{action} for spectra. . .')
     spec_result = query_db_changes('spec', action, db_address=settings.SNEX1_DB_URL)
     logger.info(f'Total spectra changes {len([change.rowid for change in spec_result])}')
     for result in spec_result:
@@ -398,270 +383,6 @@ def update_spec(action, db_address=_SNEX2_DB):
             logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid} with exception {e}")
             continue
 
-
-def update_target(action, db_address=_SNEX2_DB):
-    """
-    Queries the Target table in the SNex2 db with any changes made to the Targets and Targetnames tables in the SNex1 db
-
-    Parameters
-    ----------
-    action: str, one of 'update', 'insert', or 'delete'
-    db_address: str, sqlalchemy address to the SNex2 db
-    """
-    logger.info('Updating Targets. . .')
-    target_result = query_db_changes('targets', action, db_address=settings.SNEX1_DB_URL)
-    name_result = query_db_changes('targetnames', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total target changes {len([change.rowid for change in target_result])}')
-    logger.info(f'Total target name changes {len([change.rowid for change in name_result])}')
-
-    for tresult in target_result:
-        try:
-            target_id = tresult.rowid # The ID of the row in the targets table
-            target_row = get_current_row(Targets, target_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to target_id in the targets table
-
-            t_ra = target_row.ra0
-            t_dec = target_row.dec0
-            t_modified = target_row.lastmodified
-            t_created = target_row.datecreated
-            if t_created is None:
-                t_created = t_modified
-            t_groupid = int(target_row.groupidcode)
-            t_redshift = target_row.redshift
-
-            class_id = target_row.classificationid
-            if class_id is not None:
-                class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
-                logger.info(f'Classification for {target_id} has been set: {class_name}')
-            else:
-                logger.info(f'No classification for {target_id} set yet: {target_row.classificationid}')
-                class_name = None
-
-            ### Get the name of the target
-            with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-                name_query = db_session.query(Target_Names).filter(Target_Names.targetid==target_row.id).first()
-                if name_query is not None:
-                    t_name = name_query.name
-                else:
-                    ### No name found, so target was created and deleted without being synced
-                    continue
-                db_session.commit()
-
-            with get_session(db_address=db_address) as db_session:
-                if action=='update':
-                    target = Target.objects.get(pk=target_id)
-
-                    # the following could be the same as the insert action, not sure if necessary to have
-                    #   as a separate code block
-                    Target.objects.filter(pk=target_id).update(ra=t_ra,
-                                                               dec=t_dec,
-                                                               modified=t_modified,
-                                                               created=t_created,
-                                                               type='SIDEREAL',
-                                                               epoch=2000,
-                                                               scheme='',
-                                                               redshift=t_redshift,
-                                                               classification = class_name)
-                    update_permissions(t_groupid, 'change_target', target, snex1_groups)
-                    update_permissions(t_groupid, 'delete_target', target, snex1_groups)
-                    update_permissions(t_groupid, 'view_target', target, snex1_groups)
-                elif action=='insert':
-                    target, created = Target.objects.get_or_create(id=target_id)
-                    target.name = t_name
-                    target.ra = t_ra
-                    target.dec = t_dec
-                    target.modified = t_modified
-                    target.created = t_created
-                    target.type = 'SIDEREAL'
-                    target.epoch = 2000
-                    target.scheme = ''
-                    target.permissions = 'PRIVATE'
-                    target.save()
-                    if 'postgresql' in db_address:
-                        db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
-                    update_permissions(t_groupid, 'change_target', target, snex1_groups)
-                    update_permissions(t_groupid, 'delete_target', target, snex1_groups)
-                    update_permissions(t_groupid, 'view_target', target, snex1_groups)
-                elif action=='delete':
-                    Target.objects.delete(id=target_id)
-
-                db_session.commit()
-            delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
-
-        except:
-            raise #continue
-
-    for nresult in name_result:
-        try:
-            name_id = nresult.rowid # The ID of the row in the targetnames table
-            name_row = get_current_row(Target_Names, name_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to name_id in the targetnames table
-
-            if action!='delete':
-                n_id = name_row.targetid
-                t_name = name_row.name
-                
-                with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-                    standard_classification_row = db_session.query(Classifications).filter(Classifications.name=='Standard').first()
-                    if standard_classification_row is not None:
-                        standard_classification_id = standard_classification_row.id
-                    else:
-                        standard_classification_id = -1
-                    standard_list = db_session.query(Targets).filter(Targets.classificationid==standard_classification_id)
-                    standard_ids = [x.id for x in standard_list]
-
-                if n_id not in standard_ids:
-
-                    with get_session(db_address=db_address) as db_session:
-                        targetname_criteria = and_(Targetname.name==t_name, Targetname.target_id==n_id)
-                        if action=='update':
-                            db_session.query(TargetTable).filter(TargetTable.id==n_id).update({'name': t_name})
-                            db_session.query(Targetname).filter(targetname_criteria).update({'name': t_name})
-
-                        elif action=='insert':
-                            existing_name = db_session.query(Targetname).filter(Targetname.name==t_name, Targetname.target_id==n_id).first()
-                            if not existing_name:
-                                db_session.add(Targetname(name=t_name, target_id=n_id, created=datetime.datetime.utcnow(), modified=datetime.datetime.utcnow()))
-
-                    db_session.commit()
-            
-            delete_row(Db_Changes, nresult.id, db_address=settings.SNEX1_DB_URL)
-        
-        except:
-            raise #continue
-
-def update_users(action, db_address=_SNEX2_DB):
-    """
-    Update the snex 2 db when a users registers or changes their username/password in the
-    snex 1 db.
-
-    Parameters
-    ----------
-    action: str, action that was done on the users table ['update', 'insert', 'delete']
-    """
-    logger.info('Updating Users. . .')
-    user_changes = query_db_changes('users', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total user changes {len([change.rowid for change in user_changes])}')
-    for change in user_changes:
-        try:
-            row_id = change.rowid
-            user_row = get_current_row(Users, row_id, db_address=settings.SNEX1_DB_URL)
-            if action == 'delete':
-                old_username = change.locator
-                with get_session(db_address=db_address) as db_session:
-                    db_session.query(Auth_User).filter(Auth_User.username == old_username).delete()
-                    db_session.commit()
-
-            elif action == 'insert':
-                with get_session(db_address=db_address) as db_session:
-
-                    user = (
-                        db_session.query(Auth_User)
-                        .filter(Auth_User.username == user_row.name)
-                        .one_or_none()
-                    )
-
-                    if user:
-                        user.password = 'crypt$$' + user_row.pw
-                        user.first_name = user_row.firstname
-                        user.last_name = user_row.lastname
-                        user.email = user_row.email
-                    else:
-                        logger.info(f'Creating new user: {user_row.name}')
-                        user = Auth_User(
-                            username=user_row.name,
-                            password='crypt$$' + user_row.pw,
-                            first_name=user_row.firstname,
-                            last_name=user_row.lastname,
-                            email=user_row.email,
-                            is_staff=False,
-                            is_active=True,
-                            is_superuser=False,
-                            date_joined=user_row.datecreated,
-                        )
-                        db_session.add(user)
-                        db_session.flush()
-                        
-                    affiliated_group_idcodes = powers_of_two(user_row.groupidcode)
-
-                    for g_name, g_id in snex1_groups.items():
-                        if g_id in affiliated_group_idcodes:
-                            snex2_group = (
-                                db_session.query(Auth_Group)
-                                .filter(Auth_Group.name == g_name)
-                                .one()
-                            )
-
-                            exists = (
-                                db_session.query(Auth_User_Group)
-                                .filter(
-                                    Auth_User_Group.user_id == user.id,
-                                    Auth_User_Group.group_id == snex2_group.id,
-                                )
-                                .first()
-                            )
-
-                            if not exists:
-                                db_session.add(
-                                    Auth_User_Group(
-                                        user_id=user.id,
-                                        group_id=snex2_group.id,
-                                    )
-                                )
-
-                    db_session.commit()
-
-
-            elif action == 'update':
-                old_username = change.locator
-                with get_session(db_address=db_address) as db_session:
-                    db_session.query(Auth_User).filter(
-                        Auth_User.username==old_username
-                    ).update(
-                        {'username': user_row.name,
-                         'password': 'crypt$$'+user_row.pw,
-                         'first_name': user_row.firstname,
-                         'last_name': user_row.lastname,
-                         'email': user_row.email}
-                    )
-                    db_session.commit()
-
-            delete_row(Db_Changes, change.id, db_address=settings.SNEX1_DB_URL)
-
-        except:
-            raise
-
-
-def update_groups(action, db_address=_SNEX2_DB):
-    logger.info('Updating Groups. . .')
-    group_changes = query_db_changes('groups', action, db_address=settings.SNEX1_DB_URL)
-    logger.info(f'Total group changes {len([change.rowid for change in group_changes])}')
-    for change in group_changes:
-        row_id = change.rowid
-        group_row = get_current_row(Groups, row_id, db_address=settings.SNEX1_DB_URL)
-        if action == 'delete':
-            old_group_name = change.locator
-            with get_session(db_address=db_address) as db_session:
-                db_session.query(Auth_Group).filter(Auth_Group.name == old_group_name).delete()
-                db_session.commit()
-
-        elif action == 'insert':
-            with get_session(db_address=db_address) as db_session:
-                new_group = Auth_Group(name=group_row.name)
-                db_session.add(new_group)
-                db_session.commit()
-
-        elif action == 'update':
-            old_group_name = change.locator
-            with get_session(db_address=db_address) as db_session:
-                db_session.query(Auth_Group).filter(
-                    Auth_Group.name == old_group_name
-                ).update(
-                    {'name': group_row.name}
-                )
-                db_session.commit()
-
-        delete_row(Db_Changes, change.id, db_address=settings.SNEX1_DB_URL)
-
-
 def run():
     """
     Migrates all changes from the SNex1 db to the SNex2 db,
@@ -669,10 +390,8 @@ def run():
     """
     actions = ['delete', 'insert', 'update']
     for action in actions:
-        logger.info(f'Updating for action: {action}')
-        update_target(action, db_address=_SNEX2_DB)
-        logger.info('Done updating targets')
+        logger.info(f'Running action: {action}')
         update_phot(action, db_address=_SNEX2_DB)
-        logger.info('Done updating photometry')
+        logger.info('Done with photometry')
         update_spec(action, db_address=_SNEX2_DB)
-        logger.info('Done updating spectra')
+        logger.info('Done with spectra')

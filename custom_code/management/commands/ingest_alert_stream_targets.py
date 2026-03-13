@@ -173,7 +173,7 @@ class Command(BaseCommand):
                     obj.save()
 
                 except:
-                    logger.info('Getting MARS ZTF photometry failed for {}'.format(obj.name))
+                    logger.info('Getting ZTF photometry failed for {}'.format(obj.name))
 
             ### Now the TNS data
             search_url = "https://www.wis-tns.org/api/get/search"

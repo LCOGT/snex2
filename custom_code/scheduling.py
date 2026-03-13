@@ -74,7 +74,7 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
                 'submit_date': timezone.now(),
                 'is_public': True,
                 'is_removed': False,
-                'site_id': getattr(settings, 'SITE_ID', 1)
+                'site_id': getattr(settings, 'SITE_ID')
             }
         )
         
