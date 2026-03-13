@@ -146,6 +146,14 @@ class SNEx2RegistrationApprovalForm(RegistrationApprovalForm):
         help_text='Please briefly describe who you are or which group/institution you work with.',
     )
 
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("A user already exists with this email address.")
+
+        return email
+    
     def save(self, commit=True):
         user = super().save(commit=commit)
         if commit and user and hasattr(self, 'cleaned_data') and self.cleaned_data.get('who_you_are'):
