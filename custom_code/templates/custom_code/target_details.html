@@ -15,6 +15,15 @@
 <div class="row">
   <button class="btn" id="swift-data-button" style="background-color: white; color: #174460; border-color: #174460;" onclick="querySwiftData()">Click to Check</button>
 </div>
+<h4>Does this Target have ZTF Data?</h4>
+<div class="row">
+    <button class="btn" id="ztf-data-button" 
+            style="background-color: white; color: #174460; border-color: #174460;" 
+            onclick="queryZTFData()">
+        Check for ZTF Data
+    </button>
+    <span id="ztf-status" style="margin-left: 12px; color: #174460; font-size: 14px;"></span>
+</div>
 <h4>Times of Last Nondetection and First Detection</h4>
 <table id="tns-tab" class="detail-tab" style="width: 100%; margin-bottom: 10px;">
   <tr>
@@ -241,6 +250,35 @@ function querySwiftData() {
       document.getElementById('swift-data-button').innerHTML = response.success;
     }
   })
+}
+function queryZTFData() {
+    var targetid = {{ target.id }};
+    var button = document.getElementById('ztf-data-button');
+    var status = document.getElementById('ztf-status');
+    
+    button.disabled = true;
+    button.innerHTML = 'Checking...';
+    status.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Querying ALeRCE for ZTF data...';
+
+    $.ajax({
+        url: '{% url "query-ztf-observations" %}',
+        data: {'target_id': targetid},
+        dataType: 'json',
+        success: function(response) {
+            button.innerHTML = 'Check for ZTF Data';
+            button.disabled = false;
+            if (response.error) {
+                status.innerHTML = '<span style="color: red;">&#x2715; ' + response.error + '</span>';
+            } else {
+                status.innerHTML = '<span style="color: green;">&#x2713; ' + response.success + '</span>';
+            }
+        },
+        error: function() {
+            button.innerHTML = 'Check for ZTF Data';
+            button.disabled = false;
+            status.innerHTML = '<span style="color: red;">&#x2715; Request failed</span>';
+        }
+    });
 }
 </script>
 

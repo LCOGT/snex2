@@ -57,6 +57,7 @@ urlpatterns = [
     path('scheduling/', CustomObservationListView.as_view(), name='scheduling'),
     path('submit/<str:facility>/', CustomObservationCreateView.as_view(), name='submit-lco-obs'),
     path('query-swift-observations/', query_swift_observations_view, name='query-swift-observations'),
+    path('query-ztf-observations/', query_ztf_observations_view, name='query-ztf-observations'),
     path('load-lc/', load_lightcurve_view, name='load-lc'),
     path('load-dash-lightcurve/', load_dash_lightcurve_view, name='load-dash-lightcurve'),
     path('load-spectra-plot/', load_spectra_plot_view, name='load-spectra-plot'),

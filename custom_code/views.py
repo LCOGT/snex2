@@ -48,6 +48,7 @@ from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTarge
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unreduced_spectra
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
 from custom_code.templatetags import custom_code_tags
@@ -1443,15 +1444,31 @@ class BrokerTargetView(FilterView):
 
 
 def query_swift_observations_view(request):
-   target_id = request.GET['target_id']
-   t = Target.objects.get(id=target_id)
-   ra, dec = t.ra, t.dec
+    target_id = request.GET['target_id']
+    t = Target.objects.get(id=target_id)
+    ra, dec = t.ra, t.dec
 
-   ### NOT CURRENTLY FUNCTIONAL
-   content_response = {'success': 'No'}
+    ### NOT CURRENTLY FUNCTIONAL
+    content_response = {'success': 'No'}
 
-   return HttpResponse(json.dumps(content_response), content_type='application/json')
+    return HttpResponse(json.dumps(content_response), content_type='application/json')
 
+def query_ztf_observations_view(request):
+    target_id = request.GET['target_id']
+    target = Target.objects.get(id=target_id)
+    logger.info(f'Querying ZTF data for {target.name}')
+    
+    ztf_name = next((name for name in target.names if 'ZTF' in name), None)
+    if not ztf_name:
+        return HttpResponse(json.dumps({'error': f'No ZTF name found for {target.name}'}), content_type='application/json')
+    
+    try:
+        get_ztf_data(target)
+        count = ReducedDatum.objects.filter(target=target, data_type='photometry', source_name=ztf_name).count()
+        return HttpResponse(json.dumps({'success': f'Ingested {count} ZTF photometry points for {ztf_name}'}), content_type='application/json')
+    except Exception as e:
+        logger.warning(f'ZTF ingestion failed for {target.name}: {e}')
+        return HttpResponse(json.dumps({'error': f'Ingestion failed: {e}'}), content_type='application/json')
 
 def make_thumbnail_view(request):
 

@@ -4,7 +4,6 @@ import logging
 from astropy.time import Time
 import json
 from tom_targets.models import Target
-from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 
 from datetime import datetime, date
 import numpy as np
@@ -179,45 +178,44 @@ def _get_tns_params(target):
 def target_post_save(target, created, group_names=None, wrapped_session=None):
  
     logger.info('Target post save hook: %s created: %s', target, created)
-    
     if not created:
         
         ### Add the last nondetection and first detection from TNS, if it exists
         tns_results = _get_tns_params(target)
         if tns_results.get('success', ''):
-            if tns_results['nondetection'] == None:
-                print('No TNS last nondetection found for target',target)
+            nondet_value = None
+            det_value = None
+
+            if tns_results['nondetection'] is None:
+                logger.warning('No TNS last nondetection found for target %s', target)
             else:
-                nondet_date = tns_results['nondetection'].split()[0]
-                nondet_jd = tns_results['nondetection'].split()[1].replace('(', '').replace(')', '')
+                nondet_parts = tns_results['nondetection'].split()
                 nondet_value = json.dumps({
-                    'date': nondet_date,
-                    'jd': nondet_jd,
+                    'date': nondet_parts[0],
+                    'jd': nondet_parts[1].replace('(', '').replace(')', ''),
                     'mag': tns_results['nondet_mag'],
                     'filt': tns_results['nondet_filt'],
                     'source': 'TNS'
                 })
 
-                logger.info(f'Saving target {target} after TNS nondetection ingestion')
-                Target.objects.filter(pk=target.pk).update(last_nondetection=nondet_value)
-            if tns_results['detection'] == None:
-                print('No TNS detection found for target',target)
+            if tns_results['detection'] is None:
+                logger.warning('No TNS detection found for target %s', target)
             else:
-                det_date = tns_results['detection'].split()[0]
-                det_jd = tns_results['detection'].split()[1].replace('(', '').replace(')', '')
+                det_parts = tns_results['detection'].split()
                 det_value = json.dumps({
-                    'date': det_date,
-                    'jd': det_jd,
+                    'date': det_parts[0],
+                    'jd': det_parts[1].replace('(', '').replace(')', ''),
                     'mag': tns_results['det_mag'],
                     'filt': tns_results['det_filt'],
                     'source': 'TNS'
                 })
-                
-                logger.info(f'Target {target} first detection saved from TNS.')
-                Target.objects.filter(pk=target.pk).update(first_detection=det_value)
 
-        ### Ingest ZTF data, if a ZTF target
-        # get_ztf_data(target) #want to test first with new url before implementing
+            if nondet_value or det_value:
+                logger.info('Saving TNS params for target %s', target)
+                Target.objects.filter(pk=target.pk).update(
+                    last_nondetection=nondet_value,
+                    first_detection=det_value
+                )
 
     else:
 
@@ -226,17 +224,9 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
     
         else:
             db_session = _return_session(settings.SNEX1_DB_URL)
-    
         Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
         Targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
-        # Insert into SNEx 1 db
-        if group_names:
-            groupidcode = 0
-            for group_name in group_names:
-                groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
-        else:
-            groupidcode = 32769 #Default in SNEx1
+        groupidcode = 32769 #Default in SNEx1, group_names isn't passed anyway. Permissions are handled on SNEx2 side.
         snex1_target = Targets(id=target.id, ra0=target.ra, dec0=target.dec, groupidcode=groupidcode, lastmodified=target.modified, datecreated=target.created)
         db_session.add(snex1_target)
         db_session.add(Targetnames(targetid=target.id, name=target.name, datecreated=target.created, lastmodified=target.modified))
@@ -251,7 +241,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
         
         else:
             db_session.flush()
-
+           
 def find_images_from_snex1(targetid, username, allimages=False):
     '''
     Hook to find filenames of images in SNEx1,

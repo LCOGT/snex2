@@ -6,30 +6,33 @@ from astropy.time import Time, TimezoneInfo
 from tom_dataproducts.models import ReducedDatum, DataProduct
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
+from guardian.shortcuts import assign_perm
+from django.contrib.auth.models import Group
 
 logger = logging.getLogger(__name__)
 
 
 def get_ztf_data(target):
-
+    logger.info(f'starting ztf ingestion')
     filters = {1: 'g_ZTF', 2: 'r_ZTF', 3: 'i_ZTF'}
     
     ztf_name = next((name for name in target.names if 'ZTF' in name), None)
     if not ztf_name:
         return []
-    url = f'http://api.alerce.online/ztf/v1/objects/{ztf_name}/lightcurve'
 
-    request = {'queries':
-        [
-            {'objectId': ztf_name}
-        ]
-    }
+    url = f'https://api.alerce.online/ztf/v1/objects/{ztf_name}/lightcurve'
     try:
-        r = requests.post(url, json=request)
-        results = r.json()['results'][0]['results']
-    
+        r = requests.get(url)
+        r.raise_for_status()
+        results = r.json()
     except Exception as e:
         logger.info('Failed to get ZTF photometry for {}: {}'.format(ztf_name, e))
+        return []
+
+    detections = results.get('detections', [])
+    logger.info(f'{len(detections)} found for {target.name}')
+    if not detections:
+        logger.warning(f'No ZTF detections found for {ztf_name}')
         return []
 
     dp, created = DataProduct.objects.get_or_create(
@@ -38,57 +41,63 @@ def get_ztf_data(target):
         data_product_type='photometry',
         product_id='photometry_{}'.format(ztf_name)
     )
-    dp.save() 
-    data_product_id = int(dp.id)
 
     if created:
-        # Create ReducedDatumExtra to go along with these data 
+        for group in Group.objects.all():
+            assign_perm('tom_dataproducts.view_dataproduct', group, dp)
+            assign_perm('tom_dataproducts.change_dataproduct', group, dp)
+            assign_perm('tom_dataproducts.delete_dataproduct', group, dp)
         datum_extra_value = {
-            'data_product_id': data_product_id,
+            'data_product_id': int(dp.id),
             'instrument': 'ZTF',
             'photometry_type': 'PSF'
         }
-        rde = ReducedDatumExtra(
+        ReducedDatumExtra.objects.create(
             target=target,
             data_type='photometry',
             key='upload_extras',
             value=json.dumps(datum_extra_value)
         )
-        rde.save()
 
-    for alert in results:
-        if all([key in alert['candidate'] for key in ['jd', 'magpsf', 'fid', 'sigmapsf']]):
-            jd = Time(alert['candidate']['jd'], format='jd', scale='utc')
-            jd.to_datetime(timezone=TimezoneInfo())
-            value = {
-                'magnitude': alert['candidate']['magpsf'],
-                'filter': filters[alert['candidate']['fid']],
-                'error': alert['candidate']['sigmapsf']
-            }
-            rd, created = ReducedDatum.objects.get_or_create(
-                timestamp=jd.to_datetime(timezone=TimezoneInfo()),
-                value=value,
-                source_name=target.name,
-                source_location=alert['lco_id'],
-                data_type='photometry',
-                target=target,
-                data_product=dp)
-            rd.save()
-    
+    for alert in detections:
+        if alert.get('dubious'):
+            continue
+        required = ['mjd', 'magpsf', 'fid', 'sigmapsf']
+        if not all(alert.get(key) is not None for key in required):
+            continue
+        if alert['fid'] not in filters:
+            continue
 
-    logger.info('Finished checking ZTF photometry for {}'.format(ztf_name))
-    return [] 
-        
+        jd = Time(alert['mjd'], format='mjd', scale='utc')
+        value = {
+            'magnitude': alert['magpsf'],
+            'filter': filters[alert['fid']],
+            'error': alert['sigmapsf']
+        }
+        rd, _ = ReducedDatum.objects.get_or_create(
+            timestamp=jd.to_datetime(timezone=TimezoneInfo()),
+            value=value,
+            source_name=ztf_name,
+            source_location=url,
+            data_type='photometry',
+            target=target,
+            data_product=dp
+        )
+
+    logger.info(f'Finished ingesting ZTF photometry for {ztf_name} ({target.name}) ({len(detections)} detections)')
+    return []
 
 def delete_ztf_data(target):
-
-    phot = ReducedDatum.objects.filter(target=target, data_type='photometry')
-    ztf_phot = [p for p in phot if 'ZTF' in p.value['filter']]
-    for p in ztf_phot:
-        p.delete()
-
-    print('Deleted ZTF photometry for {}'.format(target.name))
-
+    ztf_name = next((name for name in target.names if 'ZTF' in name), None)
+    if not ztf_name:
+        logger.warning(f'No ZTF name found for {target}')
+        return
+    deleted, _ = ReducedDatum.objects.filter(
+        target=target,
+        data_type='photometry',
+        source_name=ztf_name
+    ).delete()
+    logger.info(f'Deleted {deleted} ZTF photometry points for {target}')
 
 class Command(BaseCommand):
 
