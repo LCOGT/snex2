@@ -22,6 +22,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from django.contrib.auth.forms import AuthenticationForm
+
+class SafeAuthenticationForm(AuthenticationForm):
+    def clean(self):
+        try:
+            return super().clean()
+        except AttributeError:
+            raise forms.ValidationError(
+                'Your password needs to be reset. Please follow the link below.'
+            )
+        
 class CustomTargetCreateForm(SiderealTargetCreateForm):
 
     sciencetags = forms.ModelMultipleChoiceField(ScienceTags.objects.all().order_by(Lower('tag')), widget=forms.CheckboxSelectMultiple, label='Science Tags', required=False)

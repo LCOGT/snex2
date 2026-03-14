@@ -22,6 +22,8 @@ from custom_code.api_views import CustomDataProductViewSet, CustomObservationRec
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
+from django.contrib.auth import views as auth_views
+from custom_code.forms import SafeAuthenticationForm
 
 custom_router = DefaultRouter()
 custom_router.register(r'photometry-upload', CustomDataProductViewSet, 'photometry-upload')
@@ -30,6 +32,7 @@ custom_router.register(r'submit-observation', CustomObservationRecordViewSet, 's
 
 urlpatterns = [
     path('accounts/register/', SNEx2ApprovalRegistrationView.as_view(), name='register'),
+    path('accounts/login/', auth_views.LoginView.as_view(authentication_form=SafeAuthenticationForm), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('', include('tom_common.urls')),
     path('targets/', TargetListView.as_view(), name='list'),
