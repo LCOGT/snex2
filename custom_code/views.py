@@ -1,70 +1,59 @@
-from django_filters.views import FilterView
-from django.shortcuts import redirect, render
-from django.core.files.base import ContentFile
-from django.db import transaction
-from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, Sum
-from django.db.models.functions import Cast
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse
-from django.views.generic.base import TemplateView, RedirectView
-from django.views.generic.list import ListView
-from django.views.generic.edit import FormView
-from django.views.generic.detail import DetailView
-from django.urls import reverse, reverse_lazy
-from django.template.loader import render_to_string
-from django.template.context import RequestContext
-from django_comments.models import Comment
-
-from tom_targets.models import TargetList, Target, TargetName
-from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
-from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
-from custom_code.forms import SNEx2UserCreationForm, SNEx2RegistrationApprovalForm
-from guardian.mixins import PermissionListMixin
-from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
-from django.contrib.auth.models import User, Group
-from django.contrib.contenttypes.models import ContentType
-from django.contrib import messages
-from django.conf import settings
-from django.db.models.fields.json import KeyTextTransform
-
-from astropy.coordinates import SkyCoord
-from astropy import units as u
-from astropy.time import Time
-from datetime import datetime, date, timedelta
-import json
-from io import StringIO, BytesIO
-
-from tom_dataproducts.models import ReducedDatum, DataProduct
-from custom_code.templatetags import custom_code_tags
-from tom_observations.templatetags.observation_extras import observing_buttons
-from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
-from tom_targets.templatetags.targets_extras import target_groups
-from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
-from custom_code.thumbnails import make_thumb
-
-from custom_code.forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm, PhotSchedulingForm, SpecSchedulingForm
-from tom_targets.views import TargetCreateView
-from tom_common.hooks import run_hook
-
-from tom_common.views import UserUpdateView
-from tom_dataproducts.views import DataProductUploadView, DataProductDeleteView
-from tom_dataproducts.exceptions import InvalidFileFormatException
-
-from custom_code.processors.data_processor import run_custom_data_processor
-from guardian.shortcuts import assign_perm
-
-from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
-from tom_observations.views import ObservationCreateView, ObservationListView
-from tom_registration.registration_flows.approval_required.views import UserApprovalView, ApprovalRegistrationView
 import base64
-import requests
-from django import forms
-from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit, Layout, Div, HTML, Row, Column
-from django.utils import timezone
+import json
 import os
-from custom_code.scheduling import change_obs_from_scheduling, save_comments, cancel_observation
-
+from datetime import date, datetime, timedelta
+from io import BytesIO, StringIO
+import requests
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.time import Time
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import HTML, Column, Div, Layout, Row, Submit
+from django import forms
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.models import Group, User
+from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
+from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast
+from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.shortcuts import redirect, render
+from django.template.context import RequestContext
+from django.template.loader import render_to_string
+from django.urls import reverse, reverse_lazy
+from django.utils import timezone
+from django.views.generic.base import RedirectView, TemplateView
+from django.views.generic.detail import DetailView
+from django.views.generic.edit import FormView
+from django.views.generic.list import ListView
+from django_comments.models import Comment
+from django_filters.views import FilterView
+from guardian.mixins import PermissionListMixin
+from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
+from tom_common.views import UserUpdateView
+from tom_dataproducts.exceptions import InvalidFileFormatException
+from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
+from tom_dataproducts.views import DataProductDeleteView, DataProductUploadView
+from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
+from tom_observations.templatetags.observation_extras import observing_buttons
+from tom_observations.views import ObservationCreateView, ObservationListView
+from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
+from tom_targets.models import Target, TargetList, TargetName
+from tom_targets.templatetags.targets_extras import target_groups
+from tom_targets.views import TargetCreateView
+from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
+from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
+from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unreduced_spectra
+from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.processors.data_processor import run_custom_data_processor
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
+from custom_code.templatetags import custom_code_tags
+from custom_code.thumbnails import make_thumb
 import logging
+
 logger = logging.getLogger(__name__)
 
 ## debug
@@ -278,51 +267,6 @@ class CustomTargetCreateView(TargetCreateView):
         context = super(CustomTargetCreateView, self).get_context_data(**kwargs)
         context['type_choices'] = Target.TARGET_TYPES
         return context
-
-    def post(self, request):
-        super(CustomTargetCreateView, self).post(request)
-        return redirect(self.get_success_url())
-    
-    def form_valid(self, form):
-
-        # First, create the targets in both dbs and nothing else
-        with transaction.atomic():
-            if form.is_valid():
-
-                ### Check that there are no targets with the same name or coordinates
-                target_cone_search = Target.objects.filter(ra__gte=form.cleaned_data['ra']-4.0/3600.0, ra__lte=form.cleaned_data['ra']+4.0/3600.0, dec__gte=form.cleaned_data['dec']-4.0/3600.0, dec__lte=form.cleaned_data['dec']+4.0/3600.0)
-                if target_cone_search.count() > 0.0:
-                    logger.info('There exists another target near the coordinates {} {}'.format(form.cleaned_data['ra'], form.cleaned_data['dec']))
-                    form.errors['ra'] = ['Target found with same or similar coordinates']
-                    form.errors['dec'] = ['Target found with same or similar coordinates']
-                    return super().form_invalid(form)
-
-                name_lookup = form.cleaned_data['name'].replace('SN', '').replace('AT', '').replace(' ', '')
-                target_name_search = Target.objects.filter(Q(name__icontains=name_lookup) | Q(aliases__name__icontains=name_lookup)).distinct()
-
-                if target_name_search.count() > 0.0:
-                    logger.info('Target with name {} already exists'.format(form.cleaned_data['name']))
-                    form.errors['name'] = ['Target found with same name']
-                    return super().form_invalid(form)
-
-
-                groups = [g.name for g in form.cleaned_data['groups']]
-                self.object = form.save(form)
-
-            else:
-                logger.info('Submitting target failed with errors {}'.format(form.errors))
-                return super().form_invalid(form)
-
-
-        return redirect(self.get_success_url())
-
-    def get_initial(self):
-        return {
-            'type': self.get_target_type(),
-            'groups': Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
-            **dict(self.request.GET.items())
-        }
-    
 
 class CustomUserUpdateView(UserUpdateView):
 
@@ -985,9 +929,8 @@ def load_thumbnail_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        # Create a context dict with request, as expected by test_display_thumbnail
         context_dict = {'request': request}
-        context = custom_code_tags.test_display_thumbnail(context_dict, target)
+        context = custom_code_tags.display_thumbnails(context_dict, target)
         html = render_to_string(
             template_name='custom_code/thumbnail.html',
             context=context,
