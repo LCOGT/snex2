@@ -280,7 +280,8 @@ def find_images_from_snex1(targetid, username, allimages=False):
         
         filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
         if len(filepaths)==0:
-            raise IndexError(f"No images found for target {targetid}") 
+            logger.info(f'No images found for target {targetid}')
+            return [], [], [], [], [], [], [], [], []
         filenames = [q.filename.replace('.fits', '') for q in query]
         dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
         teles = [q.telescope[:3] for q in query]

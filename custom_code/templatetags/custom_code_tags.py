@@ -1686,10 +1686,10 @@ def image_slideshow(context, target):
     ### Get a list of all the image filenames for this target
     if not settings.DEBUG:
         #NOTE: Production
-        try:
-            filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
-        except Exception as e:
-            logger.exception(f'Finding images in snex1 failed {e}')
+        
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
+        if not filepaths:
+            logger.info(f'No images found for target {target}')
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
@@ -1948,7 +1948,7 @@ def lightcurve_with_extras(target, user):
 
 
 @register.inclusion_tag('custom_code/thumbnail.html', takes_context=True)
-def test_display_thumbnail(context, target):
+def display_thumbnails(context, target):
     
     from os import listdir
     from os.path import isfile, join
@@ -1957,17 +1957,17 @@ def test_display_thumbnail(context, target):
     
     if not settings.DEBUG:
         #NOTE: Production
-        try:
-            filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
-        except Exception as e:
-            logger.info(f'Finding images in snex1 failed {e}')
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
+        if not filepaths:
+            logger.info(f'No images found for target {target}')
             return {'top_images': [],
-                    'bottom_images': []}
+                    'bottom_images': [], 'no_images': True}
 
     else:
         return {
-                "top_images": [],
-                "bottom_images": [],
+                'top_images': [],
+                'bottom_images': [],
+                'no_images': True
             }
     
     thumbs = [f for f in listdir(settings.THUMB_DIR) if isfile(join(settings.THUMB_DIR, f))]
@@ -2018,7 +2018,8 @@ def test_display_thumbnail(context, target):
                                       })
 
     return {'top_images': top_images,
-            'bottom_images': bottom_images}
+            'bottom_images': bottom_images,
+            'no_images': False}
 
 
 @register.filter
