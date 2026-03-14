@@ -148,14 +148,9 @@
   });
 function downloadAll() {
   const button = document.querySelector("button[onclick='downloadAll()']");
-  const select = document.getElementById("id_filenames");
-  const files = [];
-  for (let i = 0; i < select.options.length; i++) {
-      const val = select.options[i].value;
-      if (val) files.push(JSON.parse(val));
-  }
   const originalText = button.innerHTML;
-  button.innerHTML = `Downloading ${files.length} images...`;
+  
+  button.innerHTML = `Preparing images. This may take a while...`;
   button.disabled = true;
 
   const form = document.createElement("form");
@@ -163,19 +158,18 @@ function downloadAll() {
   form.action = "{% url 'download-all' %}";
   form.style.display = "none";
 
-  const input = document.createElement("input");
-  input.type = "hidden";
-  input.name = "files";
-  input.value = JSON.stringify(files);
-  form.appendChild(input);
-
   const csrfInput = document.createElement("input");
   csrfInput.type = "hidden";
   csrfInput.name = "csrfmiddlewaretoken";
   const csrfToken = $("input[name=csrfmiddlewaretoken]").val();
-  form.appendChild(csrfInput);
   csrfInput.value = csrfToken;
   form.appendChild(csrfInput);
+
+  const targetInput = document.createElement("input");
+  targetInput.type = "hidden";
+  targetInput.name = "target_id";
+  targetInput.value = "{{ target.id }}";
+  form.appendChild(targetInput);
 
   document.body.appendChild(form);
   form.submit();

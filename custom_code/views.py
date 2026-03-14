@@ -1552,34 +1552,51 @@ def download_fits_view(request):
 
 @require_POST
 def download_all_view(request):
-    files = json.loads(request.POST.get("files"))
+    target_id = request.POST.get('target_id')
+    target = Target.objects.get(id = target_id)
+    target_names = [target_name.name for target_name in TargetName.objects.filter(target=target)]
+
     token = settings.FACILITIES['LCO']['api_key']
     url = settings.FACILITIES['LCO']['archive_url']
 
-    basenames = [f['filename'] for f in files]
+    logger.info(f'target names: {target_names}')
     frame_ids = []
-    target_name = 'target'
-    for basename in basenames:
-        try:
-            result = requests.get(url,
-                                  headers={'Authorization': f'Token {token}'},
-                                  params={'basename_exact': basename}).json()['results'][0]
-            
-            if result:
-                frame_ids.append(result['id'])
-                target_name = result['OBJECT']
-        except Exception as e:
-            logger.warning(f'Error fetching basename from archive {basename} with exception {e}')
-            continue
-    logger.info(f'FRAME IDS FOUND: {frame_ids}, for basename: {basenames}')
-    logger.info(f'target name: {target_name}')
+    new_bnames = []
+
+    for target_name in target_names:
+        logger.info(f'querying with target name: {target_name}')
+        params = {
+            'reduction_level': 91,
+            'target_name_exact': target_name,
+            'configuration_type': 'EXPOSE',
+            'pagination_style': 'cursor',
+            'limit': 100
+        }
+
+        next_url = url
+
+        while next_url:
+            resp = requests.get(
+                next_url,
+                headers={'Authorization': f'Token {token}'},
+                params=params if next_url == url else None
+            ).json()
+
+            for r in resp['results']:
+                frame_ids.append(r['id'])
+                new_bnames.append(r['basename'])
+            logger.info(f'result frameids: {len(frame_ids)}')
+            logger.info(f'next url? {resp["next"]}')
+            next_url = resp['next']
+        
+    logger.info(f'total frameids: {len(list(set(frame_ids)))}')
+
     try:
         zip_resp = requests.post(
             f"{url}zip/",
             headers={"Authorization": f"Token {token}"},
             json={"frame_ids": frame_ids, "uncompress": False},
-            stream=True,
-            timeout=60,
+            stream=True
         )
         zip_resp.raise_for_status()
     except Exception as e:
@@ -1589,6 +1606,7 @@ def download_all_view(request):
     zip_resp.iter_content(chunk_size=8192),
     content_type="application/zip",
     )
+
     response["Content-Disposition"] = f'attachment; filename="snex_{target_name}_images.zip"'
 
     if 'Content-Length' in zip_resp.headers:
@@ -1654,6 +1672,8 @@ def sync_targetextra_view(request):
         if newdata['value'] == '':
             newz = None
         target.redshift = newz
+    elif newdata['key'] == 'name':
+        TargetName.objects.get_or_create(target = target, name = newdata['value'])
     logger.info(f"Updated target {newdata['key']} to {newdata['value']}")
     target.save()
     
