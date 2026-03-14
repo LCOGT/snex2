@@ -28,6 +28,9 @@
       <input type="hidden" id="download-filename" name="filename">
       <button type="button" class="btn btn-primary" onclick="downloadFile()">Download Fits</button>
     </div>
+    <div class="row justify-content-center mt-3">
+      <button type="button" class="btn btn-primary" onclick="downloadAll()">Download All Images</button>
+    </div>
   </div>
   <div class="col-md-2">
     <form>
@@ -143,4 +146,33 @@
     hiddenInput.value = filenameSelect.value;
     makeThumbnail();
   });
+function downloadAll() {
+  const button = document.querySelector("button[onclick='downloadAll()']");
+  const originalText = button.innerHTML;
+  
+  button.innerHTML = `Preparing images. This may take a while...`;
+  button.disabled = true;
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "{% url 'download-all' %}";
+  form.style.display = "none";
+
+  const csrfInput = document.createElement("input");
+  csrfInput.type = "hidden";
+  csrfInput.name = "csrfmiddlewaretoken";
+  const csrfToken = $("input[name=csrfmiddlewaretoken]").val();
+  csrfInput.value = csrfToken;
+  form.appendChild(csrfInput);
+
+  const targetInput = document.createElement("input");
+  targetInput.type = "hidden";
+  targetInput.name = "target_id";
+  targetInput.value = "{{ target.id }}";
+  form.appendChild(targetInput);
+
+  document.body.appendChild(form);
+  form.submit();
+  document.body.removeChild(form);
+}
 </script>

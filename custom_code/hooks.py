@@ -260,23 +260,27 @@ def find_images_from_snex1(targetid, username, allimages=False):
     
     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
         # now queries the snex1 database directly as .execute instead of .query, so don't need to load in Photlco as a table
-        # Photlco = _load_table('photlco', db_address=settings.SNEX1_DB_URL)
-        Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
+        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
         Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
         
-        this_user = db_session.query(Users).filter(Users.name==username).first()
+        this_user = User.objects.get(username = username)
+        user_groups = this_user.groups.all()
+        if user_groups:
+            groupidcode = 0
+            for group_name in user_groups:
+                groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
         this_target = db_session.query(Targets).filter(Targets.id==targetid).first()
 
         if not allimages:
             query = db_session.execute(
                             text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
                             "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
-                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
         else:
             query = db_session.execute(
                             text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
                             "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
-                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
         
         filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
         if len(filepaths)==0:
