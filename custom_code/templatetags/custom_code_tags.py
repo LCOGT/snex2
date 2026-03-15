@@ -1455,27 +1455,27 @@ def strip_trailing_zeros(value):
         return str(float(value))
     except:
         return value
+    
+def find_name(namelist, n):
+    for name in namelist:
+        if n in name[:2].upper() and 'LAS' not in name[:5].upper():
+            return name[:2].upper() + ' ' + name[2:].replace(' ', '')
+    return False
 
 @register.filter
 def get_best_name(target):
-
-    def find_name(namelist, n):
-        for name in namelist:
-            if n in name[:2].upper() and 'LAS' not in name[:5].upper():
-                return name[:2].upper() + ' ' + name[2:]
-        return False
-
     namelist = [target.name] + [alias.name for alias in target.aliases.all()]
     bestname = find_name(namelist, 'SN')
     if not bestname:
         bestname = find_name(namelist, 'AT')
-    if not bestname:
-        bestname = namelist[0]
-
-    normalizedname = bestname.replace(' ', '')
-    if target.name != normalizedname:
-        target.name = normalizedname
-        target.save()
+    
+    if bestname:
+        normalizedname = bestname.replace(' ', '')
+        if target.name != normalizedname:
+            target.name = normalizedname
+            target.save()
+    else:
+        bestname = target.name
 
     return bestname
 
