@@ -476,9 +476,6 @@ class ReferenceStatusForm(forms.Form):
 
     target = forms.IntegerField(widget=forms.HiddenInput())
 
-    #target = forms.ModelChoiceField(queryset=Target.objects.none(),
-    #                                widget=forms.HiddenInput())
-
     def __init__(self, *args, **kwargs):
         super(ReferenceStatusForm, self).__init__(*args, **kwargs)
 
