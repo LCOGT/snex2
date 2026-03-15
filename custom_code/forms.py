@@ -1,78 +1,112 @@
-from tom_targets.forms import SiderealTargetCreateForm
-from tom_dataproducts.forms import DataProductUploadForm
-from tom_observations.widgets import FilterField
-from guardian.shortcuts import assign_perm, get_groups_with_perms, remove_perm
-from django import forms
-from custom_code.models import ScienceTags, TargetTags, Papers, UserRegistrationInfo
-from django.conf import settings
-from django.db.models.functions import Lower
-from django.core.exceptions import ValidationError
-from django.contrib.auth.models import Group
 import json
+import re
+from crispy_forms.helper import FormHelper
+from django import forms
+from django.conf import settings
+from django.contrib.auth.forms import UsernameField
+from django.contrib.auth.models import Group, User
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Q
+from django.db.models.functions import Lower
 try:
     from django.contrib.auth.forms import BaseUserCreationForm as UserCreationForm
 except ImportError:
     from django.contrib.auth.forms import UserCreationForm
-from django.contrib.auth.forms import UsernameField
-from django.contrib.auth.models import User, Group
-from django.db import transaction
-from crispy_forms.helper import FormHelper
+from tom_dataproducts.forms import DataProductUploadForm
+from tom_observations.widgets import FilterField
 from tom_registration.registration_flows.approval_required.forms import RegistrationApprovalForm
-
+from tom_targets.forms import SiderealTargetCreateForm
+from tom_targets.models import Target
+from custom_code.models import Papers, ScienceTags, TargetTags, UserRegistrationInfo
 import logging
 
 logger = logging.getLogger(__name__)
 
+from django.contrib.auth.forms import AuthenticationForm
+
+class SafeAuthenticationForm(AuthenticationForm):
+    def clean(self):
+        try:
+            return super().clean()
+        except AttributeError:
+            raise forms.ValidationError(
+                'Your password needs to be reset. Please follow the link below.'
+            )
+        
 class CustomTargetCreateForm(SiderealTargetCreateForm):
 
-    def validate_target_name(target_name):
-        if target_name and target_name[0].isdigit():
-            raise ValidationError(f"Target name ({target_name}) cannot start with a number")
-
-
-
     sciencetags = forms.ModelMultipleChoiceField(ScienceTags.objects.all().order_by(Lower('tag')), widget=forms.CheckboxSelectMultiple, label='Science Tags', required=False)
-    name = forms.CharField(validators=[validate_target_name])
 
+    def clean_name(self):
+        name = self.cleaned_data.get("name")
+        if not name:
+            return name
 
+        prefix2 = name[:2].upper()
+        prefix3 = name[:3].upper()
+        prefix5 = name[:5].upper()
+
+        if prefix2 in ('AT', 'SN') and 'LAS' not in prefix5:
+            name = name.replace(' ', '')
+            name = prefix2 + name[2:]
+        elif prefix3 == 'ZTF':
+            name = name.replace(' ', '')
+            name = prefix3 + name[3:]
+        elif prefix3 == 'DLT':
+            name = name.replace(' ', '')
+            name = prefix3 + name[3:]
+        elif prefix5 == 'ATLAS':
+            name = name.replace(' ', '')
+            name = prefix5 + name[5:]
+
+        if re.match(r'^\d{2,4}[a-zA-Z]+$', name):
+            raise ValidationError(
+                "Name appears to be missing a prefix (e.g. use AT2026abc or SN2026abc instead of 2026abc). If this is a legitimate target name, please contact admin and we can add it manually."
+            )
+
+        return name
+    
     def clean(self):
         cleaned_data = super().clean()
-        self.cleaned_data = cleaned_data
+        ra = cleaned_data.get('ra')
+        dec = cleaned_data.get('dec')
+        name = cleaned_data.get('name')
 
-        name = self.cleaned_data.get('name')
-        # if re.match(r'^\d', name):  
-        #     raise ValidationError("Target name cannot start with a number.")
+        if ra and dec:
+            if Target.objects.filter(
+                ra__gte=ra-4/3600,
+                ra__lte=ra+4/3600,
+                dec__gte=dec-4/3600,
+                dec__lte=dec+4/3600
+            ).exists():
+                raise ValidationError("Target exists near these coordinates.")
+
+        if name:
+            name_lookup = name.replace('SN', '').replace('AT', '').replace(' ', '')
+            if Target.objects.filter(Q(name__icontains=name_lookup) | Q(aliases__name__icontains=name_lookup)).exists():
+                raise ValidationError("Target with this name already exists.")
+
+        return cleaned_data
 
 
     def __init__(self, *args, **kwargs):
         super(CustomTargetCreateForm, self).__init__(*args, **kwargs)
         if not settings.TARGET_PERMISSIONS_ONLY:
-            self.fields['groups'] = forms.ModelMultipleChoiceField(
-                    Group.objects.all(),
-                    required=False,
-                    widget=forms.CheckboxSelectMultiple,
-                    label='Visible to')
+            self.fields['groups'].queryset = Group.objects.all()
+            self.fields['groups'].label = "Visible to"
+        self.fields.pop('gwfollowupgalaxy_id', None)
+
 
     def save(self, commit=True):
         instance = super().save(commit=commit)
         if commit:
-            for group in self.cleaned_data['groups']:
-                assign_perm('tom_targets.view_target', group, instance)
-                assign_perm('tom_targets.change_target', group, instance)
-                assign_perm('tom_targets.delete_target', group, instance)
-            for group in get_groups_with_perms(instance):
-                if group not in self.cleaned_data['groups']:
-                    remove_perm('tom_targets.view_target', group, instance)
-                    remove_perm('tom_targets.change_target', group, instance)
-                    remove_perm('tom_targets.delete_target', group, instance)
-
             # Save science tags for this target
-            for tag in self.cleaned_data['sciencetags']:
+            for tag in self.cleaned_data.get('sciencetags', []):
                 TargetTags.objects.update_or_create(
                         target=instance,
                         tag=tag
                 )
-
         return instance
     
 class SNEx2UserCreationForm(UserCreationForm):
@@ -464,9 +498,6 @@ class ReferenceStatusForm(forms.Form):
     )
 
     target = forms.IntegerField(widget=forms.HiddenInput())
-
-    #target = forms.ModelChoiceField(queryset=Target.objects.none(),
-    #                                widget=forms.HiddenInput())
 
     def __init__(self, *args, **kwargs):
         super(ReferenceStatusForm, self).__init__(*args, **kwargs)

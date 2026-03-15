@@ -1,12 +1,14 @@
 from django.urls import path
 
-from custom_code.views import TNSTargets, PaperCreateView, scheduling_view, ReferenceStatusUpdateView, ObservationGroupDetailView, observation_sequence_cancel_view, AuthorshipInformation, download_photometry_view, get_target_standards_view, SNEx2SpectroscopyTNSSharePassthrough, CustomUserUpdateView, TargetFilteringView
+from custom_code.views import TNSTargets, PaperCreateView, PaperUpdateView, PaperDeleteView, scheduling_view, ReferenceStatusUpdateView, ObservationGroupDetailView, observation_sequence_cancel_view, AuthorshipInformation, download_photometry_view, get_target_standards_view, SNEx2SpectroscopyTNSSharePassthrough, CustomUserUpdateView, TargetFilteringView
 
 app_name = 'custom_code'
 
 urlpatterns = [
     path('tnstargets/', TNSTargets.as_view(), name='tns-targets'),
     path('create-paper/', PaperCreateView.as_view(), name='create-paper'),
+    path('papers/<int:pk>/update/', PaperUpdateView.as_view(), name='update-paper'),
+    path('papers/<int:pk>/delete/', PaperDeleteView.as_view(), name='delete-paper'),
     path('scheduling/', scheduling_view, name='scheduling'),
     path('update-reference-status/', ReferenceStatusUpdateView.as_view(), name='update-reference-status'),
     path('observationgroup/<int:pk>/', ObservationGroupDetailView.as_view(), name='observationgroup-detail'),

@@ -601,14 +601,23 @@ def classifications_dropdown(target):
 
 @register.inclusion_tag('custom_code/science_tags_dropdown.html')
 def science_tags_dropdown(target):
-    # Cache science tags for 1 hour since they rarely change
-    tags = cache.get('all_science_tags')
-    if tags is None:
-        tag_query = ScienceTags.objects.all().order_by(Lower('tag'))
-        tags = [i.tag for i in tag_query]
-        cache.set('all_science_tags', tags, 3600)
-    return{'target': target,
-           'sciencetags': tags}
+    all_tags = cache.get('all_science_tags')
+    if all_tags is None:
+        all_tags = list(ScienceTags.objects.order_by(Lower('tag')).values_list('tag', flat=True))
+        cache.set('all_science_tags', all_tags, 3600)
+    selected_tags_query = TargetTags.objects.filter(target=target).select_related('tag')
+    selected_tags = [i.tag.tag for i in selected_tags_query]
+    return {
+        'target': target,
+        'sciencetags': all_tags,
+        'selected_tags': selected_tags,
+    }
+
+@register.filter
+def get_target_tags(target):
+    target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
+    tags = [i.tag.tag for i in target_tag_query]
+    return tags
 
 @register.filter
 def registration_who_you_are(user):
@@ -617,19 +626,6 @@ def registration_who_you_are(user):
         return user.registration_info.who_you_are or ''
     except (AttributeError, UserRegistrationInfo.DoesNotExist):
         return ''
-
-
-@register.filter
-def get_target_tags(target):
-    # Optimize query with select_related to avoid N+1 queries
-    target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
-    tags = ''
-    for i in target_tag_query:
-        tag_name = i.tag.tag
-        tags+=(str(tag_name) + ',')
-    return json.dumps(tags)
-
-
 
 @register.inclusion_tag('custom_code/custom_upload_dataproduct.html', takes_context=True)
 def custom_upload_dataproduct(context, obj):
@@ -1064,18 +1060,17 @@ def observation_summary(context, target = None, is_active = False):
 
 @register.inclusion_tag('custom_code/papers_list.html')
 def papers_list(target):
-
     paper_query = Papers.objects.filter(target=target)
     papers = []
-    for i in range(len(paper_query)):
-        papers.append(paper_query[i])
-
-    paper_form = PapersForm(initial={'target': target})
-    
-    return {'object': target,
-            'papers': papers,
-            'form': paper_form}
-
+    for paper in paper_query:
+        papers.append({
+            'paper': paper,
+            'edit_form': PapersForm(instance=paper)
+        })
+    return {
+        'object': target,
+        'papers': papers,
+    }
 
 @register.inclusion_tag('custom_code/papers_form.html')
 def papers_form(target):
@@ -1460,25 +1455,29 @@ def strip_trailing_zeros(value):
         return str(float(value))
     except:
         return value
+    
+def find_name(namelist, n):
+    for name in namelist:
+        if n in name[:2].upper() and 'LAS' not in name[:5].upper():
+            return name[:2].upper() + ' ' + name[2:].replace(' ', '')
+    return False
 
 @register.filter
 def get_best_name(target):
-
-    def find_name(namelist, n):
-        for name in namelist:
-            if n in name[:2].upper() and 'LAS' not in name[:5].upper():
-                return name[:2].upper() + ' ' + name[2:]
-        return False
-
     namelist = [target.name] + [alias.name for alias in target.aliases.all()]
     bestname = find_name(namelist, 'SN')
     if not bestname:
         bestname = find_name(namelist, 'AT')
-    if not bestname:
-        bestname = namelist[0]
     
-    return bestname
+    if bestname:
+        normalizedname = bestname.replace(' ', '')
+        if target.name != normalizedname:
+            target.name = normalizedname
+            target.save()
+    else:
+        bestname = target.name
 
+    return bestname
 
 @register.inclusion_tag('custom_code/display_group_list.html')
 def display_group_list(target):
@@ -1686,10 +1685,10 @@ def image_slideshow(context, target):
     ### Get a list of all the image filenames for this target
     if not settings.DEBUG:
         #NOTE: Production
-        try:
-            filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
-        except Exception as e:
-            logger.exception(f'Finding images in snex1 failed {e}')
+        
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
+        if not filepaths:
+            logger.info(f'No images found for target {target}')
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
@@ -1948,7 +1947,7 @@ def lightcurve_with_extras(target, user):
 
 
 @register.inclusion_tag('custom_code/thumbnail.html', takes_context=True)
-def test_display_thumbnail(context, target):
+def display_thumbnails(context, target):
     
     from os import listdir
     from os.path import isfile, join
@@ -1957,17 +1956,17 @@ def test_display_thumbnail(context, target):
     
     if not settings.DEBUG:
         #NOTE: Production
-        try:
-            filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
-        except Exception as e:
-            logger.info(f'Finding images in snex1 failed {e}')
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
+        if not filepaths:
+            logger.info(f'No images found for target {target}')
             return {'top_images': [],
-                    'bottom_images': []}
+                    'bottom_images': [], 'no_images': True}
 
     else:
         return {
-                "top_images": [],
-                "bottom_images": [],
+                'top_images': [],
+                'bottom_images': [],
+                'no_images': True
             }
     
     thumbs = [f for f in listdir(settings.THUMB_DIR) if isfile(join(settings.THUMB_DIR, f))]
@@ -2018,7 +2017,8 @@ def test_display_thumbnail(context, target):
                                       })
 
     return {'top_images': top_images,
-            'bottom_images': bottom_images}
+            'bottom_images': bottom_images,
+            'no_images': False}
 
 
 @register.filter

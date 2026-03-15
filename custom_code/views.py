@@ -1,10 +1,26 @@
-from django_filters.views import FilterView
-from django.shortcuts import redirect, render
+import base64
+import json
+import os
+from datetime import date, datetime, timedelta
+from io import BytesIO, StringIO
+import requests
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.time import Time
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import HTML, Column, Div, Layout, Row, Submit
+from django import forms
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.models import Group, User
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
-from django.db import transaction
-from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, Sum
+from django.core.cache import cache
+from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
+from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest
+from django.shortcuts import redirect, render, get_object_or_404
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.http import require_POST
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
@@ -13,59 +29,44 @@ from django.views.generic.detail import DetailView
 from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
 from django.template.context import RequestContext
-from django_comments.models import Comment
-
-from tom_targets.models import TargetList, Target, TargetName
-from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
-from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
-from custom_code.forms import SNEx2UserCreationForm, SNEx2RegistrationApprovalForm
-from guardian.mixins import PermissionListMixin
-from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
-from django.contrib.auth.models import User, Group
-from django.contrib.contenttypes.models import ContentType
-from django.contrib import messages
-from django.conf import settings
-from django.db.models.fields.json import KeyTextTransform
-
-from astropy.coordinates import SkyCoord
-from astropy import units as u
-from astropy.time import Time
-from datetime import datetime, date, timedelta
-import json
-from io import StringIO, BytesIO
-
-from tom_dataproducts.models import ReducedDatum, DataProduct
-from custom_code.templatetags import custom_code_tags
-from tom_observations.templatetags.observation_extras import observing_buttons
-from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
-from tom_targets.templatetags.targets_extras import target_groups
-from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1
-from custom_code.thumbnails import make_thumb
-
-from custom_code.forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm, PhotSchedulingForm, SpecSchedulingForm
-from tom_targets.views import TargetCreateView
-from tom_common.hooks import run_hook
-
-from tom_common.views import UserUpdateView
-from tom_dataproducts.views import DataProductUploadView, DataProductDeleteView
-from tom_dataproducts.exceptions import InvalidFileFormatException
-
-from custom_code.processors.data_processor import run_custom_data_processor
-from guardian.shortcuts import assign_perm
-
-from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
-from tom_observations.views import ObservationCreateView, ObservationListView
-from tom_registration.registration_flows.approval_required.views import UserApprovalView, ApprovalRegistrationView
-import base64
-import requests
-from django import forms
-from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit, Layout, Div, HTML, Row, Column
+from django.template.loader import render_to_string
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
-import os
-from custom_code.scheduling import change_obs_from_scheduling, save_comments, cancel_observation
-
+from django.views.decorators.http import require_http_methods
+from django.views.generic.base import RedirectView, TemplateView
+from django.views.generic.detail import DetailView
+from django.views.generic.edit import FormView
+from django.views.generic.list import ListView
+from django.views import View
+from django_comments.models import Comment
+from django_filters.views import FilterView
+from django.utils.decorators import method_decorator
+from django.contrib.auth.decorators import login_required
+from guardian.mixins import PermissionListMixin
+from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
+from tom_common.views import UserUpdateView
+from tom_dataproducts.exceptions import InvalidFileFormatException
+from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
+from tom_dataproducts.views import DataProductDeleteView, DataProductUploadView
+from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
+from tom_observations.templatetags.observation_extras import observing_buttons
+from tom_observations.views import ObservationCreateView, ObservationListView
+from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
+from tom_targets.models import Target, TargetList, TargetName
+from tom_targets.templatetags.targets_extras import target_groups
+from tom_targets.views import TargetCreateView
+from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
+from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
+from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unreduced_spectra
+from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.management.commands.ingest_ztf_data import get_ztf_data
+from custom_code.processors.data_processor import run_custom_data_processor
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
+from custom_code.templatetags import custom_code_tags
+from custom_code.thumbnails import make_thumb
 import logging
+
 logger = logging.getLogger(__name__)
 
 ## debug
@@ -219,24 +220,40 @@ def target_redirect_view(request):
             return(redirect('/create-target/?name={name}'.format(name=search_entry)))
 
 
+@require_http_methods(["POST"])
 def add_tag_view(request):
-    new_tag = request.GET.get('new_tag', None)
+    new_tag = request.POST.get('new_tag', '').strip()
+    if not new_tag:
+        return HttpResponse(json.dumps({'success': 0, 'error': 'No tag provided'}),
+                            content_type='application/json', status=400)
     username = request.user.username
-    tag, _ = ScienceTags.objects.get_or_create(tag=new_tag, userid=username)
-    response_data = {'success': 1}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+    tag, created = ScienceTags.objects.get_or_create(tag=new_tag, userid=username)
+    logger.info(f'Tag: {tag}, created: {created}')
 
+    if created:
+        cache.delete('all_science_tags')
 
+    return HttpResponse(json.dumps({'success': 1}), content_type='application/json')
+
+@require_http_methods(["POST"])
 def save_target_tag_view(request):
-    tag_names = json.loads(request.GET.get('tags', None))
-    target_id = request.GET.get('targetid', None)
-    TargetTags.objects.all().filter(target_id=target_id).delete()
-    for i in range(len(tag_names)):
-        tag_id = ScienceTags.objects.filter(tag=tag_names[i]).first().id
-        target_tag, _ = TargetTags.objects.get_or_create(tag_id=tag_id, target_id=target_id)
-    response_data = {'success': 1}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+    tag_names = json.loads(request.POST.get('tags', '[]'))
+    target_id = request.POST.get('targetid', None)
 
+    if not target_id:
+        return HttpResponse(json.dumps({'success': 0, 'error': 'No target id'}),
+                            content_type='application/json', status=400)
+
+    TargetTags.objects.filter(target_id=target_id).delete()
+
+    for tag_name in tag_names:
+        science_tag = ScienceTags.objects.filter(tag=tag_name).first()
+        if science_tag:
+            TargetTags.objects.get_or_create(tag_id=science_tag.id, target_id=target_id)
+        else:
+            logger.warning(f'Tag not found in DB, skipping: {tag_name}')
+
+    return HttpResponse(json.dumps({'success': 1}), content_type='application/json')
 
 def targetlist_collapse_view(request):
 
@@ -279,51 +296,6 @@ class CustomTargetCreateView(TargetCreateView):
         context = super(CustomTargetCreateView, self).get_context_data(**kwargs)
         context['type_choices'] = Target.TARGET_TYPES
         return context
-
-    def post(self, request):
-        super(CustomTargetCreateView, self).post(request)
-        return redirect(self.get_success_url())
-    
-    def form_valid(self, form):
-
-        # First, create the targets in both dbs and nothing else
-        with transaction.atomic():
-            if form.is_valid():
-
-                ### Check that there are no targets with the same name or coordinates
-                target_cone_search = Target.objects.filter(ra__gte=form.cleaned_data['ra']-4.0/3600.0, ra__lte=form.cleaned_data['ra']+4.0/3600.0, dec__gte=form.cleaned_data['dec']-4.0/3600.0, dec__lte=form.cleaned_data['dec']+4.0/3600.0)
-                if target_cone_search.count() > 0.0:
-                    logger.info('There exists another target near the coordinates {} {}'.format(form.cleaned_data['ra'], form.cleaned_data['dec']))
-                    form.errors['ra'] = ['Target found with same or similar coordinates']
-                    form.errors['dec'] = ['Target found with same or similar coordinates']
-                    return super().form_invalid(form)
-
-                name_lookup = form.cleaned_data['name'].replace('SN', '').replace('AT', '').replace(' ', '')
-                target_name_search = Target.objects.filter(Q(name__icontains=name_lookup) | Q(aliases__name__icontains=name_lookup)).distinct()
-
-                if target_name_search.count() > 0.0:
-                    logger.info('Target with name {} already exists'.format(form.cleaned_data['name']))
-                    form.errors['name'] = ['Target found with same name']
-                    return super().form_invalid(form)
-
-
-                groups = [g.name for g in form.cleaned_data['groups']]
-                self.object = form.save(form)
-
-            else:
-                logger.info('Submitting target failed with errors {}'.format(form.errors))
-                return super().form_invalid(form)
-
-
-        return redirect(self.get_success_url())
-
-    def get_initial(self):
-        return {
-            'type': self.get_target_type(),
-            'groups': Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
-            **dict(self.request.GET.items())
-        }
-    
 
 class CustomUserUpdateView(UserUpdateView):
 
@@ -529,6 +501,29 @@ class PaperCreateView(FormView):
         
         return HttpResponseRedirect('/targets/{}/'.format(target.id))
 
+@method_decorator(login_required, name='dispatch')
+class PaperUpdateView(FormView):
+    form_class = PapersForm
+    template_name = 'custom_code/papers_form.html'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        self.paper = get_object_or_404(Papers, pk=self.kwargs['pk'])
+        kwargs['instance'] = self.paper
+        return kwargs
+
+    def form_valid(self, form):
+        form.save()
+        return HttpResponseRedirect('/targets/{}/'.format(self.paper.target.id))
+
+@method_decorator(login_required, name='dispatch')
+class PaperDeleteView(View):
+    def post(self, request, pk):
+        paper = get_object_or_404(Papers, pk=pk)
+        target_id = paper.target.id
+        paper.delete()
+        return HttpResponseRedirect('/targets/{}/'.format(target_id))
+    
 def delete_comment_view(request):
     if request.method == "POST":
         comment_id = request.POST.get("comment_id")
@@ -924,7 +919,41 @@ def make_tns_request_view(request):
 
     tns_params = _get_tns_params(target)
     if tns_params.get('success', ''):
+        nondet_value = None
+        det_value = None
+
+        if tns_params['nondetection'] is None:
+            logger.warning('No TNS last nondetection found for target %s', target)
+        else:
+            nondet_parts = tns_params['nondetection'].split()
+            nondet_value = json.dumps({
+                'date': nondet_parts[0],
+                'jd': nondet_parts[1].replace('(', '').replace(')', ''),
+                'mag': tns_params['nondet_mag'],
+                'filt': tns_params['nondet_filt'],
+                'source': 'TNS'
+            })
+
+        if tns_params['detection'] is None:
+            logger.warning('No TNS detection found for target %s', target)
+        else:
+            det_parts = tns_params['detection'].split()
+            det_value = json.dumps({
+                'date': det_parts[0],
+                'jd': det_parts[1].replace('(', '').replace(')', ''),
+                'mag': tns_params['det_mag'],
+                'filt': tns_params['det_filt'],
+                'source': 'TNS'
+            })
+
+        if nondet_value or det_value:
+            logger.info('Saving TNS params for target %s', target)
+            Target.objects.filter(pk=target.pk).update(
+                last_nondetection=nondet_value,
+                first_detection=det_value
+            )
         return HttpResponse(json.dumps(tns_params), content_type='application/json')
+    
     else:
         logger.info('TNS parameters not ingested for target {}'.format(target_id))
         response_data = {'failure': 'TNS parameters not ingested for this target'}
@@ -986,9 +1015,8 @@ def load_thumbnail_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        # Create a context dict with request, as expected by test_display_thumbnail
         context_dict = {'request': request}
-        context = custom_code_tags.test_display_thumbnail(context_dict, target)
+        context = custom_code_tags.display_thumbnails(context_dict, target)
         html = render_to_string(
             template_name='custom_code/thumbnail.html',
             context=context,
@@ -1501,15 +1529,31 @@ class BrokerTargetView(FilterView):
 
 
 def query_swift_observations_view(request):
-   target_id = request.GET['target_id']
-   t = Target.objects.get(id=target_id)
-   ra, dec = t.ra, t.dec
+    target_id = request.GET['target_id']
+    t = Target.objects.get(id=target_id)
+    ra, dec = t.ra, t.dec
 
-   ### NOT CURRENTLY FUNCTIONAL
-   content_response = {'success': 'No'}
+    ### NOT CURRENTLY FUNCTIONAL
+    content_response = {'success': 'No'}
 
-   return HttpResponse(json.dumps(content_response), content_type='application/json')
+    return HttpResponse(json.dumps(content_response), content_type='application/json')
 
+def query_ztf_observations_view(request):
+    target_id = request.GET['target_id']
+    target = Target.objects.get(id=target_id)
+    logger.info(f'Querying ZTF data for {target.name}')
+    
+    ztf_name = next((name for name in target.names if 'ZTF' in name), None)
+    if not ztf_name:
+        return HttpResponse(json.dumps({'error': f'No ZTF name found for {target.name}'}), content_type='application/json')
+    
+    try:
+        get_ztf_data(target)
+        count = ReducedDatum.objects.filter(target=target, data_type='photometry', source_name=ztf_name).count()
+        return HttpResponse(json.dumps({'success': f'Ingested {count} ZTF photometry points for {ztf_name}'}), content_type='application/json')
+    except Exception as e:
+        logger.warning(f'ZTF ingestion failed for {target.name}: {e}')
+        return HttpResponse(json.dumps({'error': f'Ingestion failed: {e}'}), content_type='application/json')
 
 def make_thumbnail_view(request):
 
