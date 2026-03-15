@@ -39,11 +39,11 @@ nav {
 }
 
 .fixed-top {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 0;
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: 1030;
 }
 
 .fixed-top-2 {
@@ -72,10 +72,11 @@ nav {
     font-family: monospace;
 }
 
-@media (min-width: 768px)
-.navbar-expand-md .navbar-nav .dropdown-menu {
-    position: absolute;
-    z-index: 9999;
+@media (min-width: 768px) {
+    .navbar-expand-md .navbar-nav .dropdown-menu {
+        position: absolute;
+        z-index: 9999;
+    }
 }
 
 .col-md-12 {
