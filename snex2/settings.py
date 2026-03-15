@@ -346,7 +346,6 @@ FACILITIES = {
 TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
 
 EXTRA_FIELDS = [
-    {'name': 'gwfollowupgalaxy_id', 'type':'number', 'hidden':True},
     {'name': 'redshift', 'type': 'number'},
     {'name': 'classification', 'type': 'string'},
     {'name': 'tweet', 'type': 'boolean'},
@@ -381,7 +380,6 @@ if DEBUG:
     HOOKS = {
         'target_post_save': '',
         'cancel_gw_obs': '',
-        'ingest_gw_galaxy_into_snex1': '',
         'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
         'download_test_image_from_archive': 'custom_code.hooks.download_test_image_from_archive',
     }
@@ -390,7 +388,6 @@ else:
         'target_post_save': 'custom_code.hooks.target_post_save',
         'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
         'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
-        'ingest_gw_galaxy_into_snex1': 'gw.hooks.ingest_gw_galaxy_into_snex1',
     }
 
 
