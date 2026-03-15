@@ -1471,9 +1471,13 @@ def get_best_name(target):
         bestname = find_name(namelist, 'AT')
     if not bestname:
         bestname = namelist[0]
-    
-    return bestname
 
+    normalizedname = bestname.replace(' ', '')
+    if target.name != normalizedname:
+        target.name = normalizedname
+        target.save()
+
+    return bestname
 
 @register.inclusion_tag('custom_code/display_group_list.html')
 def display_group_list(target):
