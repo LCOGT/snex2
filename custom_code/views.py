@@ -868,7 +868,41 @@ def make_tns_request_view(request):
 
     tns_params = _get_tns_params(target)
     if tns_params.get('success', ''):
+        nondet_value = None
+        det_value = None
+
+        if tns_params['nondetection'] is None:
+            logger.warning('No TNS last nondetection found for target %s', target)
+        else:
+            nondet_parts = tns_params['nondetection'].split()
+            nondet_value = json.dumps({
+                'date': nondet_parts[0],
+                'jd': nondet_parts[1].replace('(', '').replace(')', ''),
+                'mag': tns_params['nondet_mag'],
+                'filt': tns_params['nondet_filt'],
+                'source': 'TNS'
+            })
+
+        if tns_params['detection'] is None:
+            logger.warning('No TNS detection found for target %s', target)
+        else:
+            det_parts = tns_params['detection'].split()
+            det_value = json.dumps({
+                'date': det_parts[0],
+                'jd': det_parts[1].replace('(', '').replace(')', ''),
+                'mag': tns_params['det_mag'],
+                'filt': tns_params['det_filt'],
+                'source': 'TNS'
+            })
+
+        if nondet_value or det_value:
+            logger.info('Saving TNS params for target %s', target)
+            Target.objects.filter(pk=target.pk).update(
+                last_nondetection=nondet_value,
+                first_detection=det_value
+            )
         return HttpResponse(json.dumps(tns_params), content_type='application/json')
+    
     else:
         logger.info('TNS parameters not ingested for target {}'.format(target_id))
         response_data = {'failure': 'TNS parameters not ingested for this target'}

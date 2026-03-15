@@ -178,47 +178,7 @@ def _get_tns_params(target):
 def target_post_save(target, created, group_names=None, wrapped_session=None):
  
     logger.info('Target post save hook: %s created: %s', target, created)
-    if not created:
-        
-        ### Add the last nondetection and first detection from TNS, if it exists
-        tns_results = _get_tns_params(target)
-        if tns_results.get('success', ''):
-            nondet_value = None
-            det_value = None
-
-            if tns_results['nondetection'] is None:
-                logger.warning('No TNS last nondetection found for target %s', target)
-            else:
-                nondet_parts = tns_results['nondetection'].split()
-                nondet_value = json.dumps({
-                    'date': nondet_parts[0],
-                    'jd': nondet_parts[1].replace('(', '').replace(')', ''),
-                    'mag': tns_results['nondet_mag'],
-                    'filt': tns_results['nondet_filt'],
-                    'source': 'TNS'
-                })
-
-            if tns_results['detection'] is None:
-                logger.warning('No TNS detection found for target %s', target)
-            else:
-                det_parts = tns_results['detection'].split()
-                det_value = json.dumps({
-                    'date': det_parts[0],
-                    'jd': det_parts[1].replace('(', '').replace(')', ''),
-                    'mag': tns_results['det_mag'],
-                    'filt': tns_results['det_filt'],
-                    'source': 'TNS'
-                })
-
-            if nondet_value or det_value:
-                logger.info('Saving TNS params for target %s', target)
-                Target.objects.filter(pk=target.pk).update(
-                    last_nondetection=nondet_value,
-                    first_detection=det_value
-                )
-
-    else:
-
+    if created:
         if wrapped_session:
             db_session = wrapped_session
     
