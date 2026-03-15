@@ -19,8 +19,15 @@ from django.core.cache import cache
 from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
-from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse, HttpResponseForbidden
 from django.shortcuts import redirect, render, get_object_or_404
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.views.decorators.http import require_POST
+from django.views.generic.base import TemplateView, RedirectView
+from django.views.generic.list import ListView
+from django.views.generic.edit import FormView
+from django.views.generic.detail import DetailView
+from django.urls import reverse, reverse_lazy
+from django.template.loader import render_to_string
 from django.template.context import RequestContext
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
@@ -1586,7 +1593,71 @@ def download_fits_view(request):
     data = requests.get(results[0]["url"]).content
 
     return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
+
+@require_POST
+def download_all_view(request):
+    target_id = request.POST.get('target_id')
+    target = Target.objects.get(id = target_id)
+    target_names = [target_name.name for target_name in TargetName.objects.filter(target=target)]
+
+    token = settings.FACILITIES['LCO']['api_key']
+    url = settings.FACILITIES['LCO']['archive_url']
+
+    logger.info(f'target names: {target_names}')
+    frame_ids = []
+    new_bnames = []
+
+    for target_name in target_names:
+        logger.info(f'querying with target name: {target_name}')
+        params = {
+            'reduction_level': 91,
+            'target_name_exact': target_name,
+            'configuration_type': 'EXPOSE',
+            'pagination_style': 'cursor',
+            'limit': 100
+        }
+
+        next_url = url
+
+        while next_url:
+            resp = requests.get(
+                next_url,
+                headers={'Authorization': f'Token {token}'},
+                params=params if next_url == url else None
+            ).json()
+
+            for r in resp['results']:
+                frame_ids.append(r['id'])
+                new_bnames.append(r['basename'])
+            logger.info(f'result frameids: {len(frame_ids)}')
+            logger.info(f'next url? {resp["next"]}')
+            next_url = resp['next']
+        
+    logger.info(f'total frameids: {len(list(set(frame_ids)))}')
+
+    try:
+        zip_resp = requests.post(
+            f"{url}zip/",
+            headers={"Authorization": f"Token {token}"},
+            json={"frame_ids": frame_ids, "uncompress": False},
+            stream=True
+        )
+        zip_resp.raise_for_status()
+    except Exception as e:
+        return HttpResponseBadRequest(f"Failed to fetch zip from archive: {e}")
+
+    response = StreamingHttpResponse(
+    zip_resp.iter_content(chunk_size=8192),
+    content_type="application/zip",
+    )
+
+    response["Content-Disposition"] = f'attachment; filename="snex_{target_name}_images.zip"'
+
+    if 'Content-Length' in zip_resp.headers:
+        response['Content-Length'] = zip_resp.headers['Content-Length']
     
+    return response
+
 class InterestingTargetsView(ListView):
 
     template_name = 'custom_code/interesting_targets.html'
@@ -1645,6 +1716,8 @@ def sync_targetextra_view(request):
         if newdata['value'] == '':
             newz = None
         target.redshift = newz
+    elif newdata['key'] == 'name':
+        TargetName.objects.get_or_create(target = target, name = newdata['value'])
     logger.info(f"Updated target {newdata['key']} to {newdata['value']}")
     target.save()
     
