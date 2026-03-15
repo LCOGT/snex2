@@ -1,4 +1,5 @@
 import json
+import re
 from crispy_forms.helper import FormHelper
 from django import forms
 from django.conf import settings
@@ -39,8 +40,30 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
 
     def clean_name(self):
         name = self.cleaned_data.get("name")
-        if name and name[0].isdigit():
-            raise ValidationError("Target name must begin with a letter (e.g. AT2026abc).")
+        if not name:
+            return name
+
+        prefix2 = name[:2].upper()
+        prefix3 = name[:3].upper()
+        prefix5 = name[:5].upper()
+
+        if prefix2 in ('AT', 'SN') and 'LAS' not in prefix5:
+            name = name.replace(' ', '')
+            name = prefix2 + name[2:]
+        elif prefix3 == 'ZTF':
+            name = name.replace(' ', '')
+            name = prefix3 + name[3:]
+        elif prefix3 == 'DLT':
+            name = name.replace(' ', '')
+            name = prefix3 + name[3:]
+        elif prefix5 == 'ATLAS':
+            name = name.replace(' ', '')
+            name = prefix5 + name[5:]
+
+        if re.match(r'^\d{2,4}[a-zA-Z]+$', name):
+            raise ValidationError(
+                "Name appears to be missing a prefix (e.g. use AT2026abc or SN2026abc instead of 2026abc). If this is a legitimate target name, please contact admin and we can add it manually."
+            )
 
         return name
     
