@@ -1,91 +1,130 @@
 {% load custom_code_tags %}
 <dl class="row" style="display: block;">
   <h5>Science Interests:</h5>
+  <div id="tag-display-container">
   {% with target|get_target_tags as targets_tags %}
     {% for tag in sciencetags %}
       {% with cuttag=tag|cut:" " %}
-      {% if tag in targets_tags %}
-        <div id="display-{{ cuttag|cut:"/" }}" class="displayed" style="display: block;">{{ tag }}</div>
-      {% else %}
-        <div id="display-{{ cuttag|cut:"/" }}" class="displayed" style="display: none;">{{ tag }}</div>
-      {% endif %}
+        <div id="display-{{ cuttag|cut:"/" }}" class="displayed" style="display: {% if tag in targets_tags %}block{% else %}none{% endif %};">{{ tag }}</div>
       {% endwith %}
     {% endfor %}
   {% endwith %}
-  <!--div id="display-SNIa" class="displayed" style="display: none;">A Sample of SNe Ia</div>
-  <div id="display-SNII" class="displayed" style="display: none;">A Sample of SNe II</div-->
+  </div>
 </dl>
+ 
 <dl class="row">
   <div id="tag-list" class="dropdown-check-list">
-    <button onclick="display_tags()" class="dropbtn" style="background-color: white; color: black; font-size: 16px; border: none;">Select Science Tags</button>
-    <div id="tag-dropdown" class="dropdown-content" style="background-color: white; color: black; font-size: 14px; height: 200px; overflow-y: scroll; width: 200px;">
-      {% for tag in sciencetags %}
-        {% with cuttag=tag|cut:" " %}
-        <span><input type="checkbox" class="check" id="select-{{ cuttag|cut:"/" }}" value="{{ tag }}" data-target="display-{{ cuttag|cut:"/" }}"/>{{ tag }}</span><br>
-	{% endwith %}
-      {% endfor %}
-      <form style="display: inline; font-size: 12px;" name="form_science_tag">
-	<input type="text" name="newtag" id="newtag" placeholder="Add a new tag">
-      </form>
-      <button onclick="submit_tags()" class="btn" style="background-color: #174460; color: white; border: none;">Apply</button>
+    <button type="button" onclick="display_tags()" class="dropbtn" style="background-color: white; color: black; font-size: 16px; border: none;">Select Science Tags</button>
+    <div id="tag-dropdown" class="dropdown-content" style="display: none; background-color: white; color: black; font-size: 14px; height: 200px; overflow-y: scroll; width: 200px;">
+      {% with target|get_target_tags as targets_tags %}
+        {% for tag in sciencetags %}
+          {% with cuttag=tag|cut:" " %}
+            <span><input type="checkbox" class="check" id="select-{{ cuttag|cut:"/" }}" value="{{ tag }}" data-target="display-{{ cuttag|cut:"/" }}" 
+            {% if tag in targets_tags %}checked{% endif %} />{{ tag }}
+          </span><br>
+          {% endwith %}
+        {% endfor %}
+      {% endwith %}
+      <div style="border-top: 1px solid #eee; padding-top: 8px; margin-top: 8px;">
+        <input type="text" id="newtag" placeholder="Add a new tag" style="font-size: 12px; width: 100%;">
+        <button type="button" onclick="submit_tags()" class="btn" style="background-color: #174460; color: white; border: none; margin-top: 5px; width: 100%;">Apply</button>
+      </div>
     </div>
   </div>
   <script>
-  window.onload = onPageLoad();
-  function onPageLoad() {
-    {% with target|get_target_tags as targets_tags %}
-      {% for tag in sciencetags %}
-	{% with cuttag=tag|cut:" " %}
-	{% if tag in targets_tags %}
-	  document.getElementById("select-{{ cuttag|cut:"/" }}").checked = true;
-	{% endif %}
-	{% endwith %}
-      {% endfor %}
-    {% endwith %}
-  }
-
   function display_tags() {
-    document.getElementById("tag-dropdown").classList.toggle("show");
+    var dropdown = document.getElementById("tag-dropdown");
+    dropdown.style.display = dropdown.style.display === "none" ? "block" : "none";
   }
-
   function submit_tags() {
     var checkboxes = document.getElementsByClassName("check");
     var checkboxesChecked = [];
     for (var i=0; i<checkboxes.length; i++) {
       if (checkboxes[i].checked) {
-	checkboxesChecked.push(checkboxes[i].value);
+  checkboxesChecked.push(checkboxes[i].value);
       }
     }
-
-    // Get any new tag that was entered
-    if (document.getElementById("newtag").value !== "") {
-      var newEnteredTag = document.getElementById("newtag").value;
-      checkboxesChecked.push(newEnteredTag);
-      $.ajax({
-        url: '{% url "add_tag" %}',
-	data: {
-          'new_tag': newEnteredTag
-	},
-	dataType: 'json'
-      })
-    }
-
-    console.log(checkboxesChecked);
-
-    // Save the tag to this target
+  var newTagValue = document.getElementById("newtag").value.trim();
+  function saveTags() {
     $.ajax({
       url: '{% url "save_target_tag" %}',
+      type: 'POST',
       data: { 
-	'tags': JSON.stringify(checkboxesChecked),
-        'targetid': {{ target.id }}
+        'tags': JSON.stringify(checkboxesChecked),
+        'targetid': '{{ target.id }}',
+        'csrfmiddlewaretoken': '{{ csrf_token }}'
       },
-      dataType: 'json'
-    })
-
+      dataType: 'json',
+      success: function (response) {
+        checkboxesChecked.forEach(function(tagValue) {
+          var cleanId = tagValue.replace(/ /g, '').replace(/\//g, '');
+          var displayDiv = document.getElementById('display-' + cleanId);
+          if (displayDiv) {
+            displayDiv.style.display = 'block';
+          } else {
+            var newDiv = document.createElement('div');
+            newDiv.id = 'display-' + cleanId;
+            newDiv.className = 'displayed';
+            newDiv.style.display = 'block';
+            newDiv.innerText = tagValue;
+            document.getElementById('tag-display-container').appendChild(newDiv);
+          }
+        });
+        var allCheckboxes = document.getElementsByClassName("check");
+        for (var i = 0; i < allCheckboxes.length; i++) {
+          if (!allCheckboxes[i].checked) {
+            var displayDiv = document.getElementById(allCheckboxes[i].dataset.target);
+            if (displayDiv) displayDiv.style.display = 'none';
+          }
+        }
+        if (newTagValue !== "") {
+          var cleanId = newTagValue.replace(/ /g, '').replace(/\//g, '');
+          if (!document.getElementById('select-' + cleanId)) {
+            var newSpan = document.createElement('span');
+            var newCheckbox = document.createElement('input');
+            newCheckbox.type = 'checkbox';
+            newCheckbox.className = 'check';
+            newCheckbox.id = 'select-' + cleanId;
+            newCheckbox.value = newTagValue;
+            newCheckbox.checked = true;
+            newCheckbox.dataset.target = 'display-' + cleanId;
+            newCheckbox.addEventListener('change', function() {
+              var targetDiv = document.getElementById(this.dataset.target);
+              if (targetDiv) targetDiv.style.display = this.checked ? 'block' : 'none';
+            });
+            newSpan.appendChild(newCheckbox);
+            newSpan.appendChild(document.createTextNode(' ' + newTagValue));
+            var addTagDiv = document.querySelector('#tag-dropdown > div');
+            document.getElementById('tag-dropdown').insertBefore(newSpan, addTagDiv);
+          }
+        }
+        document.getElementById("newtag").value = "";
+        document.getElementById("tag-dropdown").style.display = "none";
+      },
+      error: function () {
+        alert("Error saving tags. Please try again.");
+      }
+    });
   }
-
-  /* When the user clicks on the button,
-  toggle between hiding and showing the dropdown content */
+      if (newTagValue !== "") {
+        checkboxesChecked.push(newTagValue);
+        $.ajax({
+          url: '{% url "add_tag" %}',
+          type: 'POST',
+          data: {
+            'new_tag': newTagValue,
+            'csrfmiddlewaretoken': '{{ csrf_token }}'
+          },
+          dataType: 'json',
+          success: saveTags,
+          error: function () {
+            alert("Error adding new tag. Please try again.");
+          }
+        });
+      } else {
+        saveTags();
+      }
+    }
   $('.check').change(function () {
     $('#' + this.dataset.target).toggle(this.checked);
     });
@@ -95,4 +134,3 @@
   });
   </script>
 </dl>
-

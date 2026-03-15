@@ -601,14 +601,23 @@ def classifications_dropdown(target):
 
 @register.inclusion_tag('custom_code/science_tags_dropdown.html')
 def science_tags_dropdown(target):
-    # Cache science tags for 1 hour since they rarely change
-    tags = cache.get('all_science_tags')
-    if tags is None:
-        tag_query = ScienceTags.objects.all().order_by(Lower('tag'))
-        tags = [i.tag for i in tag_query]
-        cache.set('all_science_tags', tags, 3600)
-    return{'target': target,
-           'sciencetags': tags}
+    all_tags = cache.get('all_science_tags')
+    if all_tags is None:
+        all_tags = list(ScienceTags.objects.order_by(Lower('tag')).values_list('tag', flat=True))
+        cache.set('all_science_tags', all_tags, 3600)
+    selected_tags_query = TargetTags.objects.filter(target=target).select_related('tag')
+    selected_tags = [i.tag.tag for i in selected_tags_query]
+    return {
+        'target': target,
+        'sciencetags': all_tags,
+        'selected_tags': selected_tags,
+    }
+
+@register.filter
+def get_target_tags(target):
+    target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
+    tags = [i.tag.tag for i in target_tag_query]
+    return tags
 
 @register.filter
 def registration_who_you_are(user):
@@ -617,19 +626,6 @@ def registration_who_you_are(user):
         return user.registration_info.who_you_are or ''
     except (AttributeError, UserRegistrationInfo.DoesNotExist):
         return ''
-
-
-@register.filter
-def get_target_tags(target):
-    # Optimize query with select_related to avoid N+1 queries
-    target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
-    tags = ''
-    for i in target_tag_query:
-        tag_name = i.tag.tag
-        tags+=(str(tag_name) + ',')
-    return json.dumps(tags)
-
-
 
 @register.inclusion_tag('custom_code/custom_upload_dataproduct.html', takes_context=True)
 def custom_upload_dataproduct(context, obj):

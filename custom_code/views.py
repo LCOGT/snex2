@@ -15,6 +15,7 @@ from django.contrib import messages
 from django.contrib.auth.models import Group, User
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
+from django.core.cache import cache
 from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
@@ -24,6 +25,7 @@ from django.template.context import RequestContext
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.views.decorators.http import require_http_methods
 from django.views.generic.base import RedirectView, TemplateView
 from django.views.generic.detail import DetailView
 from django.views.generic.edit import FormView
@@ -208,24 +210,40 @@ def target_redirect_view(request):
             return(redirect('/create-target/?name={name}'.format(name=search_entry)))
 
 
+@require_http_methods(["POST"])
 def add_tag_view(request):
-    new_tag = request.GET.get('new_tag', None)
+    new_tag = request.POST.get('new_tag', '').strip()
+    if not new_tag:
+        return HttpResponse(json.dumps({'success': 0, 'error': 'No tag provided'}),
+                            content_type='application/json', status=400)
     username = request.user.username
-    tag, _ = ScienceTags.objects.get_or_create(tag=new_tag, userid=username)
-    response_data = {'success': 1}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+    tag, created = ScienceTags.objects.get_or_create(tag=new_tag, userid=username)
+    logger.info(f'Tag: {tag}, created: {created}')
 
+    if created:
+        cache.delete('all_science_tags')
 
+    return HttpResponse(json.dumps({'success': 1}), content_type='application/json')
+
+@require_http_methods(["POST"])
 def save_target_tag_view(request):
-    tag_names = json.loads(request.GET.get('tags', None))
-    target_id = request.GET.get('targetid', None)
-    TargetTags.objects.all().filter(target_id=target_id).delete()
-    for i in range(len(tag_names)):
-        tag_id = ScienceTags.objects.filter(tag=tag_names[i]).first().id
-        target_tag, _ = TargetTags.objects.get_or_create(tag_id=tag_id, target_id=target_id)
-    response_data = {'success': 1}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+    tag_names = json.loads(request.POST.get('tags', '[]'))
+    target_id = request.POST.get('targetid', None)
 
+    if not target_id:
+        return HttpResponse(json.dumps({'success': 0, 'error': 'No target id'}),
+                            content_type='application/json', status=400)
+
+    TargetTags.objects.filter(target_id=target_id).delete()
+
+    for tag_name in tag_names:
+        science_tag = ScienceTags.objects.filter(tag=tag_name).first()
+        if science_tag:
+            TargetTags.objects.get_or_create(tag_id=science_tag.id, target_id=target_id)
+        else:
+            logger.warning(f'Tag not found in DB, skipping: {tag_name}')
+
+    return HttpResponse(json.dumps({'success': 1}), content_type='application/json')
 
 def targetlist_collapse_view(request):
 
