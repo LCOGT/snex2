@@ -36,11 +36,13 @@ def get_ztf_data(target):
         return []
 
     dp, created = DataProduct.objects.get_or_create(
-        target=target,
-        observation_record=None,
-        data_product_type='photometry',
-        product_id='photometry_{}'.format(ztf_name)
+        target = target,
+        observation_record = None,
+        data_product_type = 'photometry',
+        product_id = 'photometry_{}'.format(ztf_name)
     )
+    dp.data.name = f'{ztf_name}_photometry'
+    dp.save()
 
     if created:
         for group in Group.objects.all():
@@ -53,10 +55,10 @@ def get_ztf_data(target):
             'photometry_type': 'PSF'
         }
         ReducedDatumExtra.objects.create(
-            target=target,
-            data_type='photometry',
-            key='upload_extras',
-            value=json.dumps(datum_extra_value)
+            target = target,
+            data_type = 'photometry',
+            key = 'upload_extras',
+            value = json.dumps(datum_extra_value)
         )
 
     for alert in detections:
@@ -74,15 +76,20 @@ def get_ztf_data(target):
             'filter': filters[alert['fid']],
             'error': alert['sigmapsf']
         }
-        rd, _ = ReducedDatum.objects.get_or_create(
-            timestamp=jd.to_datetime(timezone=TimezoneInfo()),
-            value=value,
-            source_name=ztf_name,
-            source_location=url,
-            data_type='photometry',
-            target=target,
-            data_product=dp
+        rd, rd_created = ReducedDatum.objects.get_or_create(
+            timestamp = jd.to_datetime(timezone = TimezoneInfo()),
+            value = value,
+            source_name = ztf_name,
+            source_location = url,
+            data_type = 'photometry',
+            target = target,
+            data_product = dp
         )
+        if rd_created:
+            for group in Group.objects.all():
+                assign_perm('tom_dataproducts.view_reduceddatum', group, rd)
+                assign_perm('tom_dataproducts.change_reduceddatum', group, rd)
+                assign_perm('tom_dataproducts.delete_reduceddatum', group, rd)
 
     logger.info(f'Finished ingesting ZTF photometry for {ztf_name} ({target.name}) ({len(detections)} detections)')
     return []
@@ -93,9 +100,9 @@ def delete_ztf_data(target):
         logger.warning(f'No ZTF name found for {target}')
         return
     deleted, _ = ReducedDatum.objects.filter(
-        target=target,
-        data_type='photometry',
-        source_name=ztf_name
+        target = target,
+        data_type = 'photometry',
+        source_name = ztf_name
     ).delete()
     logger.info(f'Deleted {deleted} ZTF photometry points for {target}')
 
@@ -104,8 +111,8 @@ class Command(BaseCommand):
     help = 'Imports ZTF photometry into SNEx2'
 
     def add_arguments(self, parser):
-        parser.add_argument('--target_id', help='Ingest data for this target')
-        parser.add_argument('--delete', action='store_true', help='Deletes ZTF data for this target')
+        parser.add_argument('--target_id', help = 'Ingest data for this target')
+        parser.add_argument('--delete', action = 'store_true', help = 'Deletes ZTF data for this target')
 
     def handle(self, *args, **options):
 
