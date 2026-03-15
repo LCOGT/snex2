@@ -19,8 +19,8 @@ from django.core.cache import cache
 from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
-from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse
-from django.shortcuts import redirect, render
+from django.http import FileResponse, HttpResponse, HttpResponseRedirect, JsonResponse, HttpResponseForbidden
+from django.shortcuts import redirect, render, get_object_or_404
 from django.template.context import RequestContext
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
@@ -30,8 +30,11 @@ from django.views.generic.base import RedirectView, TemplateView
 from django.views.generic.detail import DetailView
 from django.views.generic.edit import FormView
 from django.views.generic.list import ListView
+from django.views import View
 from django_comments.models import Comment
 from django_filters.views import FilterView
+from django.utils.decorators import method_decorator
+from django.contrib.auth.decorators import login_required
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
 from tom_common.views import UserUpdateView
@@ -491,6 +494,29 @@ class PaperCreateView(FormView):
         
         return HttpResponseRedirect('/targets/{}/'.format(target.id))
 
+@method_decorator(login_required, name='dispatch')
+class PaperUpdateView(FormView):
+    form_class = PapersForm
+    template_name = 'custom_code/papers_form.html'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        self.paper = get_object_or_404(Papers, pk=self.kwargs['pk'])
+        kwargs['instance'] = self.paper
+        return kwargs
+
+    def form_valid(self, form):
+        form.save()
+        return HttpResponseRedirect('/targets/{}/'.format(self.paper.target.id))
+
+@method_decorator(login_required, name='dispatch')
+class PaperDeleteView(View):
+    def post(self, request, pk):
+        paper = get_object_or_404(Papers, pk=pk)
+        target_id = paper.target.id
+        paper.delete()
+        return HttpResponseRedirect('/targets/{}/'.format(target_id))
+    
 def delete_comment_view(request):
     if request.method == "POST":
         comment_id = request.POST.get("comment_id")

@@ -1060,18 +1060,17 @@ def observation_summary(context, target = None, is_active = False):
 
 @register.inclusion_tag('custom_code/papers_list.html')
 def papers_list(target):
-
     paper_query = Papers.objects.filter(target=target)
     papers = []
-    for i in range(len(paper_query)):
-        papers.append(paper_query[i])
-
-    paper_form = PapersForm(initial={'target': target})
-    
-    return {'object': target,
-            'papers': papers,
-            'form': paper_form}
-
+    for paper in paper_query:
+        papers.append({
+            'paper': paper,
+            'edit_form': PapersForm(instance=paper)
+        })
+    return {
+        'object': target,
+        'papers': papers,
+    }
 
 @register.inclusion_tag('custom_code/papers_form.html')
 def papers_form(target):
