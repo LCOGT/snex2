@@ -70,7 +70,7 @@ def get_ztf_data(target):
         if alert['fid'] not in filters:
             continue
 
-        jd = Time(alert['mjd'], format='mjd', scale='utc')
+        jd = Time(alert['mjd'], format = 'mjd', scale = 'utc')
         value = {
             'magnitude': alert['magpsf'],
             'filter': filters[alert['fid']],
@@ -117,7 +117,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
 
         if options['target_id']:
-            target = Target.objects.get(id=int(options['target_id']))
+            target = Target.objects.get(id = int(options['target_id']))
             
             if options['delete']:
                 delete_ztf_data(target)
