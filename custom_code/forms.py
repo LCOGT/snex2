@@ -72,6 +72,7 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
         if not settings.TARGET_PERMISSIONS_ONLY:
             self.fields['groups'].queryset = Group.objects.all()
             self.fields['groups'].label = "Visible to"
+        self.fields.pop('gwfollowupgalaxy_id', None)
 
 
     def save(self, commit=True):
