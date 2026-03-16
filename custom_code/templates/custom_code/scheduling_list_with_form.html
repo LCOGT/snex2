@@ -62,9 +62,9 @@ input[type="number"] {
 {% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,exposure_time,reminder,delay_start' %}
 {% endif %}
 {% if 'SUPA202' in parameter.proposal %}
-<div class="table-responsive-wrap"><table class="table pessto-table"></div>
+<div class="table-responsive-wrap"><table class="table pessto-table">
 {% elif parameter.proposal == 'LCO2022A-013' %}
-<div class="table-responsive-wrap"><table class="table dlt40-table"></div>
+<div class="table-responsive-wrap"><table class="table dlt40-table">
 {% else %}
 <div class="table-responsive-wrap"><table class="table">
 {% endif %}
