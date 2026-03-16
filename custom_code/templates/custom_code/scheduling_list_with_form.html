@@ -13,10 +13,10 @@
     width: 50px;
 }
 .exposure-row {
-    width: 100%;
-    min-width: 0;
-    white-space: nowrap;
-}
++     width: 100%;
++     min-width: 0;
++     white-space: nowrap;
++ }
 .btn {
     width: 90%;
 }
@@ -33,26 +33,6 @@ input[type=number]::-webkit-outer-spin-button {
     appearance: none;
     margin: 0;
 }
-input[type="number"] {
-    width: 55px;
-}
-.table-responsive-wrap {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    width: 100%;
-}
-.table {
-    min-width: 900px;
-}
-.table thead th {
-    font-size: 12px;
-    padding: 6px 4px;
-    white-space: nowrap;
-}
-.table tbody td {
-    font-size: 13px;
-    padding: 4px 4px;
-}
 </style>
 {% for parameter in parameters %}
 <form method="post" class="form" id="scheduling-form-{{ parameter.observation_id }}">
@@ -62,11 +42,11 @@ input[type="number"] {
 {% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,exposure_time,reminder,delay_start' %}
 {% endif %}
 {% if 'SUPA202' in parameter.proposal %}
-<div class="table-responsive-wrap"><table class="table pessto-table">
+<table class="table pessto-table">
 {% elif parameter.proposal == 'LCO2022A-013' %}
-<div class="table-responsive-wrap"><table class="table dlt40-table">
+<table class="table dlt40-table">
 {% else %}
-<div class="table-responsive-wrap"><table class="table">
+<table class="table">
 {% endif %}
   <thead>
     <tr>
@@ -199,7 +179,6 @@ input[type="number"] {
     </script>
   </tbody>
 </table>
-</div>
 </form>
 {% empty %}
 <div class="row">
