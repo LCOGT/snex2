@@ -309,7 +309,7 @@ def submit_galaxy_observations_view(request):
                     observation_id='template'
                 )
                 # Add the request user
-                record.parameters['start_user'] = request.user.first_name
+                record.parameters['start_user'] = request.user.username
                 record.save()
                 new_observations.append(record)
         
