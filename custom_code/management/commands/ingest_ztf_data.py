@@ -39,7 +39,7 @@ def get_ztf_data(target):
         target = target,
         observation_record = None,
         data_product_type = 'photometry',
-        product_id = 'photometry_{}'.format(ztf_name)
+        product_id = f'{ztf_name}_photometry'
     )
     dp.data.name = f'{ztf_name}_photometry'
     dp.save()
@@ -50,11 +50,12 @@ def get_ztf_data(target):
             assign_perm('tom_dataproducts.change_dataproduct', group, dp)
             assign_perm('tom_dataproducts.delete_dataproduct', group, dp)
         datum_extra_value = {
-            'data_product_id': int(dp.id),
+            'data_product_id': dp.id,
             'instrument': 'ZTF',
-            'photometry_type': 'PSF'
+            'photometry_type': 'PSF',
+            'data_product_product_id': f'{ztf_name}_photometry'
         }
-        ReducedDatumExtra.objects.create(
+        rd_extra, _ = ReducedDatumExtra.objects.get_or_create(
             target = target,
             data_type = 'photometry',
             key = 'upload_extras',
@@ -99,10 +100,10 @@ def delete_ztf_data(target):
     if not ztf_name:
         logger.warning(f'No ZTF name found for {target}')
         return
-    deleted, _ = ReducedDatum.objects.filter(
+    deleted, _ = DataProduct.objects.filter(
         target = target,
-        data_type = 'photometry',
-        source_name = ztf_name
+        data_product_type = 'photometry',
+        product_id = 'photometry_{}'.format(ztf_name)
     ).delete()
     logger.info(f'Deleted {deleted} ZTF photometry points for {target}')
 
