@@ -1,5 +1,9 @@
 from tom_observations.models import ObservationRecord
 from django.contrib.auth.models import User
+import re
+
+def contains_capital_regex(s):
+    return bool(re.search(r'[A-Z]', s))
 
 #only should need to run once to convert the obsrecord start_user to username
 def convert_obs_records():
@@ -7,7 +11,11 @@ def convert_obs_records():
     for obs in obsrecs:
         start_user = obs.parameters.get('start_user')
         if start_user:
-            user = User.objects.filter(first_name = start_user).first()
-            obs.parameters['start_user'] = user.username
-            print(start_user, user, user.username)
-            obs.save()
+            if contains_capital_regex(start_user):
+                user = User.objects.filter(first_name = start_user).first()
+                obs.parameters['start_user'] = user.username
+                print(start_user, user, user.username)
+                obs.save()
+            else:
+                print(start_user)
+        
