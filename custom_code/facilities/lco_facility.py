@@ -147,15 +147,17 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         cleaned_data = super().clean()
         existing_reminder = self.data.get('reminder_date')
         now = datetime.datetime.utcnow()
+        delay = 0
+        if cleaned_data.get('delay_amount') is None:
+            cleaned_data['delay_amount'] = 0
         if cleaned_data.get('delay_start'):
-            cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days=cleaned_data['delay_amount']), '%Y-%m-%dT%H:%M:%S')
-            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']+cleaned_data['delay_amount']*24), '%Y-%m-%dT%H:%M:%S')
+            delay = cleaned_data['delay_amount']
+            cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days = delay), '%Y-%m-%dT%H:%M:%S')
+            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = cleaned_data['cadence_frequency'] + delay*24), '%Y-%m-%dT%H:%M:%S')
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
         else:
             reminder = cleaned_data.get('reminder')
-            delay = cleaned_data.get('delay_amount', 0.0)
-            
             calculated_date = now + datetime.timedelta(days=reminder + delay)
             cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
             
@@ -386,15 +388,17 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         self.cleaned_data['instrument_type'] = '2M0-FLOYDS-SCICAM'  # SNEx only submits spectra to FLOYDS
         existing_reminder = self.data.get('reminder_date')
         now = datetime.datetime.utcnow()
+        delay = 0
+        if cleaned_data.get('delay_amount') is None:
+            cleaned_data['delay_amount'] = 0
         if cleaned_data.get('delay_start'):
-            cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days=cleaned_data['delay_amount']), '%Y-%m-%dT%H:%M:%S')
-            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours=cleaned_data['cadence_frequency']+cleaned_data['delay_amount']*24), '%Y-%m-%dT%H:%M:%S')
+            delay = cleaned_data['delay_amount']
+            cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days = delay), '%Y-%m-%dT%H:%M:%S')
+            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = cleaned_data['cadence_frequency'] + delay*24), '%Y-%m-%dT%H:%M:%S')
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
         else:
             reminder = cleaned_data.get('reminder')
-            delay = cleaned_data.get('delay_amount', 0.0)
-            
             calculated_date = now + datetime.timedelta(days=reminder + delay)
             cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
             
