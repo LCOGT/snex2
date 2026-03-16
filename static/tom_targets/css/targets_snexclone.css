@@ -31,19 +31,19 @@ h4 {
 
 .fixed-top-2 {
   margin-top: 0;
-  margin-left: calc(-1.5rem);
-  margin-right: calc(-1.5rem);
+  margin-left: calc(-1.5rem - 15px);
+  margin-right: calc(-1.5rem - 15px);
   margin-bottom: 1rem;
   background: #174460;
   color: white;
   height: 89px;
   position: relative;
   z-index: 1029;
-  width: calc(100% + 3rem);
+  width: calc(100% + 3rem + 30px);
 }
 
 .fixed-top-2 h3 {
-  padding-left: calc(-1.5rem);
+  padding-left: calc(1.5rem + 15px);
 }
 
 .fixed-top-2 a {
@@ -53,7 +53,7 @@ h4 {
 }
 
 .content {
-  padding: 0;
+  padding: 0 1.5rem 1.5rem 1.5rem;
 }
 
 .col-md-12 {
