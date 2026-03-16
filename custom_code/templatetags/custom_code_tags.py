@@ -963,7 +963,6 @@ def format_lco_summary(obs, group, is_active):
             summary.append(f"ending on {str(endtime).split('T')[0]}")
 
     start_user = params.get('start_user')
-    logger.info(f'start user: {start_user}')
     if start_user:
         first_name = User.objects.get(username=start_user).first_name
         if first_name:
