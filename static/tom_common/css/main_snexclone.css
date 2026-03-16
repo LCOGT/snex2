@@ -13,7 +13,7 @@
 
 body {
   font-family: 'Open Sans', sans-serif;
-  padding-top: 5rem;
+  padding-top: 0;
 }
 
 .nav-link {
@@ -30,6 +30,7 @@ body {
   padding-bottom: 0;
   align-items: center;
   display: flex;
+  position: relative;
 }
 
 .navbar .navbar-nav {
