@@ -963,6 +963,7 @@ def format_lco_summary(obs, group, is_active):
             summary.append(f"ending on {str(endtime).split('T')[0]}")
 
     start_user = params.get('start_user')
+    logger.info(f'start_user: {start_user} and observation.id: {obs.id}')
     if start_user:
         first_name = User.objects.get(username=start_user).first_name
         if first_name:
@@ -1299,6 +1300,7 @@ def scheduling_list_with_form(context, observation):
     start_val = first_obs.parameters.get('start', 'Unknown')
     start = str(start_val).replace('T', ' ')
     username = first_obs.parameters.get('start_user', 'snex_secure')
+    logger.info(f'username for scheduling form: {username}, observationid: {observation.id}')
     user = User.objects.filter(username = username).first()
     requested_str = f"{user.first_name} {user.last_name}".strip() or username
     return get_scheduling_form(observation, context['request'].user.id, start, requested_str)

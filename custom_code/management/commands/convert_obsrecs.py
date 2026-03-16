@@ -19,20 +19,26 @@ def convert_start_user():
             else:
                 print(start_user)
 
-def convert_field_to_date():
-    obsrecs = ObservationRecord.objects.all()
-    for obs in obsrecs:
-        cad_freq_days = obs.parameters.get('cadence_frequency_days')
+def convert_field_to_date(chunk_size=1000):
+    qs = ObservationRecord.objects.only("id", "parameters").iterator(chunk_size=chunk_size)
+    updated_count = 0
+    for obs in qs:
+        params = obs.parameters or {}
+        updated = False
+        cad_freq_days = params.get("cadence_frequency_days")
         if not cad_freq_days:
-            cad_freq = obs.parameters.get('cadence_frequency')
+            cad_freq = params.get("cadence_frequency")
             if cad_freq:
-                obs.parameters['cadence_frequency_days'] = cad_freq
-                obs.save()
-        reminder_date = obs.parameters.get('reminder_date')
+                params["cadence_frequency_days"] = cad_freq
+                updated = True
+        reminder_date = params.get("reminder_date")
         if not reminder_date:
-            reminder = obs.parameters.get('reminder')
+            reminder = params.get("reminder")
             if reminder:
-                obs.parameters['reminder_date'] = reminder
-                obs.save()
-
-
+                params["reminder_date"] = reminder
+                updated = True
+        if updated:
+            obs.parameters = params
+            obs.save(update_fields=["parameters"])
+            updated_count += 1
+    print(f"Updated {updated_count} records")

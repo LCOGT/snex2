@@ -909,6 +909,7 @@ class CustomObservationCreateView(ObservationCreateView):
         return form
     
     def form_valid(self, form):
+        logger.info(f'start user from form: {self.request.user} and username: {self.request.user.username}')
         form.cleaned_data['start_user'] = self.request.user.username
         return super().form_valid(form)
     
