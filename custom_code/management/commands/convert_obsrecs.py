@@ -26,7 +26,6 @@ def convert_field_to_date():
         if not cad_freq_days:
             cad_freq = obs.parameters.get('cadence_frequency')
             if cad_freq:
-                print(cad_freq_days,cad_freq)
                 obs.parameters['cadence_frequency_days'] = cad_freq
                 obs.save()
         reminder_date = obs.parameters.get('reminder_date')
