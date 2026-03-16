@@ -1,6 +1,9 @@
 {% load bootstrap4 %}
 <h4>Recent LCO Images</h4>
 <div class="row">
+{% if no_images %}
+<p>No images for this target yet.</p>
+{% else %}
 {% for top_image in top_images %}
 <div class="col-md-2" style="padding: 0px;">
   <img style="width: 90%; height: 90%; margin-left: 5px; margin-top: 5px;" src="data:image/png;base64,{{top_image.image}}" alt="img">
@@ -16,3 +19,4 @@
 </div>
 {% endfor %}
 </div>
+{% endif %}

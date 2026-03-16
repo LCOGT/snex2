@@ -1,7 +1,20 @@
 @import url('https://fonts.googleapis.com/css?family=Montserrat');
 @import url('https://fonts.googleapis.com/css?family=Open+Sans');
 
-h5 {
+:root {
+  --snex-navbar-bg: black;
+  --snex-navbar-dropdown-bg: #111;
+  --snex-navbar-dropdown-hover: #222;
+  --snex-navbar-height: 35px;
+}
+
+body {
+  font-family: 'Open Sans', sans-serif;
+  padding-top: 0 !important;
+  background-color: #fff !important;
+}
+
+h2, h3, h5 {
   font-family: 'Montserrat', sans-serif;
 }
 
@@ -9,49 +22,28 @@ h4 {
   font-family: 'Open Sans', sans-serif;
 }
 
-h3 {
-  font-family: 'Montserrat', sans-serif;
-}
-
-h2 {
-  font-family: 'Montserrat', sans-serif;
-}
-
-body {
-  font-family: 'Open Sans', sans-serif;
-  padding-top: 5rem;
-}
-
-nav a {
-  font-family: 'Open Sans', sans-serif;
+.navbar.fixed-top:not(.fixed-top-2) {
+  background: var(--snex-navbar-bg) !important;
   color: white;
-  font-size: 12pt;
-}
-
-nav a:hover {
-  color: white;
-}
-
-nav {
-  background: black;
-  color: white;
-  height: 35px;
-}
-
-.fixed-top {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 0;
+  height: var(--snex-navbar-height);
+  position: relative;
 }
 
 .fixed-top-2 {
-  margin-top: 35px;
+  margin-top: 0;
+  margin-left: calc(-1.5rem - 15px);
+  margin-right: calc(-1.5rem - 15px);
+  margin-bottom: 1rem;
   background: #174460;
+  color: white;
   height: 89px;
-  position: absolute;
-  z-index: -1;
+  position: relative;
+  z-index: 1029;
+  width: calc(100% + 3rem + 30px);
+}
+
+.fixed-top-2 h3 {
+  padding-left: calc(1.5rem + 15px);
 }
 
 .fixed-top-2 a {
@@ -61,25 +53,11 @@ nav {
 }
 
 .content {
-  padding: 3rem 1.5rem;
-}
-
-.navbar-brand > img {
-    max-height: 25px;
-}
-
-.input-group-text {
-    font-family: monospace;
-}
-
-@media (min-width: 768px)
-.navbar-expand-md .navbar-nav .dropdown-menu {
-    position: absolute;
-    z-index: 9999;
+  padding: 0 1.5rem 1.5rem 1.5rem;
 }
 
 .col-md-12 {
-  max-width: 83.3333%;
+max-width: 83.3333%;
 }
 
 .container {
@@ -91,3 +69,15 @@ nav {
   max-width: none;
 }
 
+@media (max-width: 767px) {
+  .navbar.fixed-top:not(.fixed-top-2) {
+    height: auto;
+  }
+  .navbar-collapse {
+    background: var(--snex-navbar-bg) !important;
+  }
+  .dropdown-menu {
+    background: transparent !important;
+    border: none;
+  }
+}

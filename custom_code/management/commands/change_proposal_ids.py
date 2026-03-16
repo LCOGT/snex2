@@ -34,7 +34,7 @@ class Command(BaseCommand):
             rec.save()
 
         ### Do the same thing for the template records
-        templatelist = [c.observation_group.observation_records.filter(observation_id='template').first() for c in DynamicCadence.objects.filter(active=True)]
+        templatelist = [c.observation_group.observation_records.filter(status='PENDING').first() for c in DynamicCadence.objects.filter(active=True)]
 
         template_ids_to_update = [t.id for t in templatelist if t is not None and t.parameters['proposal'] == options['oldid']]
         templates_to_update = ObservationRecord.objects.filter(id__in=template_ids_to_update)

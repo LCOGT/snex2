@@ -9,7 +9,6 @@ from rest_framework.mixins import CreateModelMixin
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_targets.models import Target, TargetName
 from custom_code.models import ReducedDatumExtra, Papers
-from tom_common.hooks import run_hook
 from .processors.data_processor import run_custom_data_processor
 import json
 
@@ -21,10 +20,9 @@ from rest_framework.permissions import AllowAny
 
 from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
-from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
+from tom_observations.models import ObservationGroup, DynamicCadence
 from rest_framework.exceptions import ValidationError
 from django.db import transaction
-from custom_code.hooks import _return_session
 from urllib.parse import urlencode
 import requests
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
@@ -94,7 +92,6 @@ class CustomDataProductViewSet(DataProductViewSet):
         if response.status_code == status.HTTP_201_CREATED:
             dp = DataProduct.objects.get(pk=response.data['id'])
             try:
-                #run_hook('data_product_post_upload', dp)
                 reduced_data, extras = run_custom_data_processor(dp, extras)
                 if not settings.TARGET_PERMISSIONS_ONLY:
                     for group_name in settings.DEFAULT_GROUPS:#response.data['group']:
@@ -131,7 +128,6 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
         Endpoint for submitting a new observation with syncing with SNEx1.
         """
         with transaction.atomic():
-            db_session = _return_session()
             # Initialize the observation form, validate the form data, and submit to the observatory
             observation_ids = []
             try:
@@ -150,11 +146,7 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
             )
             observation_form = observation_form_class(observing_parameters)
             if observation_form.is_valid():
-                logger.info(
-                    f'Submitting observation to {facility} with parameters {observation_form.observation_payload}'
-                )
                 observation_ids = facility.submit_observation(observation_form.observation_payload())
-                logger.info(f'Successfully submitted to {facility}, received observation ids {observation_ids}')
             else:
                 logger.warning(f'Unable to submit observation due to errors: {observation_form.errors}')
                 raise ValidationError(observation_form.errors)
@@ -172,7 +164,6 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 assign_perm('tom_observations.view_observationgroup', self.request.user, observation_group)
                 assign_perm('tom_observations.change_observationgroup', self.request.user, observation_group)
                 assign_perm('tom_observations.delete_observationgroup', self.request.user, observation_group)
-                logger.info(f'Created ObservationGroup {observation_group}.')
 
                 cadence_parameters = json.loads(cadence)
                 if cadence_parameters is not None:
@@ -191,13 +182,13 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                                 cadence_parameters=cadence_parameters,
                                 active=True
                             )
-                            logger.info(f'Created DynamicCadence {dynamic_cadence}.')
                         else:
                             observation_group.delete()
                             raise ValidationError(cadence_form.errors)
 
             # Create the serializer data used to create the observation records
             serializer_data = []
+
             for obsr_id in observation_ids:
                 obsr_data = {  # TODO: at present, submitted fields have to be added to this dict manually, maybe fix?
                     'name': self.request.data.get('name', ''),
@@ -222,53 +213,6 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 logger.error(f'Failed to create ObservationRecord due to exception {ve}')
                 raise ValidationError(f'''Observation submission successful, but failed to create a corresponding
                                           ObservationRecord due to exception {ve}.''')
-
-            ### Sync new sequences with SNEx1
-            # Get the group ids to pass to SNEx1
-            group_names = []
-            if not settings.TARGET_PERMISSIONS_ONLY:
-                for group in json.loads(self.request.data.get('groups', [])):
-                    group_names.append(Group.objects.get(pk=group['id']).name)
-
-            ## Run the hook to add the sequence to SNEx1
-            snex_id = run_hook(
-                    'sync_sequence_with_snex1',
-                    observation_form.serialize_parameters(),
-                    group_names,
-                    userid=int(self.request.data.get('user_id', '3')),
-                    wrapped_session=db_session)
-
-            # Change the name of the observation group, if one was created
-            if len(observation_ids) > 1 or cadence:
-                observation_group.name = str(snex_id)
-                observation_group.save()
-
-                for record in observation_group.observation_records.all():
-                    record.parameters['name'] = snex_id
-                    record.save()
-
-            # Now run the hook to add each observation record to SNEx1
-            for record in observation_group.observation_records.all():
-                # Get the requestsgroup ID from the LCO API using the observation ID
-                obs_id = int(record.observation_id)
-                LCO_SETTINGS = settings.FACILITIES['LCO']
-                PORTAL_URL = LCO_SETTINGS['portal_url']
-                portal_headers = {'Authorization': 'Token {0}'.format(LCO_SETTINGS['api_key'])}
-
-                query_params = urlencode({'request_id': obs_id})
-
-                r = requests.get('{}/api/requestgroups?{}'.format(PORTAL_URL, query_params), headers=portal_headers)
-                requestgroups = r.json()
-                if requestgroups['count'] == 1:
-                    requestgroup_id = int(requestgroups['results'][0]['id'])
-
-                run_hook('sync_observation_with_snex1', 
-                         snex_id, 
-                         record.parameters, 
-                         requestgroup_id, 
-                         wrapped_session=db_session)
-
-            db_session.commit()
-
+                
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)

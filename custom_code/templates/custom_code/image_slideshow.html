@@ -28,6 +28,12 @@
       <input type="hidden" id="download-filename" name="filename">
       <button type="button" class="btn btn-primary" onclick="downloadFile()">Download Fits</button>
     </div>
+    <div class="row justify-content-center mt-3">
+      <button type="button" class="btn btn-primary" onclick="downloadAll()">Download All Images</button>
+    </div>
+    <div class="row justify-content-center mt-2">
+      <div id="download-status" class="text-center"></div>
+    </div>
   </div>
   <div class="col-md-2">
     <form>
@@ -143,4 +149,64 @@
     hiddenInput.value = filenameSelect.value;
     makeThumbnail();
   });
+function downloadAll() {
+    const button = document.querySelector("button[onclick='downloadAll()']");
+    const status = document.getElementById('download-status');
+    const originalText = button.innerHTML;
+
+    button.disabled = true;
+    button.innerHTML = 'Searching for frames...';
+    status.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Querying archive...';
+
+    $.ajax({
+        url: '{% url "get-frame-ids" %}',
+        method: 'GET',
+        data: { target_id: '{{ target.id }}' },
+        success: function(response) {
+            const count = response.count;
+            const frameIds = response.frame_ids;
+
+            status.innerHTML = `<span style="color: green;">&#x2713; Found ${count} frame${count !== 1 ? 's' : ''}. Starting download...</span>`;
+            button.innerHTML = 'Downloading...';
+
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{% url "download-zip" %}';
+            form.style.display = 'none';
+
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrfmiddlewaretoken';
+            csrfInput.value = $("input[name=csrfmiddlewaretoken]").val();
+            form.appendChild(csrfInput);
+
+            const frameIdsInput = document.createElement('input');
+            frameIdsInput.type = 'hidden';
+            frameIdsInput.name = 'frame_ids';
+            frameIdsInput.value = JSON.stringify(frameIds);
+            form.appendChild(frameIdsInput);
+
+            const targetNameInput = document.createElement('input');
+            targetNameInput.type = 'hidden';
+            targetNameInput.name = 'target_name';
+            targetNameInput.value = '{{ target.name }}';
+            form.appendChild(targetNameInput);
+
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.disabled = false;
+                status.innerHTML = '';
+            }, 5000);
+        },
+        error: function() {
+            status.innerHTML = '<span style="color: red;">&#x2715; Failed to query archive.</span>';
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+    });
+}
 </script>

@@ -1,6 +1,6 @@
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, BrokerTarget
 from tom_targets.models import Target, TargetList
-from tom_targets.filters import filter_for_field, TargetFilter
+from tom_targets.filters import filter_for_field, TargetFilterSet
 from django.conf import settings
 import django_filters
 from django.db.models import ExpressionWrapper, FloatField, Q
@@ -70,7 +70,7 @@ class TNSTargetFilter(django_filters.FilterSet):
         fields = []
         form = TNSTargetForm
 
-class CustomTargetFilter(TargetFilter):
+class CustomTargetFilter(TargetFilterSet):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
