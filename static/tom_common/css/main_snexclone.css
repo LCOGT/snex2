@@ -1,18 +1,101 @@
+@import url('https://fonts.googleapis.com/css?family=Montserrat');
+@import url('https://fonts.googleapis.com/css?family=Open+Sans');
+
+:root {
+  --snex-navbar-bg-top: #455f6e;
+  --snex-navbar-bg-mid: #46697f;
+  --snex-navbar-bg-bottom: #46687c;
+  --snex-navbar-bg: linear-gradient(var(--snex-navbar-bg-top), var(--snex-navbar-bg-mid), var(--snex-navbar-bg-bottom));
+  --snex-navbar-dropdown-bg: var(--snex-navbar-bg-top);
+  --snex-navbar-dropdown-hover: var(--snex-navbar-bg-mid);
+  --snex-navbar-height: 89px;
+}
+
 body {
+  font-family: 'Open Sans', sans-serif;
   padding-top: 5rem;
 }
+
+.nav-link {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 14pt;
+  font-weight: 500;
+}
+
+.navbar.fixed-top:not(.fixed-top-2) {
+  background: var(--snex-navbar-bg) !important;
+  color: white;
+  height: var(--snex-navbar-height);
+  padding-top: 0;
+  padding-bottom: 0;
+  align-items: center;
+  display: flex;
+}
+
+.navbar .navbar-nav {
+  align-items: center;
+}
+
+.navbar-collapse {
+  padding: 10px;
+}
+
+.dropdown-menu {
+  background: var(--snex-navbar-dropdown-bg) !important;
+}
+
+.dropdown-item {
+  color: white !important;
+}
+
+.dropdown-item:hover {
+  background: var(--snex-navbar-dropdown-hover) !important;
+  color: white !important;
+}
+
 .content {
   padding: 3rem 1.5rem;
 }
+
 .navbar-brand > img {
-    max-height: 25px;
+  max-height: 25px;
 }
 
 .input-group-text {
-    font-family: monospace;
+  font-family: monospace;
 }
 
 .btn-primary {
-    background-color: #164560;
-      border: #164560;
+  background-color: #164560;
+  border-color: #164560;
+}
+
+.navbar-collapse .target-search,
+.navbar-collapse .target-search form,
+.navbar-collapse .target-search input {
+  width: 100% !important;
+}
+
+@media (max-width: 767px) {
+  .navbar-collapse {
+    background: var(--snex-navbar-bg) !important;
+  }
+  .dropdown-menu {
+    background: transparent !important;
+    border: none;
+  }
+  .navbar-nav {
+    align-items: center;
+    width: 100%;
+  }
+  .navbar-nav.ml-auto {
+    margin-left: 0 !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .navbar-expand-md .navbar-nav .dropdown-menu {
+    position: absolute;
+    z-index: 9999;
+  }
 }
