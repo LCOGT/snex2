@@ -2,9 +2,9 @@
 @import url('https://fonts.googleapis.com/css?family=Open+Sans');
 
 :root {
-  --snex-navbar-bg-top: #455f6e;
-  --snex-navbar-bg-mid: #46697f;
-  --snex-navbar-bg-bottom: #46687c;
+  --snex-navbar-bg-top: #1c465f; /* was #455f6e */
+  --snex-navbar-bg-mid: #19445f; /* was #46697f */
+  --snex-navbar-bg-bottom: #174460; /* was #46687c */
   --snex-navbar-bg: linear-gradient(var(--snex-navbar-bg-top), var(--snex-navbar-bg-mid), var(--snex-navbar-bg-bottom));
   --snex-navbar-dropdown-bg: var(--snex-navbar-bg-top);
   --snex-navbar-dropdown-hover: var(--snex-navbar-bg-mid);
