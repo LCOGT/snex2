@@ -222,12 +222,17 @@ def update_phot(action, db_address=_SNEX2_DB):
                     logger.info(f'how many reduced datums for snexid: {id_}? {len(rds)}')
                     for rd in rds:
                         logger.info(f'value for rd {rd.id}: {rd.value}')
-                    rd_just_snex1 = [rd for rd in rds if 'snex_id' in rd.value and len(rd.value) == 1]
-                    logger.info(f'reduceddatum(s) that only have snex1 id {rd_just_snex1}')
+                    rd_just_snex1 = [rd for rd in rds if len(rd.value) == 1]
+
                     if len(rd_just_snex1) < len(rds):
-                        logger.info(f'there is an extra reduceddatum with only snex1 id')
                         for rd in rd_just_snex1:
-                            logger.info(f'deleting {rd} with value {rd.value}')
+                            logger.info(f'deleting {rd.id} with value {rd.value}')
+                            rd.delete()
+
+                    elif len(rd_just_snex1) > 1:
+                        logger.info(f'Found {len(rd_just_snex1)} placeholders, keeping only one')
+                        for rd in rd_just_snex1[1:]:
+                            logger.info(f'deleting duplicate placeholder {rd.id}')
                             rd.delete()
 
                     rd, created = ReducedDatum.objects.update_or_create(
