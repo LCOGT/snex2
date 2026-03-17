@@ -175,7 +175,6 @@ def update_phot(action, db_address=_SNEX2_DB):
                     
             else:
                 targetid = phot_row.targetid
-                target = Target.objects.get(pk = targetid)
                 dobs = phot_row.dateobs
                 tobs = phot_row.ut
                 if tobs is None:
@@ -215,6 +214,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
+                    target = Target.objects.get(pk = targetid)
                     logger.info(f'phot dictionary: {phot}')
 
                     #check if there is a duplicate:
@@ -312,7 +312,6 @@ def update_spec(action, db_address=_SNEX2_DB):
                     continue
 
                 targetid = spec_row.targetid
-                target = Target.objects.get(pk = targetid)
                 time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
@@ -327,6 +326,7 @@ def update_spec(action, db_address=_SNEX2_DB):
                     standard_list = db_session.query(Targets).filter(Targets.classificationid==standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
                 if targetid not in standard_ids:
+                    target = Target.objects.get(pk = targetid)
                     #created True means new DataProduct was made, created False is object already existed, like just "get"
                     data_product, dp_created = DataProduct.objects.get_or_create(
                         target = target, 
