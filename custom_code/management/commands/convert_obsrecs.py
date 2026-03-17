@@ -46,10 +46,16 @@ def convert_field_to_date():
             if cad_freq:
                 params["cadence_frequency_days"] = cad_freq
                 updated = True
+            if cad_freq == 0:
+                params["cadence_frequency_days"] = cad_freq
+                updated = True
         reminder_date = params.get("reminder_date")
         if not reminder_date:
             reminder = params.get("reminder")
             if reminder:
+                params["reminder_date"] = reminder
+                updated = True
+            if reminder == 0:
                 params["reminder_date"] = reminder
                 updated = True
         if updated:
