@@ -349,10 +349,14 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             self.fields[field_name].widget = forms.HiddenInput()
             self.fields[field_name].required = False
 
-        if self.fields.get('groups'):
-            self.fields['groups'].label = 'Data granted to'
-            self.fields['groups'].initial = Group.objects.filter(name__in=settings.DEFAULT_GROUPS)
-        
+        if not settings.TARGET_PERMISSIONS_ONLY:
+            self.fields['groups'] = forms.ModelMultipleChoiceField(
+                    Group.objects.all(),
+                    initial = Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
+                    required=False,
+                    widget=forms.CheckboxSelectMultiple, 
+                    label='Data granted to')
+            
         self.helper.layout = Layout(
             Div(
                 Column('name', css_class='col-md-4'),
