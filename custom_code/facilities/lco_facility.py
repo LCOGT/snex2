@@ -150,10 +150,12 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         delay = 0
         if cleaned_data.get('delay_amount') is None:
             cleaned_data['delay_amount'] = 0
-        if cleaned_data.get('delay_start'):
+        if cleaned_data.get('delay_start') and cleaned_data['delay_amount'] > 0:
             delay = cleaned_data['delay_amount']
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days = delay), '%Y-%m-%dT%H:%M:%S')
             cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = cleaned_data['cadence_frequency'] + delay*24), '%Y-%m-%dT%H:%M:%S')
+            cleaned_data['delay_start'] = False
+            cleaned_data['delay_amount'] = 0
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
         else:
@@ -391,10 +393,12 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         delay = 0
         if cleaned_data.get('delay_amount') is None:
             cleaned_data['delay_amount'] = 0
-        if cleaned_data.get('delay_start'):
+        if cleaned_data.get('delay_start') and cleaned_data['delay_amount'] > 0:
             delay = cleaned_data['delay_amount']
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days = delay), '%Y-%m-%dT%H:%M:%S')
             cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = cleaned_data['cadence_frequency'] + delay*24), '%Y-%m-%dT%H:%M:%S')
+            cleaned_data['delay_start'] = False
+            cleaned_data['delay_amount'] = 0
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
         else:
