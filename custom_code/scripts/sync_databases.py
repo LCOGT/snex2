@@ -243,11 +243,11 @@ def update_phot(action, db_address=_SNEX2_DB):
                     if phot_groupid is not None:
                         update_permissions(int(phot_groupid), 'view_reduceddatum', rd, snex1_groups)
 
-                delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
-
         except Exception as e:
             logger.info(f"Failed to process photometry for db_changes row {result.id} photlco {result.rowid} with exception {e}")
             continue
+
+        delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
 def read_spec(filename):
     """
@@ -364,23 +364,24 @@ def update_spec(action, db_address=_SNEX2_DB):
                     RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
                         data_type='spectroscopy',
                         key='spec_extras',
-                        value__icontains=f'"snex_id": {id_}',
+                        value__icontains = f'"snex_id": {id_}',
                         target_id=targetid)
 
-                    RDExtras_spec.value = spec_extras
+                    RDExtras_spec.value = json.dumps(spec_extras)
                     RDExtras_spec.save()
+
+                    logger.info(f'rd and extras made: {reduced_datum}, {RDExtras_snex_id} {RDExtras_spec}')
 
                     if spec_groupid is not None:
                         update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
                         assign_perm('tom_dataproducts.view_dataproduct', Group.objects.get(name = "LCOGT"), data_product) # LCOGT group view and edit all dataproducts
                         assign_perm('tom_dataproducts.delete_dataproduct', Group.objects.get(name = "LCOGT"), data_product)
 
-
-            delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
-
         except Exception as e:
             logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid} with exception {e}")
             continue
+
+        delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
 def run():
     """
