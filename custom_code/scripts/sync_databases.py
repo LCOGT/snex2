@@ -14,6 +14,7 @@ from django.contrib.auth.models import Group
 from custom_code.utils import update_permissions
 from custom_code.models import ReducedDatumExtra
 from guardian.shortcuts import assign_perm
+from tom_targets.models import Target
 
 import logging
 logger = logging.getLogger(__name__)
@@ -174,6 +175,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                     
             else:
                 targetid = phot_row.targetid
+                target = Target.objects.get(pk = targetid)
                 dobs = phot_row.dateobs
                 tobs = phot_row.ut
                 if tobs is None:
@@ -216,7 +218,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                     logger.info(f'phot dictionary: {phot}')
 
                     #check if there is a duplicate:
-                    rds = ReducedDatum.objects.filter(target_id = targetid,data_type = 'photometry',value__snex_id = id_)
+                    rds = ReducedDatum.objects.filter(target = target,data_type = 'photometry',value__snex_id = id_)
                     logger.info(f'how many reduced datums for snexid: {id_}? {len(rds)}')
                     for rd in rds:
                         logger.info(f'value for rd {rd.id}: {rd.value}')
@@ -229,7 +231,7 @@ def update_phot(action, db_address=_SNEX2_DB):
                             rd.delete()
 
                     rd, created = ReducedDatum.objects.update_or_create(
-                        target_id = targetid,
+                        target = target,
                         data_type = 'photometry',
                         value__snex_id = id_,
                         defaults = {
@@ -310,6 +312,7 @@ def update_spec(action, db_address=_SNEX2_DB):
                     continue
 
                 targetid = spec_row.targetid
+                target = Target.objects.get(pk = targetid)
                 time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
@@ -326,7 +329,7 @@ def update_spec(action, db_address=_SNEX2_DB):
                 if targetid not in standard_ids:
                     #created True means new DataProduct was made, created False is object already existed, like just "get"
                     data_product, dp_created = DataProduct.objects.get_or_create(
-                        target_id = targetid, 
+                        target = target, 
                         product_id = spec_row.filename.replace('.fits', '.ascii'),
                         data_product_type = 'spectroscopy')
                     
@@ -338,7 +341,7 @@ def update_spec(action, db_address=_SNEX2_DB):
                         data_product.save()
 
                     reduced_datum, rd_created = ReducedDatum.objects.get_or_create(
-                        target_id = targetid, 
+                        target = target, 
                         data_product = data_product, 
                         value = spec,
                         timestamp = time,
@@ -348,7 +351,7 @@ def update_spec(action, db_address=_SNEX2_DB):
 
                     newspec_extra_value = json.dumps({'snex_id': int(id_), 'snex2_id': int(reduced_datum.id)})
                     RDExtras_snex_id, rd_snexid_created =  ReducedDatumExtra.objects.get_or_create(
-                        target_id = targetid,
+                        target = target,
                         data_type = 'spectroscopy',
                         key = 'snex_id',
                         value__icontains = f'"snex_id": {id_}')
@@ -362,10 +365,10 @@ def update_spec(action, db_address=_SNEX2_DB):
                             spec_extras[key] = getattr(spec_row, key)
                     spec_extras['snex_id'] = int(id_)
                     RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
+                        target = target,
                         data_type='spectroscopy',
                         key='spec_extras',
-                        value__icontains = f'"snex_id": {id_}',
-                        target_id=targetid)
+                        value__icontains = f'"snex_id": {id_}')
 
                     RDExtras_spec.value = json.dumps(spec_extras)
                     RDExtras_spec.save()
