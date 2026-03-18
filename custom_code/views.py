@@ -209,16 +209,42 @@ def target_redirect_view(request):
             return(redirect('/create-target/?ra={ra}&dec={dec}'.format(ra=ra,dec=dec)))
 
     else:
-        target_match_list = Target.objects.filter(Q(name__icontains=search_entry) | Q(aliases__name__icontains=search_entry) | Q(name__icontains=search_entry.lower().replace('SN ','')) | Q(aliases__name__icontains=search_entry.lower().replace('AT ',''))).distinct()
+        # Name resolution mode
+        original_clean = (search_entry or '').strip()
+        original_compact = original_clean.replace(' ', '')
+
+        canonical = _normalize_view_object_name(search_entry)
+
+        candidates = set()
+        if original_clean:
+            candidates.add(original_clean)
+        if original_compact:
+            candidates.add(original_compact)
+        if canonical:
+            candidates.add(canonical)
+            candidates.add(_format_prefixed_name_for_create(canonical))
+            # Allow matching when user enters just the year+label (e.g. `2024ggi`)
+            if canonical.upper().startswith('SN') or canonical.upper().startswith('AT'):
+                candidates.add(canonical[2:])
+
+        match_q = Q()
+        for c in candidates:
+            if c:
+                match_q |= Q(name__icontains=c) | Q(aliases__name__icontains=c)
+
+        target_match_list = Target.objects.filter(match_q).distinct()
 
         if len(target_match_list) == 1:
             target_id = target_match_list[0].id
-            return(redirect('/targets/{}/'.format(target_id)))
+            return redirect('/targets/{}/'.format(target_id))
 
-        elif len(target_match_list) > 1: 
-            return(redirect('/targets/?name={}'.format(search_entry)))
-        else:
-            return(redirect('/create-target/?name={name}'.format(name=search_entry)))
+        elif len(target_match_list) > 1:
+            # Feed existing target filtering UX with a canonical compact name.
+            return redirect('/targets/?name={}'.format(canonical or original_clean))
+
+        # No match -> create with spaced prefix for better form UX.
+        create_name = _format_prefixed_name_for_create(canonical or original_clean)
+        return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
 
 
 def _normalize_view_object_name(name: str) -> str:
@@ -321,27 +347,11 @@ def view_object_view(request):
 
     # Name resolution mode
     if name:
-        original_clean = (name or '').strip().replace(' ', '')
-        canonical = _normalize_view_object_name(name)
-
-        search_entry_for_redirect = original_clean or canonical
-
-        response = target_redirect_view(_make_dummy_request_for_redirect(search_entry_for_redirect))
-
-        location = ''
+        # Let the existing `/redirect/` resolver handle normalization + redirect UX.
         try:
-            location = response['Location']
+            return target_redirect_view(_make_dummy_request_for_redirect(name))
         except Exception:
-            location = ''
-
-        if location.startswith('/targets/?name='):
-            return redirect('/targets/?name={}'.format(canonical or search_entry_for_redirect))
-
-        if location.startswith('/create-target/') and 'name=' in location:
-            create_name = _format_prefixed_name_for_create(canonical or search_entry_for_redirect)
-            return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
-
-        return response
+            return HttpResponseBadRequest("Invalid name")
 
     return HttpResponseBadRequest("Missing query params: provide either `name` or `ra`+`dec`.")
 
