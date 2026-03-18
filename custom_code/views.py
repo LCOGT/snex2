@@ -249,55 +249,71 @@ def target_redirect_view(request):
 
 def _normalize_view_object_name(name: str) -> str:
     """
-    Normalize likely target short names into a canonical form without spaces.
+    Normalize likely target short names into a canonical compact form without spaces.
+
+    Rules:
+      - `AT` / `SN` prefix is always uppercase.
+      - If the suffix is exactly 1 letter (e.g. `1993J`), that letter is uppercase.
+      - If the suffix is multiple letters (e.g. `1993ab` or `24ggi`), all letters are lowercase.
 
     Examples:
-      - `24ggi` -> `AT2024GGI` (default AT when no SN/AT prefix is provided)
-      - `SN2024ggi` -> `SN2024GGI` (preserve explicit SN)
-      - `AT2024ggi` -> `AT2024GGI` (preserve explicit AT)
+      - `24ggi` -> `AT2024ggi` (default AT when no SN/AT prefix is provided)
+      - `SN2024ggi` -> `SN2024ggi` (preserve explicit SN)
+      - `AT1993J` -> `AT1993J`
+      - `2024ab` -> `AT2024ab`
     """
-    s = (name or '').strip().replace(' ', '')
-    if not s:
-        return s
+    s_clean = (name or '').strip().replace(' ', '')
+    if not s_clean:
+        return s_clean
 
-    s_upper = s.upper()
-
-    # Preserve explicit prefix if user already supplied it.
+    s_upper = s_clean.upper()
     if s_upper.startswith('SN'):
         prefix = 'SN'
+        tail = s_clean[2:]
     elif s_upper.startswith('AT'):
         prefix = 'AT'
+        tail = s_clean[2:]
     else:
-        # Default prefix when not specified: AT
         prefix = 'AT'
+        tail = s_clean
 
-    # If already prefixed with a non-short form, just return it canonicalized.
-    if s_upper.startswith('SN') or s_upper.startswith('AT'):
-        return s_upper
-
+    # Find the first alphabetic character in `tail`; digits before that are the year.
     first_alpha_idx = None
-    for i, ch in enumerate(s_upper):
+    for i, ch in enumerate(tail):
         if ch.isalpha():
             first_alpha_idx = i
             break
-
     if first_alpha_idx in (None, 0):
-        return s_upper
+        # Can't parse year; at least ensure prefix casing.
+        return prefix + tail
 
-    year_part = s_upper[:first_alpha_idx]
-    rest = s_upper[first_alpha_idx:]
+    year_part = tail[:first_alpha_idx]
+    suffix_raw = tail[first_alpha_idx:]
 
     if not year_part.isdigit():
-        return s_upper
+        return prefix + year_part + suffix_raw
 
     if len(year_part) == 2:
         year_full = 2000 + int(year_part)
     elif len(year_part) == 4:
         year_full = int(year_part)
     else:
-        return s_upper
+        # Unknown year length; preserve raw year.
+        year_full = year_part
 
-    return f"{prefix}{year_full}{rest}"
+    # Apply suffix letter casing rule.
+    # We only look at the initial contiguous letter run.
+    import re
+    m = re.match(r'([A-Za-z]+)', suffix_raw)
+    letters = m.group(1) if m else ''
+    rest = suffix_raw[len(letters):] if letters else suffix_raw
+
+    if len(letters) == 1:
+        letters_cased = letters.upper()
+    else:
+        letters_cased = letters.lower()
+
+    return f"{prefix}{year_full}{letters_cased}{rest}"
 
 
 def _format_prefixed_name_for_create(canonical_name: str) -> str:
@@ -308,8 +324,10 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
     """
     s = (canonical_name or '').strip()
     s_upper = s.upper()
-    if s_upper.startswith('SN') or s_upper.startswith('AT'):
-        return s_upper[:2] + ' ' + s_upper[2:]
+    if s_upper.startswith('SN'):
+        return 'SN ' + s[2:]
+    if s_upper.startswith('AT'):
+        return 'AT ' + s[2:]
     return s
 
 
