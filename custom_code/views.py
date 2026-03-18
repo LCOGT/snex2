@@ -66,6 +66,7 @@ from custom_code.scheduling import cancel_observation, change_obs_from_schedulin
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
 import logging
+from urllib.parse import quote_plus
 
 logger = logging.getLogger(__name__)
 
@@ -222,14 +223,29 @@ def target_redirect_view(request):
 
 def _normalize_view_object_name(name: str) -> str:
     """
-    Normalize likely-SN short names like `24ggi` -> `SN2024GGI`.
-    If it's already prefixed (e.g. `SN2024ggi`/`AT2024ggi`), we just return it uppercased.
+    Normalize likely target short names into a canonical form without spaces.
+
+    Examples:
+      - `24ggi` -> `AT2024GGI` (default AT when no SN/AT prefix is provided)
+      - `SN2024ggi` -> `SN2024GGI` (preserve explicit SN)
+      - `AT2024ggi` -> `AT2024GGI` (preserve explicit AT)
     """
     s = (name or '').strip().replace(' ', '')
     if not s:
         return s
 
     s_upper = s.upper()
+
+    # Preserve explicit prefix if user already supplied it.
+    if s_upper.startswith('SN'):
+        prefix = 'SN'
+    elif s_upper.startswith('AT'):
+        prefix = 'AT'
+    else:
+        # Default prefix when not specified: AT
+        prefix = 'AT'
+
+    # If already prefixed with a non-short form, just return it canonicalized.
     if s_upper.startswith('SN') or s_upper.startswith('AT'):
         return s_upper
 
@@ -255,7 +271,20 @@ def _normalize_view_object_name(name: str) -> str:
     else:
         return s_upper
 
-    return f"SN{year_full}{rest}"
+    return f"{prefix}{year_full}{rest}"
+
+
+def _format_prefixed_name_for_create(canonical_name: str) -> str:
+    """
+    Format canonical name for the create form display, e.g.:
+      - `SN2024GGI` -> `SN 2024GGI`
+      - `AT2024GGI` -> `AT 2024GGI`
+    """
+    s = (canonical_name or '').strip()
+    s_upper = s.upper()
+    if s_upper.startswith('SN') or s_upper.startswith('AT'):
+        return s_upper[:2] + ' ' + s_upper[2:]
+    return s
 
 
 def _parse_ra_dec_to_degrees(ra_str: str, dec_str: str):
@@ -368,7 +397,8 @@ def view_object_view(request):
         if match_count > 1:
             return redirect('/targets/?name={}'.format(normalized or original_clean))
         # No matches -> go to create page with the resolved/normalized name.
-        return redirect('/create-target/?name={}'.format(normalized or original_clean))
+        create_name = _format_prefixed_name_for_create(normalized or original_clean)
+        return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
 
     return HttpResponseBadRequest("Missing query params: provide either `name` or `ra`+`dec`.")
 
