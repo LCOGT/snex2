@@ -220,6 +220,159 @@ def target_redirect_view(request):
             return(redirect('/create-target/?name={name}'.format(name=search_entry)))
 
 
+def _normalize_view_object_name(name: str) -> str:
+    """
+    Normalize likely-SN short names like `24ggi` -> `SN2024GGI`.
+    If it's already prefixed (e.g. `SN2024ggi`/`AT2024ggi`), we just return it uppercased.
+    """
+    s = (name or '').strip().replace(' ', '')
+    if not s:
+        return s
+
+    s_upper = s.upper()
+    if s_upper.startswith('SN') or s_upper.startswith('AT'):
+        return s_upper
+
+    first_alpha_idx = None
+    for i, ch in enumerate(s_upper):
+        if ch.isalpha():
+            first_alpha_idx = i
+            break
+
+    if first_alpha_idx in (None, 0):
+        return s_upper
+
+    year_part = s_upper[:first_alpha_idx]
+    rest = s_upper[first_alpha_idx:]
+
+    if not year_part.isdigit():
+        return s_upper
+
+    if len(year_part) == 2:
+        year_full = 2000 + int(year_part)
+    elif len(year_part) == 4:
+        year_full = int(year_part)
+    else:
+        return s_upper
+
+    return f"SN{year_full}{rest}"
+
+
+def _parse_ra_dec_to_degrees(ra_str: str, dec_str: str):
+    """
+    Accept either decimal degrees (e.g. `197.28`, `-28.64`) or sexagesimal
+    strings (e.g. `13:09:47.1`, `-28:38:35.2`).
+    """
+    ra_s = (ra_str or '').strip()
+    dec_s = (dec_str or '').strip()
+
+    if not ra_s or not dec_s:
+        raise ValueError("RA and Dec are required")
+
+    if ':' in ra_s and ':' in dec_s:
+        ra_hms = ra_s.split(':')
+        dec_dms = dec_s.split(':')
+        if len(ra_hms) < 3 or len(dec_dms) < 3:
+            raise ValueError("Invalid sexagesimal RA/Dec")
+
+        ra_hour = float(ra_hms[0])
+        ra_min = float(ra_hms[1])
+        ra_sec = float(ra_hms[2])
+
+        dec_deg = float(dec_dms[0])
+        dec_min = float(dec_dms[1])
+        dec_sec = float(dec_dms[2])
+
+        ra_deg = (ra_hour * 15.0) + (ra_min * 15.0 / 60.0) + (ra_sec * 15.0 / 3600.0)
+        if dec_deg >= 0:
+            dec_deg_out = dec_deg + (dec_min / 60.0) + (dec_sec / 3600.0)
+        else:
+            dec_deg_out = dec_deg - (dec_min / 60.0) - (dec_sec / 3600.0)
+
+        return ra_deg, dec_deg_out
+
+    # Assume decimal degrees
+    return float(ra_s), float(dec_s)
+
+
+def view_object_view(request):
+    """
+    Resolve an object specifier to either:
+      - the unique `/targets/<id>/` target detail page
+      - the filtering results page (`/targets/?...`) if ambiguous
+      - `/create-target/` with prefilled fields if no match
+
+    Supported query params:
+      - `name` (e.g. `SN2024ggi`, `24ggi`, `AT2024abc`)
+      - or `ra` and `dec` (decimal degrees or sexagesimal `h:m:s` / `d:m:s`)
+    """
+    name = request.GET.get('name', '')
+    ra = request.GET.get('ra', '')
+    dec = request.GET.get('dec', '')
+
+    # RA/Dec resolution mode
+    if ra and dec:
+        try:
+            ra_deg, dec_deg = _parse_ra_dec_to_degrees(ra, dec)
+        except ValueError as e:
+            return HttpResponseBadRequest(f"Invalid ra/dec: {e}")
+
+        radius = 1.0 / 60.0  # 1 arcmin in degrees
+        target_match_qs = Target.objects.filter(
+            ra__gte=ra_deg - radius,
+            ra__lte=ra_deg + radius,
+            dec__gte=dec_deg - radius,
+            dec__lte=dec_deg + radius,
+        ).distinct()
+
+        match_count = target_match_qs.count()
+        if match_count == 1:
+            return redirect(f"/targets/{target_match_qs.first().id}/")
+        if match_count > 1:
+            # Feed existing cone search filtering UX.
+            return redirect(
+                '/targets/?cone_search={ra}%2C{dec}%2C{radius}'.format(
+                    ra=ra_deg, dec=dec_deg, radius=radius
+                )
+            )
+        return redirect('/create-target/?ra={ra}&dec={dec}'.format(ra=ra_deg, dec=dec_deg))
+
+    # Name resolution mode
+    if name:
+        original_clean = (name or '').strip().replace(' ', '')
+        normalized = _normalize_view_object_name(name)
+
+        candidates = set()
+        if original_clean:
+            candidates.add(original_clean)
+        if normalized and normalized != original_clean:
+            candidates.add(normalized)
+
+        # Also search without the SN/AT prefix (useful for users pasting short names)
+        if normalized.upper().startswith('SN'):
+            candidates.add(normalized[2:])
+        if normalized.upper().startswith('AT'):
+            candidates.add(normalized[2:])
+
+        match_q = Q()
+        for c in candidates:
+            if not c:
+                continue
+            match_q |= Q(name__icontains=c) | Q(aliases__name__icontains=c)
+
+        target_match_qs = Target.objects.filter(match_q).distinct()
+        match_count = target_match_qs.count()
+
+        if match_count == 1:
+            return redirect(f"/targets/{target_match_qs.first().id}/")
+        if match_count > 1:
+            return redirect('/targets/?name={}'.format(normalized or original_clean))
+        # No matches -> go to create page with the resolved/normalized name.
+        return redirect('/create-target/?name={}'.format(normalized or original_clean))
+
+    return HttpResponseBadRequest("Missing query params: provide either `name` or `ra`+`dec`.")
+
+
 @require_http_methods(["POST"])
 def add_tag_view(request):
     new_tag = request.POST.get('new_tag', '').strip()
