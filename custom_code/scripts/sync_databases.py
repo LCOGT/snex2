@@ -421,15 +421,6 @@ def update_target(action, db_address=_SNEX2_DB):
             if t_created is None:
                 t_created = t_modified
             t_groupid = int(target_row.groupidcode)
-            t_redshift = target_row.redshift
-
-            class_id = target_row.classificationid
-            if class_id is not None:
-                class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
-                logger.info(f'Classification for {target_id} has been set: {class_name}')
-            else:
-                logger.info(f'No classification for {target_id} set yet: {target_row.classificationid}')
-                class_name = None
 
             ### Get the name of the target
             with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
@@ -446,23 +437,25 @@ def update_target(action, db_address=_SNEX2_DB):
 
             else:
                 target, created = Target.objects.get_or_create(id=target_id)
-                target.name = t_name
-                target.ra = t_ra
-                target.dec = t_dec
-                target.modified = t_modified
-                target.created = t_created
-                target.type = 'SIDEREAL'
-                target.epoch = 2000
-                target.scheme = ''
-                target.permissions = 'PRIVATE'
-                target.save()
+                logger.info(f'target to sync: {target_id}, target in snex2: {target}, created? {created}')
                 for name in name_result:
                     TargetName.objects.get_or_create(target = target, name = name)
                 if 'postgresql' in db_address:
                     db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
-                update_permissions(t_groupid, 'change_target', target, snex1_groups)
-                update_permissions(t_groupid, 'delete_target', target, snex1_groups)
-                update_permissions(t_groupid, 'view_target', target, snex1_groups)
+                if created:
+                    target.name = t_name
+                    target.ra = t_ra
+                    target.dec = t_dec
+                    target.modified = t_modified
+                    target.created = t_created
+                    target.type = 'SIDEREAL'
+                    target.epoch = 2000
+                    target.scheme = ''
+                    target.permissions = 'PRIVATE'
+                    target.save()
+                    update_permissions(t_groupid, 'change_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'delete_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'view_target', target, snex1_groups)
 
         except Exception as e:
             logger.exception(f"Failed to process spectrum for db_changes row {tresult.id} targets {tresult.rowid} with exception {e}")
@@ -482,5 +475,5 @@ def run():
         logger.info('Done with photometry')
         update_spec(action)
         logger.info('Done with spectra')
-        update_target(action)
+        update_target(action, db_address = _SNEX2_DB)
         logger.info('Done with targets')
