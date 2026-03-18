@@ -65,6 +65,7 @@ from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create
 import logging
 from urllib.parse import quote_plus
 
@@ -245,90 +246,6 @@ def target_redirect_view(request):
         # No match -> create with spaced prefix for better form UX.
         create_name = _format_prefixed_name_for_create(canonical or original_clean)
         return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
-
-
-def _normalize_view_object_name(name: str) -> str:
-    """
-    Normalize likely target short names into a canonical compact form without spaces.
-
-    Rules:
-      - `AT` / `SN` prefix is always uppercase.
-      - If the suffix is exactly 1 letter (e.g. `1993J`), that letter is uppercase.
-      - If the suffix is multiple letters (e.g. `1993ab` or `24ggi`), all letters are lowercase.
-
-    Examples:
-      - `24ggi` -> `AT2024ggi` (default AT when no SN/AT prefix is provided)
-      - `SN2024ggi` -> `SN2024ggi` (preserve explicit SN)
-      - `AT1993J` -> `AT1993J`
-      - `2024ab` -> `AT2024ab`
-    """
-    s_clean = (name or '').strip().replace(' ', '')
-    if not s_clean:
-        return s_clean
-
-    s_upper = s_clean.upper()
-    if s_upper.startswith('SN'):
-        prefix = 'SN'
-        tail = s_clean[2:]
-    elif s_upper.startswith('AT'):
-        prefix = 'AT'
-        tail = s_clean[2:]
-    else:
-        prefix = 'AT'
-        tail = s_clean
-
-    # Find the first alphabetic character in `tail`; digits before that are the year.
-    first_alpha_idx = None
-    for i, ch in enumerate(tail):
-        if ch.isalpha():
-            first_alpha_idx = i
-            break
-    if first_alpha_idx in (None, 0):
-        # Can't parse year; at least ensure prefix casing.
-        return prefix + tail
-
-    year_part = tail[:first_alpha_idx]
-    suffix_raw = tail[first_alpha_idx:]
-
-    if not year_part.isdigit():
-        return prefix + year_part + suffix_raw
-
-    if len(year_part) == 2:
-        year_full = 2000 + int(year_part)
-    elif len(year_part) == 4:
-        year_full = int(year_part)
-    else:
-        # Unknown year length; preserve raw year.
-        year_full = year_part
-
-    # Apply suffix letter casing rule.
-    # We only look at the initial contiguous letter run.
-    import re
-    m = re.match(r'([A-Za-z]+)', suffix_raw)
-    letters = m.group(1) if m else ''
-    rest = suffix_raw[len(letters):] if letters else suffix_raw
-
-    if len(letters) == 1:
-        letters_cased = letters.upper()
-    else:
-        letters_cased = letters.lower()
-
-    return f"{prefix}{year_full}{letters_cased}{rest}"
-
-
-def _format_prefixed_name_for_create(canonical_name: str) -> str:
-    """
-    Format canonical name for the create form display, e.g.:
-      - `SN2024GGI` -> `SN 2024GGI`
-      - `AT2024GGI` -> `AT 2024GGI`
-    """
-    s = (canonical_name or '').strip()
-    s_upper = s.upper()
-    if s_upper.startswith('SN'):
-        return 'SN ' + s[2:]
-    if s_upper.startswith('AT'):
-        return 'AT ' + s[2:]
-    return s
 
 
 def view_object_view(request):
