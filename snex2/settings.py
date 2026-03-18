@@ -476,7 +476,7 @@ PASSWORD_HASHERS = [
     #'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
 ]
 
-CSRF_TRUSTED_ORIGINS = ['https://test.supernova.exchange']
+CSRF_TRUSTED_ORIGINS = ['https://supernova.exchange']
 
 TOM_REGISTRATION = {
     'REGISTRATION_AUTHENTICATION_BACKEND': 'django.contrib.auth.backends.AllowAllUsersModelBackend',

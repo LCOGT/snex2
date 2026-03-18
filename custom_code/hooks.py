@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker, aliased
 from sqlalchemy.ext.automap import automap_base
 from contextlib import contextmanager
 from collections import OrderedDict
+from guardian.shortcuts import get_groups_with_perms
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +187,18 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
             db_session = _return_session(settings.SNEX1_DB_URL)
         Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
         Targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        groupidcode = 32769 #Default in SNEx1, group_names isn't passed anyway. Permissions are handled on SNEx2 side.
+        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
+        groupidcode = 1703768065789 #groupidcode of the default groups from settings.py
+
+        if not settings.TARGET_PERMISSIONS_ONLY:
+            groups = get_groups_with_perms(target)
+            
+            # Insert into SNEx 1 db
+            if groups:
+                groupidcode = 0
+                for group in groups:
+                    groupidcode += int(db_session.query(Groups).filter(Groups.name==group.name).first().idcode)
+
         snex1_target = Targets(id=target.id, ra0=target.ra, dec0=target.dec, groupidcode=groupidcode, lastmodified=target.modified, datecreated=target.created)
         db_session.add(snex1_target)
         db_session.add(Targetnames(targetid=target.id, name=target.name, datecreated=target.created, lastmodified=target.modified))
