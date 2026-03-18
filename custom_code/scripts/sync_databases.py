@@ -440,8 +440,9 @@ def update_target(action, db_address=_SNEX2_DB):
                 logger.info(f'target to sync: {target_id}, target in snex2: {target}, created? {created}')
                 for name in name_result:
                     TargetName.objects.get_or_create(target = target, name = name)
-                if 'postgresql' in db_address:
-                    db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
+                with get_session(db_address = db_address) as db_session:
+                    if 'postgresql' in db_address:
+                        db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
                 if created:
                     target.name = t_name
                     target.ra = t_ra
