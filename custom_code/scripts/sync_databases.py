@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
-from sqlalchemy import create_engine, and_, pool
+from sqlalchemy import create_engine, and_, pool, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.sql import func
 
 import json
 from contextlib import contextmanager
@@ -14,7 +15,7 @@ from django.contrib.auth.models import Group
 from custom_code.utils import update_permissions
 from custom_code.models import ReducedDatumExtra
 from guardian.shortcuts import assign_perm
-from tom_targets.models import Target
+from tom_targets.models import Target, TargetName
 
 import logging
 logger = logging.getLogger(__name__)
@@ -86,6 +87,8 @@ Targets = load_table('targets', db_address=settings.SNEX1_DB_URL)
 Target_Names = load_table('targetnames', db_address=settings.SNEX1_DB_URL)
 Classifications = load_table('classifications', db_address=settings.SNEX1_DB_URL)
 Groups = load_table('groups', db_address=settings.SNEX1_DB_URL)
+Targets = load_table('targets', db_address=settings.SNEX1_DB_URL)
+Target_Names = load_table('targetnames', db_address=settings.SNEX1_DB_URL)
 
 ### Make a dictionary of the groups in the SNex1 db
 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
@@ -143,7 +146,7 @@ def delete_row(table, id_, db_address=settings.SNEX1_DB_URL):
         db_session.commit()
 
 
-def update_phot(action, db_address=_SNEX2_DB):
+def update_phot(action):
     """
     Queries the ReducedDatum table in the SNex2 db with any changes made to the Photlco table in the SNex1 db
 
@@ -270,7 +273,7 @@ def read_spec(filename):
     return(data)
 
 
-def update_spec(action, db_address=_SNEX2_DB):
+def update_spec(action):
     """
     Queries the ReducedDatum table in the SNex2 db with any changes made to the Spec table in the SNex1 db
 
@@ -389,8 +392,84 @@ def update_spec(action, db_address=_SNEX2_DB):
             logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid} with exception {e}")
             continue
 
-        delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
+        
 
+def update_target(action, db_address=_SNEX2_DB):
+    """
+    Queries the Target table in the SNex2 db with any changes made to the Targets and Targetnames tables in the SNex1 db
+
+    Parameters
+    ----------
+    action: str, one of 'update', 'insert', or 'delete'
+    db_address: str, sqlalchemy address to the SNex2 db
+    """
+    logger.info('Updating Targets. . .')
+    target_result = query_db_changes('targets', action, db_address=settings.SNEX1_DB_URL)
+    name_result = query_db_changes('targetnames', action, db_address=settings.SNEX1_DB_URL)
+    logger.info(f'Total target changes {len([change.rowid for change in target_result])}')
+    logger.info(f'Total target name changes {len([change.rowid for change in name_result])}')
+
+    for tresult in target_result:
+        try:
+            target_id = tresult.rowid # The ID of the row in the targets table
+            target_row = get_current_row(Targets, target_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to target_id in the targets table
+
+            t_ra = target_row.ra0
+            t_dec = target_row.dec0
+            t_modified = target_row.lastmodified
+            t_created = target_row.datecreated
+            if t_created is None:
+                t_created = t_modified
+            t_groupid = int(target_row.groupidcode)
+            t_redshift = target_row.redshift
+
+            class_id = target_row.classificationid
+            if class_id is not None:
+                class_name = get_current_row(Classifications, class_id, db_address=settings.SNEX1_DB_URL).name # Get the classification from the classifications table based on the classification id in the targets table (wtf)
+                logger.info(f'Classification for {target_id} has been set: {class_name}')
+            else:
+                logger.info(f'No classification for {target_id} set yet: {target_row.classificationid}')
+                class_name = None
+
+            ### Get the name of the target
+            with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+                name_query = db_session.query(Target_Names).filter(Target_Names.targetid==target_row.id).first()
+                if name_query is not None:
+                    t_name = name_query.name
+                else:
+                    ### No name found, so target was created and deleted without being synced
+                    continue
+                db_session.commit()
+
+            if action=='delete':
+                Target.objects.delete(id=target_id)
+
+            else:
+                target, created = Target.objects.get_or_create(id=target_id)
+                target.name = t_name
+                target.ra = t_ra
+                target.dec = t_dec
+                target.modified = t_modified
+                target.created = t_created
+                target.type = 'SIDEREAL'
+                target.epoch = 2000
+                target.scheme = ''
+                target.permissions = 'PRIVATE'
+                target.save()
+                for name in name_result:
+                    TargetName.objects.get_or_create(target = target, name = name)
+                if 'postgresql' in db_address:
+                    db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
+                update_permissions(t_groupid, 'change_target', target, snex1_groups)
+                update_permissions(t_groupid, 'delete_target', target, snex1_groups)
+                update_permissions(t_groupid, 'view_target', target, snex1_groups)
+
+        except Exception as e:
+            logger.exception(f"Failed to process spectrum for db_changes row {tresult.id} targets {tresult.rowid} with exception {e}")
+            continue
+
+        delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
+   
 def run():
     """
     Migrates all changes from the SNex1 db to the SNex2 db,
@@ -399,7 +478,9 @@ def run():
     actions = ['delete', 'insert', 'update']
     for action in actions:
         logger.info(f'Running action: {action}')
-        update_phot(action, db_address=_SNEX2_DB)
+        update_phot(action)
         logger.info('Done with photometry')
-        update_spec(action, db_address=_SNEX2_DB)
+        update_spec(action)
         logger.info('Done with spectra')
+        update_target(action)
+        logger.info('Done with targets')
