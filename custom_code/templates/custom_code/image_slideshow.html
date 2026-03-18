@@ -26,10 +26,10 @@
     </div>
     <div class="row justify-content-center mt-3">
       <input type="hidden" id="download-filename" name="filename">
-      <button type="button" class="btn btn-primary" onclick="downloadFile()">Download Fits</button>
+      <button type="button" class="btn btn-primary" onclick="downloadFile(event)">Download Fits</button>
     </div>
     <div class="row justify-content-center mt-3">
-      <button type="button" class="btn btn-primary" onclick="downloadAll()">Download All Images</button>
+      <button type="button" class="btn btn-primary" onclick="downloadAll(event)">Download All Images</button>
     </div>
     <div class="row justify-content-center mt-2">
       <div id="download-status" class="text-center"></div>
@@ -83,7 +83,7 @@
       dataType: 'json',
       success: function(response) {
         var thumb = response.thumb;
-	document.getElementById("form-img").src = thumb;
+        document.getElementById("form-img").src = thumb;
         $('#thumb-telescope').html(response.telescope);
         $('#thumb-instrument').html(response.instrument);
         $('#thumb-filter').html(response.filter);
@@ -104,6 +104,7 @@
     }
     makeThumbnail();
   };
+
   function nextImg() {
     var select = document.getElementById("id_filenames");
     if (select.selectedIndex === 1) {
@@ -116,8 +117,10 @@
     }
     makeThumbnail();
   };
-  async function downloadFile() {
-    const downloadButton = document.querySelector("button[onclick='downloadFile()']");
+
+  async function downloadFile(event) {
+    event.preventDefault();
+    const downloadButton = document.querySelector("button[onclick='downloadFile(event)']");
     const filenameVal = document.getElementById("id_filenames").value;
     const fileData = JSON.parse(filenameVal);
     const finalFilename = fileData.filename + '.fits';
@@ -128,12 +131,12 @@
 
     const response = await fetch(`{% url 'download-fits' %}?filename=${encodeURIComponent(filenameVal)}`);
     const blob = await response.blob();
-    
+
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = finalFilename; 
+    a.download = finalFilename;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
@@ -145,68 +148,77 @@
   document.addEventListener("DOMContentLoaded", function() {
     const filenameSelect = document.getElementById("id_filenames");
     const hiddenInput = document.getElementById("download-filename");
-
     hiddenInput.value = filenameSelect.value;
     makeThumbnail();
   });
-function downloadAll() {
-    const button = document.querySelector("button[onclick='downloadAll()']");
+  async function downloadAll(event) {
+    event.preventDefault();
+    const button = document.querySelector("button[onclick='downloadAll(event)']");
     const status = document.getElementById('download-status');
     const originalText = button.innerHTML;
-
     button.disabled = true;
     button.innerHTML = 'Searching for frames...';
     status.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Querying archive...';
+    try {
+      const getResp = await fetch('{% url "get-frame-ids" %}?target_id={{ target.id }}');
+      const response = await getResp.json();
+      const frameIds = response.frame_ids;
+      const count = response.count;
+      const batchSize = 500;
+      const batches = [];
+      for (let i = 0; i < frameIds.length; i += batchSize) {
+          batches.push(frameIds.slice(i, i + batchSize));
+      }
+      const totalBatches = batches.length;
 
-    $.ajax({
-        url: '{% url "get-frame-ids" %}',
-        method: 'GET',
-        data: { target_id: '{{ target.id }}' },
-        success: function(response) {
-            const count = response.count;
-            const frameIds = response.frame_ids;
+      status.innerHTML = `<span style="color: green;">&#x2713; Found ${count} frames. Starting ${totalBatches} parallel downloads...</span>`;
+      button.innerHTML = 'Downloading...';
 
-            status.innerHTML = `<span style="color: green;">&#x2713; Found ${count} frame${count !== 1 ? 's' : ''}. Starting download...</span>`;
-            button.innerHTML = 'Downloading...';
+      for (let i = 0; i < totalBatches; i++) {
+        const iframe = document.createElement('iframe');
+        iframe.name = `download-iframe-${i}`;
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
 
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '{% url "download-zip" %}';
-            form.style.display = 'none';
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{% url "download-zip" %}';
+        form.target = `download-iframe-${i}`;
+        form.style.display = 'none';
 
-            const csrfInput = document.createElement('input');
-            csrfInput.type = 'hidden';
-            csrfInput.name = 'csrfmiddlewaretoken';
-            csrfInput.value = $("input[name=csrfmiddlewaretoken]").val();
-            form.appendChild(csrfInput);
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrfmiddlewaretoken';
+        csrfInput.value = '{{ csrf_token }}';
+        form.appendChild(csrfInput);
 
-            const frameIdsInput = document.createElement('input');
-            frameIdsInput.type = 'hidden';
-            frameIdsInput.name = 'frame_ids';
-            frameIdsInput.value = JSON.stringify(frameIds);
-            form.appendChild(frameIdsInput);
+        const frameIdsInput = document.createElement('input');
+        frameIdsInput.type = 'hidden';
+        frameIdsInput.name = 'frame_ids';
+        frameIdsInput.value = JSON.stringify(batches[i]);
+        form.appendChild(frameIdsInput);
 
-            const targetNameInput = document.createElement('input');
-            targetNameInput.type = 'hidden';
-            targetNameInput.name = 'target_name';
-            targetNameInput.value = '{{ target.name }}';
-            form.appendChild(targetNameInput);
+        const targetNameInput = document.createElement('input');
+        targetNameInput.type = 'hidden';
+        targetNameInput.name = 'target_name';
+        targetNameInput.value = `{{ target.name }}_part${i + 1}`;
+        form.appendChild(targetNameInput);
 
-            document.body.appendChild(form);
-            form.submit();
-            document.body.removeChild(form);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+        await new Promise(r => setTimeout(r, 500));
+      }
 
-            setTimeout(() => {
-                button.innerHTML = originalText;
-                button.disabled = false;
-                status.innerHTML = '';
-            }, 5000);
-        },
-        error: function() {
-            status.innerHTML = '<span style="color: red;">&#x2715; Failed to query archive.</span>';
-            button.innerHTML = originalText;
-            button.disabled = false;
-        }
-    });
-}
+      status.innerHTML = `<span style="color: green;">&#x2713; ${totalBatches} downloads started — check your downloads folder.</span>`;
+      button.innerHTML = originalText;
+      button.disabled = false;
+
+    } catch(e) {
+      console.error('Error:', e);
+      status.innerHTML = `<span style="color: red;">&#x2715; Error: ${e.message}</span>`;
+      button.innerHTML = originalText;
+      button.disabled = false;
+    }
+  }
 </script>
