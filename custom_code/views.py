@@ -20,7 +20,7 @@ from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F,
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict
 from django.views.decorators.http import require_POST, require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
@@ -287,43 +287,6 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
     return s
 
 
-def _parse_ra_dec_to_degrees(ra_str: str, dec_str: str):
-    """
-    Accept either decimal degrees (e.g. `197.28`, `-28.64`) or sexagesimal
-    strings (e.g. `13:09:47.1`, `-28:38:35.2`).
-    """
-    ra_s = (ra_str or '').strip()
-    dec_s = (dec_str or '').strip()
-
-    if not ra_s or not dec_s:
-        raise ValueError("RA and Dec are required")
-
-    if ':' in ra_s and ':' in dec_s:
-        ra_hms = ra_s.split(':')
-        dec_dms = dec_s.split(':')
-        if len(ra_hms) < 3 or len(dec_dms) < 3:
-            raise ValueError("Invalid sexagesimal RA/Dec")
-
-        ra_hour = float(ra_hms[0])
-        ra_min = float(ra_hms[1])
-        ra_sec = float(ra_hms[2])
-
-        dec_deg = float(dec_dms[0])
-        dec_min = float(dec_dms[1])
-        dec_sec = float(dec_dms[2])
-
-        ra_deg = (ra_hour * 15.0) + (ra_min * 15.0 / 60.0) + (ra_sec * 15.0 / 3600.0)
-        if dec_deg >= 0:
-            dec_deg_out = dec_deg + (dec_min / 60.0) + (dec_sec / 3600.0)
-        else:
-            dec_deg_out = dec_deg - (dec_min / 60.0) - (dec_sec / 3600.0)
-
-        return ra_deg, dec_deg_out
-
-    # Assume decimal degrees
-    return float(ra_s), float(dec_s)
-
-
 def view_object_view(request):
     """
     Resolve an object specifier to either:
@@ -339,66 +302,46 @@ def view_object_view(request):
     ra = request.GET.get('ra', '')
     dec = request.GET.get('dec', '')
 
+    def _make_dummy_request_for_redirect(name_value: str):
+        dummy_get = QueryDict(mutable=True)
+        dummy_get['name'] = name_value
+        return type('DummyRequest', (), {'GET': dummy_get})()
+
     # RA/Dec resolution mode
     if ra and dec:
+        # Delegate parsing + matching to the existing `/redirect/` resolver.
+        # It already supports both:
+        #   - decimal degrees (`197.28`, `-28.64`)
+        #   - sexagesimal (`13:09:47.1`, `-28:38:35.2`)
+        coord_input = '{ra},{dec}'.format(ra=ra, dec=dec)
         try:
-            ra_deg, dec_deg = _parse_ra_dec_to_degrees(ra, dec)
-        except ValueError as e:
-            return HttpResponseBadRequest(f"Invalid ra/dec: {e}")
-
-        radius = 1.0 / 60.0  # 1 arcmin in degrees
-        target_match_qs = Target.objects.filter(
-            ra__gte=ra_deg - radius,
-            ra__lte=ra_deg + radius,
-            dec__gte=dec_deg - radius,
-            dec__lte=dec_deg + radius,
-        ).distinct()
-
-        match_count = target_match_qs.count()
-        if match_count == 1:
-            return redirect(f"/targets/{target_match_qs.first().id}/")
-        if match_count > 1:
-            # Feed existing cone search filtering UX.
-            return redirect(
-                '/targets/?cone_search={ra}%2C{dec}%2C{radius}'.format(
-                    ra=ra_deg, dec=dec_deg, radius=radius
-                )
-            )
-        return redirect('/create-target/?ra={ra}&dec={dec}'.format(ra=ra_deg, dec=dec_deg))
+            return target_redirect_view(_make_dummy_request_for_redirect(coord_input))
+        except Exception:
+            return HttpResponseBadRequest("Invalid ra/dec")
 
     # Name resolution mode
     if name:
         original_clean = (name or '').strip().replace(' ', '')
-        normalized = _normalize_view_object_name(name)
+        canonical = _normalize_view_object_name(name)
 
-        candidates = set()
-        if original_clean:
-            candidates.add(original_clean)
-        if normalized and normalized != original_clean:
-            candidates.add(normalized)
+        search_entry_for_redirect = original_clean or canonical
 
-        # Also search without the SN/AT prefix (useful for users pasting short names)
-        if normalized.upper().startswith('SN'):
-            candidates.add(normalized[2:])
-        if normalized.upper().startswith('AT'):
-            candidates.add(normalized[2:])
+        response = target_redirect_view(_make_dummy_request_for_redirect(search_entry_for_redirect))
 
-        match_q = Q()
-        for c in candidates:
-            if not c:
-                continue
-            match_q |= Q(name__icontains=c) | Q(aliases__name__icontains=c)
+        location = ''
+        try:
+            location = response['Location']
+        except Exception:
+            location = ''
 
-        target_match_qs = Target.objects.filter(match_q).distinct()
-        match_count = target_match_qs.count()
+        if location.startswith('/targets/?name='):
+            return redirect('/targets/?name={}'.format(canonical or search_entry_for_redirect))
 
-        if match_count == 1:
-            return redirect(f"/targets/{target_match_qs.first().id}/")
-        if match_count > 1:
-            return redirect('/targets/?name={}'.format(normalized or original_clean))
-        # No matches -> go to create page with the resolved/normalized name.
-        create_name = _format_prefixed_name_for_create(normalized or original_clean)
-        return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
+        if location.startswith('/create-target/') and 'name=' in location:
+            create_name = _format_prefixed_name_for_create(canonical or search_entry_for_redirect)
+            return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
+
+        return response
 
     return HttpResponseBadRequest("Missing query params: provide either `name` or `ra`+`dec`.")
 
