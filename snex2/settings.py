@@ -372,6 +372,8 @@ OPEN_URLS = [
     '/accounts/password_reset/done/',
     '/accounts/reset/done/',
     '/accounts/reset/*/',
+    '/api/*/',
+    '/api/',
     '/accounts/register/',
     '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
