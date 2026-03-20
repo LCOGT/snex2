@@ -1827,9 +1827,9 @@ def download_photometry_view(request, targetid):
 
 def get_target_standards_view(request):
 
-    target_id = request.GET.get('target_id', '')
+    pipeline_id = request.GET.get('pipeline_id', '')
 
-    standard_info = get_standards_from_snex1(target_id)
+    standard_info = get_standards_from_snex1(pipeline_id)
     
     html = render_to_string(
         template_name='custom_code/partials/get_target_standards.html',

@@ -1689,7 +1689,7 @@ def image_slideshow(context, target):
     if not settings.DEBUG:
         #NOTE: Production
         
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username, allimages=True)
         if not filepaths:
             logger.info(f'No images found for target {target}')
             return {'target': target,
@@ -1959,7 +1959,7 @@ def display_thumbnails(context, target):
     
     if not settings.DEBUG:
         #NOTE: Production
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username)
         if not filepaths:
             logger.info(f'No images found for target {target}')
             return {'top_images': [],

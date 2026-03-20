@@ -360,7 +360,7 @@ function loadStandardTable() {
   standardDiv.innerHTML = 'Loading ... this may take a while ...';
   $.ajax({
     url: '{% url "custom_code:get-target-standards" %}',
-    data: {'target_id': {{ target.id }}},
+    data: {'pipeline_id': {{ target.pipeline_id }}},
     dataType: 'json',
     success: function(response) {
       standardDiv.style.cursor = 'default';

@@ -294,24 +294,11 @@ def update_spec(action):
                     data_type = 'spectroscopy',
                     key = 'snex_id',
                     value__icontains = f'"snex_id": {id_}')
-                rd_pk = json.load(rd_extra.value).get('snex2_id','')
+                rd_pk = json.loads(rd_extra.value).get('snex2_id','')
                 
                 rd = ReducedDatum.objects.get(pk = rd_pk)
                 dp = rd.data_product
-                rd.delete()
-                dp.delete() #might only need data product to delete, then will cascade to rd
-
-                ReducedDatumExtra.objects.get(
-                    target_id = targetid,
-                    data_type = 'spectroscopy',
-                    key = 'snex_id',
-                    value__icontains = f'"snex_id": {id_}').delete()
-                
-                ReducedDatumExtra.objects.get(
-                    target_id = targetid,
-                    data_type = 'spectroscopy',
-                    key = 'spec_extras',
-                    value__icontains = f'"snex_id": {id_}').delete()
+                dp.delete()
 
             else:
                 spec_row = get_current_row(Spec, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the spec table
@@ -319,7 +306,7 @@ def update_spec(action):
                     delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
                     continue
 
-                targetid = spec_row.targetid
+                pipeline_id = spec_row.targetid
                 time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
@@ -333,8 +320,8 @@ def update_spec(action):
                         standard_classification_id = -1
                     standard_list = db_session.query(Targets).filter(Targets.classificationid==standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
-                if targetid not in standard_ids:
-                    target = Target.objects.get(pk = targetid)
+                if pipeline_id not in standard_ids:
+                    target = Target.objects.get(pipeline_id = pipeline_id)
                     #created True means new DataProduct was made, created False is object already existed, like just "get"
                     data_product, dp_created = DataProduct.objects.get_or_create(
                         target = target, 
@@ -360,6 +347,7 @@ def update_spec(action):
                     newspec_extra_value = json.dumps({'snex_id': int(id_), 'snex2_id': int(reduced_datum.id)})
                     RDExtras_snex_id, rd_snexid_created =  ReducedDatumExtra.objects.get_or_create(
                         target = target,
+                        reduced_datum = reduced_datum,
                         data_type = 'spectroscopy',
                         key = 'snex_id',
                         value__icontains = f'"snex_id": {id_}')
@@ -374,6 +362,7 @@ def update_spec(action):
                     spec_extras['snex_id'] = int(id_)
                     RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
                         target = target,
+                        reduced_datum = reduced_datum,
                         data_type='spectroscopy',
                         key='spec_extras',
                         value__icontains = f'"snex_id": {id_}')
