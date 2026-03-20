@@ -1,6 +1,7 @@
 from django.db import models
-from tom_targets.models import BaseTarget
-# from tom_targets.models import Target
+from tom_targets.models import Target
+from custom_code.target_models import SNExTarget
+from tom_dataproducts.models import ReducedDatum
 from django.contrib.auth.models import User
 
 STATUS_CHOICES = (
@@ -98,7 +99,11 @@ class TNSTarget(models.Model):
 class ReducedDatumExtra(models.Model):
     
     target = models.ForeignKey(
-        BaseTarget, on_delete=models.CASCADE
+        Target, on_delete=models.CASCADE
+    )
+    reduced_datum = models. ForeignKey(
+        ReducedDatum, on_delete=models.CASCADE, verbose_name='ReducedDatum',
+        help_text='ReducedDatum this extra belongs to'
     )
     data_type = models.CharField(
         max_length=100, default='', verbose_name='Data Type', 
@@ -162,7 +167,7 @@ class ScienceTags(models.Model):
 class TargetTags(models.Model):
 
     target = models.ForeignKey(
-        BaseTarget, on_delete=models.CASCADE
+        Target, on_delete=models.CASCADE
     )
 
     tag = models.ForeignKey(
@@ -173,7 +178,7 @@ class TargetTags(models.Model):
 class Papers(models.Model):
 
     target = models.ForeignKey(
-        BaseTarget, on_delete=models.CASCADE
+        Target, on_delete=models.CASCADE
     )
 
     author_first_name = models.CharField(
@@ -207,7 +212,7 @@ class Papers(models.Model):
 class InterestedPersons(models.Model):
 
     target = models.ForeignKey(
-        BaseTarget, on_delete=models.CASCADE
+        Target, on_delete=models.CASCADE
     )
 
     user = models.ForeignKey(
