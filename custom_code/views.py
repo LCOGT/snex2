@@ -20,7 +20,7 @@ from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F,
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict
 from django.views.decorators.http import require_POST, require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
@@ -65,7 +65,9 @@ from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create
 import logging
+from urllib.parse import quote_plus
 
 logger = logging.getLogger(__name__)
 
@@ -208,16 +210,85 @@ def target_redirect_view(request):
             return(redirect('/create-target/?ra={ra}&dec={dec}'.format(ra=ra,dec=dec)))
 
     else:
-        target_match_list = Target.objects.filter(Q(name__icontains=search_entry) | Q(aliases__name__icontains=search_entry) | Q(name__icontains=search_entry.lower().replace('SN ','')) | Q(aliases__name__icontains=search_entry.lower().replace('AT ',''))).distinct()
+        # Name resolution mode
+        original_clean = (search_entry or '').strip()
+        original_compact = original_clean.replace(' ', '')
+
+        canonical = _normalize_view_object_name(search_entry)
+
+        candidates = set()
+        if original_clean:
+            candidates.add(original_clean)
+        if original_compact:
+            candidates.add(original_compact)
+        if canonical:
+            candidates.add(canonical)
+            candidates.add(_format_prefixed_name_for_create(canonical))
+            # Allow matching when user enters just the year+label (e.g. `2024ggi`)
+            if canonical.upper().startswith('SN') or canonical.upper().startswith('AT'):
+                candidates.add(canonical[2:])
+
+        match_q = Q()
+        for c in candidates:
+            if c:
+                match_q |= Q(name__icontains=c) | Q(aliases__name__icontains=c)
+
+        target_match_list = Target.objects.filter(match_q).distinct()
 
         if len(target_match_list) == 1:
             target_id = target_match_list[0].id
-            return(redirect('/targets/{}/'.format(target_id)))
+            return redirect('/targets/{}/'.format(target_id))
 
-        elif len(target_match_list) > 1: 
-            return(redirect('/targets/?name={}'.format(search_entry)))
-        else:
-            return(redirect('/create-target/?name={name}'.format(name=search_entry)))
+        elif len(target_match_list) > 1:
+            # Feed existing target filtering UX with a canonical compact name.
+            return redirect('/targets/?name={}'.format(canonical or original_clean))
+
+        # No match -> create with spaced prefix for better form UX.
+        create_name = _format_prefixed_name_for_create(canonical or original_clean)
+        return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
+
+
+def view_object_view(request):
+    """
+    Resolve an object specifier to either:
+      - the unique `/targets/<id>/` target detail page
+      - the filtering results page (`/targets/?...`) if ambiguous
+      - `/create-target/` with prefilled fields if no match
+
+    Supported query params:
+      - `name` (e.g. `SN2024ggi`, `24ggi`, `AT2024abc`)
+      - or `ra` and `dec` (decimal degrees or sexagesimal `h:m:s` / `d:m:s`)
+    """
+    name = request.GET.get('name', '')
+    ra = request.GET.get('ra', '')
+    dec = request.GET.get('dec', '')
+
+    def _make_dummy_request_for_redirect(name_value: str):
+        dummy_get = QueryDict(mutable=True)
+        dummy_get['name'] = name_value
+        return type('DummyRequest', (), {'GET': dummy_get})()
+
+    # RA/Dec resolution mode
+    if ra and dec:
+        # Delegate parsing + matching to the existing `/redirect/` resolver.
+        # It already supports both:
+        #   - decimal degrees (`197.28`, `-28.64`)
+        #   - sexagesimal (`13:09:47.1`, `-28:38:35.2`)
+        coord_input = '{ra},{dec}'.format(ra=ra, dec=dec)
+        try:
+            return target_redirect_view(_make_dummy_request_for_redirect(coord_input))
+        except Exception:
+            return HttpResponseBadRequest("Invalid ra/dec")
+
+    # Name resolution mode
+    if name:
+        # Let the existing `/redirect/` resolver handle normalization + redirect UX.
+        try:
+            return target_redirect_view(_make_dummy_request_for_redirect(name))
+        except Exception:
+            return HttpResponseBadRequest("Invalid name")
+
+    return HttpResponseBadRequest("Missing query params: provide either `name` or `ra`+`dec`.")
 
 
 @require_http_methods(["POST"])
