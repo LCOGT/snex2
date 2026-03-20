@@ -1,7 +1,7 @@
 from django.db import models
 from tom_targets.models import Target
 from custom_code.target_models import SNExTarget
-from tom_dataproducts.models import ReducedDatum
+from tom_dataproducts.models import ReducedDatum, DataProduct
 from django.contrib.auth.models import User
 
 STATUS_CHOICES = (
@@ -104,6 +104,10 @@ class ReducedDatumExtra(models.Model):
     reduced_datum = models. ForeignKey(
         ReducedDatum, on_delete=models.CASCADE, verbose_name='ReducedDatum',
         help_text='ReducedDatum this extra belongs to'
+    )
+    data_product = models. ForeignKey(
+        DataProduct, on_delete=models.CASCADE, verbose_name='DataProduct',
+        help_text='DataProduct this extra belongs to'
     )
     data_type = models.CharField(
         max_length=100, default='', verbose_name='Data Type', 

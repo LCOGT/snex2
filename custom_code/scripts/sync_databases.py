@@ -289,7 +289,7 @@ def update_spec(action):
         try:
             id_ = result.rowid # The ID of the row in the spec table
             if action=='delete':
-                #Look up the dataproductid from the datum_extra table
+                #Look up the reduceddatum id from the datum_extra table
                 rd_extra = ReducedDatumExtra.objects.get(
                     data_type = 'spectroscopy',
                     key = 'snex_id',
@@ -299,6 +299,7 @@ def update_spec(action):
                 rd = ReducedDatum.objects.get(pk = rd_pk)
                 dp = rd.data_product
                 dp.delete()
+                rd_extra.delete()
 
             else:
                 spec_row = get_current_row(Spec, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the spec table
@@ -344,17 +345,6 @@ def update_spec(action):
                         source_name = '', 
                         source_location = '')
 
-                    newspec_extra_value = json.dumps({'snex_id': int(id_), 'snex2_id': int(reduced_datum.id)})
-                    RDExtras_snex_id, rd_snexid_created =  ReducedDatumExtra.objects.get_or_create(
-                        target = target,
-                        reduced_datum = reduced_datum,
-                        data_type = 'spectroscopy',
-                        key = 'snex_id',
-                        value__icontains = f'"snex_id": {id_}')
-
-                    RDExtras_snex_id.value = newspec_extra_value
-                    RDExtras_snex_id.save()
-
                     spec_extras = {}
                     for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
                         if getattr(spec_row, key):
@@ -370,7 +360,7 @@ def update_spec(action):
                     RDExtras_spec.value = json.dumps(spec_extras)
                     RDExtras_spec.save()
 
-                    logger.info(f'rd and extras made: {reduced_datum}, {RDExtras_snex_id} {RDExtras_spec}')
+                    logger.info(f'rd and extra made: {reduced_datum} {RDExtras_spec}')
 
                     if spec_groupid is not None:
                         update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum

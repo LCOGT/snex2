@@ -7,7 +7,21 @@ from django.db import migrations, models
 def populate_reduced_datum(apps, schema_editor):
     ReducedDatumExtra = apps.get_model('custom_code', 'ReducedDatumExtra')
     ReducedDatum = apps.get_model('tom_dataproducts', 'ReducedDatum')
+    DataProduct = apps.get_model('tom_dataproducts', 'DataProduct')
 
+    for rdextra in ReducedDatumExtra.objects.filter(value__icontains='"data_product_id":'):
+        try:
+            value = json.loads(rdextra.value)
+            dp_pk = value.get('data_product_id', '')
+            if not dp_pk:
+                continue
+            data_product = DataProduct.objects.get(pk=dp_pk)
+            rdextra.data_product = data_product
+            rdextra.save()
+        except Exception as e:
+            print(f'Failed to populate data_product for ReducedDatumExtra {rdextra.pk}: {e}')
+
+        print('no')
     for rdextra in ReducedDatumExtra.objects.filter(key='snex_id'):
         try:
             value = json.loads(rdextra.value)

@@ -108,6 +108,7 @@ class CustomDataProductViewSet(DataProductViewSet):
                 upload_extras['data_product_id'] = dp.id
                 reduced_datum_extra = ReducedDatumExtra(
                     target_id = targetid,
+                    data_product = dp,
                     data_type = dp_type,
                     key = 'upload_extras',
                     value = json.dumps(upload_extras)

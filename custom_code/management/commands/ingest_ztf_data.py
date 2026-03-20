@@ -57,6 +57,7 @@ def get_ztf_data(target):
         }
         rd_extra, _ = ReducedDatumExtra.objects.get_or_create(
             target = target,
+            data_product = dp,
             data_type = 'photometry',
             key = 'upload_extras',
             value = json.dumps(datum_extra_value)

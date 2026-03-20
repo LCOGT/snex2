@@ -720,14 +720,14 @@ def dash_lightcurve(context, target, width, height):
    
         if de_value.get('final_reduction', '')==True:
             final_reduction = True
-            final_reduction_datumid = de_value.get('data_product_id', '')
+            final_reduction_dp = de.data_product
 
             datum = get_objects_for_user(user,
                                 'tom_dataproducts.view_reduceddatum',
                                 klass=ReducedDatum.objects.filter(
                                     target=target,
                                     data_type='photometry',
-                                    data_product_id=final_reduction_datumid))
+                                    data_product_id=final_reduction_dp))
             datum_value = datum.first().value
             if isinstance(datum_value, str):
                 datum_value = json.loads(datum_value)
@@ -1388,38 +1388,26 @@ def dash_spectra_page(context, target):
 
         # Query ReducedDatumExtra directly - no object-level permissions needed
         # (user already has target access if they can view this page)
-        snex_id_row = ReducedDatumExtra.objects.filter(
-            data_type='spectroscopy', target=target, 
-            key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
-        ).first()
+        spec_extras_row = ReducedDatumExtra.objects.filter(
+            data_type='spectroscopy', target=target, key='spec_extras', reduced_datum=spectrum).first()
         spec_extras = {}
-        if snex_id_row:
-            snex1_id = json.loads(snex_id_row.value)['snex_id']
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='spec_extras', 
-                value__icontains='"snex_id": {}'.format(snex1_id)
-            ).first()
-            if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
+        if spec_extras_row:
+            spec_extras = json.loads(spec_extras_row.value)
+            if spec_extras.get('instrument', '') == 'en06':
+                spec_extras['site'] = '(OGG 2m)'
+                spec_extras['instrument'] += ' (FLOYDS)'
+            elif spec_extras.get('instrument', '') == 'en12':
+                spec_extras['site'] = '(COJ 2m)'
+                spec_extras['instrument'] += ' (FLOYDS)'
 
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comment_list
-            
-            else:
-                spec_extras = {}
+            content_type_id = ContentType.objects.get(model='reduceddatum').id
+            comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+            spec_extras['comments'] = comment_list
+
         elif spectrum.data_product_id:
             spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='upload_extras',
-                value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
-            ).first()
+                data_type='spectroscopy', key='upload_extras', data_product_id=spectrum.data_product_id).first()
             if spec_extras_row:
                 spec_extras = json.loads(spec_extras_row.value)
                 if spec_extras.get('instrument', '') == 'en06':

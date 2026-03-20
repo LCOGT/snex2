@@ -403,6 +403,7 @@ class CustomDataProductUploadView(DataProductUploadView):
 
                 reduced_datum_extra = ReducedDatumExtra(
                     target = target,
+                    data_product = dp,
                     data_type = dp_type,
                     key = 'upload_extras',
                     value = json.dumps(rdextra_value)
@@ -430,9 +431,7 @@ class CustomDataProductUploadView(DataProductUploadView):
                     'File format invalid for file {0} -- error was {1}'.format(str(dp), iffe)
                 )
             except Exception as e:
-                ReducedDatum.objects.filter(data_product=dp).delete()
                 dp.delete()
-                ReducedDatumExtra.objects.filter(target=target, value=json.dumps(rdextra_value)).delete()
                 messages.error(self.request, 'There was a problem processing your file: {0}'.format(str(dp)))
                 print(e)
         if successful_uploads:
@@ -442,20 +441,6 @@ class CustomDataProductUploadView(DataProductUploadView):
             )
 
         return redirect(form.cleaned_data.get('referrer', '/'))
-
-
-class CustomDataProductDeleteView(DataProductDeleteView):
-
-    def form_valid(self, request, *args, **kwargs):
-        # Delete the ReducedDatumExtra row
-        reduced_datum_query = ReducedDatumExtra.objects.filter(key='upload_extras')
-        for row in reduced_datum_query:
-            value = json.loads(row.value) 
-            if value.get('data_product_id', '') == int(self.get_object().id):
-                row.delete()
-                break
-        return self.delete(request, *args, **kwargs)
-
 
 def save_dataproduct_groups_view(request):
     group_names = json.loads(request.GET.get('groups', None))
@@ -1261,38 +1246,28 @@ def load_single_spectrum_view(request):
             
             # Get spectrum extras - query directly since user already has target access
             # (ReducedDatumExtra doesn't need separate object-level permissions)
-            snex_id_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', target=target, 
-                key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
-            ).first()
-            
-            spec_extras = {}
-            if snex_id_row:
-                snex1_id = json.loads(snex_id_row.value)['snex_id']
-                spec_extras_row = ReducedDatumExtra.objects.filter(
-                    data_type='spectroscopy', key='spec_extras', 
-                    value__icontains='"snex_id": {}'.format(snex1_id)
-                ).first()
-                if spec_extras_row:
-                    spec_extras = json.loads(spec_extras_row.value)
-                    if spec_extras.get('instrument', '') == 'en06':
-                        spec_extras['site'] = '(OGG 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    elif spec_extras.get('instrument', '') == 'en12':
-                        spec_extras['site'] = '(COJ 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    
-                    content_type_id = ContentType.objects.get(model='reduceddatum').id
-                    comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                    comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                    spec_extras['comments'] = comments
+            spec_extras_row = ReducedDatumExtra.objects.filter(
+                data_type='spectroscopy', target=target, reduced_datum=spectrum).first()
 
-                    spec_extras['comments_list'] = comment_list
+            spec_extras = {}
+
+            if spec_extras_row:
+                spec_extras = json.loads(spec_extras_row.value)
+                if spec_extras.get('instrument', '') == 'en06':
+                    spec_extras['site'] = '(OGG 2m)'
+                    spec_extras['instrument'] += ' (FLOYDS)'
+                elif spec_extras.get('instrument', '') == 'en12':
+                    spec_extras['site'] = '(COJ 2m)'
+                    spec_extras['instrument'] += ' (FLOYDS)'
+
+                content_type_id = ContentType.objects.get(model='reduceddatum').id
+                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+                spec_extras['comments'] = comments
+                spec_extras['comments_list'] = comment_list
             elif spectrum.data_product_id:
                 spec_extras_row = ReducedDatumExtra.objects.filter(
-                    data_type='spectroscopy', key='upload_extras',
-                    value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
-                ).first()
+                    data_type='spectroscopy', key='upload_extras', data_product_id = spectrum.data_product_id).first()
                 if spec_extras_row:
                     spec_extras = json.loads(spec_extras_row.value)
                     if spec_extras.get('instrument', '') == 'en06':
