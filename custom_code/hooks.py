@@ -11,6 +11,7 @@ from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
 from custom_code.scheduling import save_comments
+from custom_code.utils import _return_session, _load_table, _get_session
 
 from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
@@ -33,24 +34,6 @@ priority_dict = {'NORMAL': 'normal',
                     'TIME_CRITICAL': 'time_critical',
                     'RAPID_RESPONSE': 'immediate_too'}
 
-@contextmanager
-def _get_session(db_address):
-    Base = automap_base()
-    engine = create_engine(db_address, poolclass=pool.NullPool)
-    Base.metadata.bind = engine
-
-    db_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    session = db_session()
-
-    try:
-        yield session
-        session.commit()
-    except:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
 def save_observation_comment(observation, previous_state):
     logger.info('Observation change state hook: %s from %s to %s', observation, previous_state, observation.status)
     if previous_state == '':
@@ -59,27 +42,6 @@ def save_observation_comment(observation, previous_state):
         if comment and obs_group:
             user = User.objects.filter(username=observation.parameters.get('start_user')).first()
             save_comments(comment, obs_group.id, user)
-
-def _return_session(db_address=settings.SNEX1_DB_URL):
-    ### This one is not run within a with loop, must be closed manually
-    Base = automap_base()
-    engine = create_engine(db_address, poolclass=pool.NullPool)
-    Base.metadata.bind = engine
-
-    db_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    session = db_session()
-
-    return session
-
-
-def _load_table(tablename, db_address):
-    Base = automap_base()
-    engine = create_engine(db_address, poolclass=pool.NullPool)
-    Base.prepare(engine, reflect=True)
-
-    table = getattr(Base.classes, tablename)
-    return(table)
- 
 
 def _str_to_timestamp(datestring):
     """
@@ -175,7 +137,6 @@ def _get_tns_params(target):
 
     return response_data
 
-
 def target_post_save(target, created, group_names=None, wrapped_session=None):
  
     logger.info('Target post save hook: %s created: %s', target, created)
@@ -199,10 +160,12 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
                 for group in groups:
                     groupidcode += int(db_session.query(Groups).filter(Groups.name==group.name).first().idcode)
 
-        snex1_target = Targets(id=target.id, ra0=target.ra, dec0=target.dec, groupidcode=groupidcode, lastmodified=target.modified, datecreated=target.created)
+        snex1_target = Targets(ra0=target.ra, dec0=target.dec, groupidcode=groupidcode, lastmodified=target.modified, datecreated=target.created)
         db_session.add(snex1_target)
-        db_session.add(Targetnames(targetid=target.id, name=target.name, datecreated=target.created, lastmodified=target.modified))
-    
+        db_session.flush()
+        Target.objects.filter(pk=target.pk).update(pipeline_id=snex1_target.id)
+        db_session.add(Targetnames(targetid=target.pipeline_id, name=target.name, datecreated=target.created, lastmodified=target.modified))
+
         if not wrapped_session:
             try:
                 db_session.commit()
@@ -214,7 +177,7 @@ def target_post_save(target, created, group_names=None, wrapped_session=None):
         else:
             db_session.flush()
            
-def find_images_from_snex1(targetid, username, allimages=False):
+def find_images_from_snex1(pipeline_id, username, allimages=False):
     '''
     Hook to find filenames of images in SNEx1,
     given a target ID
@@ -231,22 +194,22 @@ def find_images_from_snex1(targetid, username, allimages=False):
             groupidcode = 0
             for group_name in user_groups:
                 groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
-        this_target = db_session.query(Targets).filter(Targets.id==targetid).first()
+        this_target = db_session.query(Targets).filter(Targets.id==pipeline_id).first()
 
         if not allimages:
             query = db_session.execute(
                             text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
                             "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
-                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
+                            {'tid':pipeline_id, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
         else:
             query = db_session.execute(
                             text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
                             "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
-                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
+                            {'tid':pipeline_id, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
         
         filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
         if len(filepaths)==0:
-            logger.info(f'No images found for target {targetid}')
+            logger.info(f'No images found for target {pipeline_id}')
             return [], [], [], [], [], [], [], [], []
         filenames = [q.filename.replace('.fits', '') for q in query]
         dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
@@ -257,7 +220,7 @@ def find_images_from_snex1(targetid, username, allimages=False):
         psfxs = [int(round(q.psfx)) for q in query]
         psfys = [int(round(q.psfy)) for q in query]
 
-    logger.info('Found file names for target {}'.format(targetid))
+    logger.info('Found file names for target {}'.format(pipeline_id))
 
     return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
 
@@ -317,7 +280,7 @@ def get_unreduced_spectra(allspec=True):
     return targetids, propids, dateobs, paths, filenames, imgpaths
 
 
-def get_standards_from_snex1(target_id):
+def get_standards_from_snex1(pipeline_id):
     
     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
         
@@ -342,7 +305,7 @@ def get_standards_from_snex1(target_id):
                 obj.dayobs==std.dayobs,
                 obj.quality==127,
                 std.quality==127,
-                obj.targetid==target_id
+                obj.targetid==pipeline_id
             )
         )
 
