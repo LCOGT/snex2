@@ -104,7 +104,7 @@ def delete_ztf_data(target):
     deleted, _ = DataProduct.objects.filter(
         target = target,
         data_product_type = 'photometry',
-        product_id = 'photometry_{}'.format(ztf_name)
+        product_id = f'{ztf_name}_photometry'
     ).delete()
     logger.info(f'Deleted {deleted} ZTF photometry points for {target}')
 
