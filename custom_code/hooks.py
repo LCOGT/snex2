@@ -136,47 +136,7 @@ def _get_tns_params(target):
         response_data = {'failure': 'Parameters not ingested'}
 
     return response_data
-
-def target_post_save(target, created, group_names=None, wrapped_session=None):
- 
-    logger.info('Target post save hook: %s created: %s', target, created)
-    if created:
-        if wrapped_session:
-            db_session = wrapped_session
-    
-        else:
-            db_session = _return_session(settings.SNEX1_DB_URL)
-        Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-        Targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
-        groupidcode = 1703768065789 #groupidcode of the default groups from settings.py
-
-        if not settings.TARGET_PERMISSIONS_ONLY:
-            groups = get_groups_with_perms(target)
-            
-            # Insert into SNEx 1 db
-            if groups:
-                groupidcode = 0
-                for group in groups:
-                    groupidcode += int(db_session.query(Groups).filter(Groups.name==group.name).first().idcode)
-
-        snex1_target = Targets(ra0=target.ra, dec0=target.dec, groupidcode=groupidcode, lastmodified=target.modified, datecreated=target.created)
-        db_session.add(snex1_target)
-        db_session.flush()
-        Target.objects.filter(pk=target.pk).update(pipeline_id=snex1_target.id)
-        db_session.add(Targetnames(targetid=target.pipeline_id, name=target.name, datecreated=target.created, lastmodified=target.modified))
-
-        if not wrapped_session:
-            try:
-                db_session.commit()
-            except:
-                db_session.rollback()
-            finally:
-                db_session.close()
         
-        else:
-            db_session.flush()
-           
 def find_images_from_snex1(pipeline_id, username, allimages=False):
     '''
     Hook to find filenames of images in SNEx1,
