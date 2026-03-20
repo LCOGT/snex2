@@ -8,9 +8,9 @@ class SNEx2HermesDataConverter(HermesDataConverter):
     def get_hermes_spectroscopy(self, datum):
         spectroscopy_row = super().get_hermes_spectroscopy(datum)
         reduced_datum_extra = ReducedDatumExtra.objects.filter(
-            data_type='spectroscopy', key='spec_extras', reduced_datum = datum).first()
+            data_type='spectroscopy', key='spec_extras', data_product = datum.data_product).first()
         if reduced_datum_extra:
-            extra_data = json.loads(reduced_datum_extra.value)
+            extra_data = reduced_datum_extra.value
             if 'telescope' in extra_data:
                 spectroscopy_row['telescope'] = extra_data.pop('telescope')
             if 'instrument' in extra_data:

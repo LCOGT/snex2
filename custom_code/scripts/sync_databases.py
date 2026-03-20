@@ -290,16 +290,18 @@ def update_spec(action):
             id_ = result.rowid # The ID of the row in the spec table
             if action=='delete':
                 #Look up the reduceddatum id from the datum_extra table
-                rd_extra = ReducedDatumExtra.objects.get(
+                rd_extra = ReducedDatumExtra.objects.filter(
                     data_type = 'spectroscopy',
-                    key = 'snex_id',
-                    value__icontains = f'"snex_id": {id_}')
-                rd_pk = json.loads(rd_extra.value).get('snex2_id','')
+                    value__snex_id = id_)
+                for rde in rd_extra:
+                    if rde.data_product:
+                        dp = rde.data_product
+                    elif json.loads(rde.value).get('snex2_id',''):
+                        rd_pk = json.loads(rde.value).get('snex2_id','')
+                        rd = ReducedDatum.objects.get(pk = rd_pk)
+                        dp = rd.data_product
                 
-                rd = ReducedDatum.objects.get(pk = rd_pk)
-                dp = rd.data_product
                 dp.delete()
-                rd_extra.delete()
 
             else:
                 spec_row = get_current_row(Spec, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the spec table
@@ -352,12 +354,12 @@ def update_spec(action):
                     spec_extras['snex_id'] = int(id_)
                     RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
                         target = target,
-                        reduced_datum = reduced_datum,
+                        data_product = data_product,
                         data_type='spectroscopy',
                         key='spec_extras',
-                        value__icontains = f'"snex_id": {id_}')
+                        value__snex_id = id_)
 
-                    RDExtras_spec.value = json.dumps(spec_extras)
+                    RDExtras_spec.value = spec_extras
                     RDExtras_spec.save()
 
                     logger.info(f'rd and extra made: {reduced_datum} {RDExtras_spec}')

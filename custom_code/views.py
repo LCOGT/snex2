@@ -406,7 +406,7 @@ class CustomDataProductUploadView(DataProductUploadView):
                     data_product = dp,
                     data_type = dp_type,
                     key = 'upload_extras',
-                    value = json.dumps(rdextra_value)
+                    value = rdextra_value
                 )
                 reduced_datum_extra.save()
 
@@ -1247,7 +1247,7 @@ def load_single_spectrum_view(request):
             # Get spectrum extras - query directly since user already has target access
             # (ReducedDatumExtra doesn't need separate object-level permissions)
             spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', target=target, reduced_datum=spectrum).first()
+                data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
 
             spec_extras = {}
 
@@ -1265,22 +1265,6 @@ def load_single_spectrum_view(request):
                 comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
                 spec_extras['comments'] = comments
                 spec_extras['comments_list'] = comment_list
-            elif spectrum.data_product_id:
-                spec_extras_row = ReducedDatumExtra.objects.filter(
-                    data_type='spectroscopy', key='upload_extras', data_product_id = spectrum.data_product_id).first()
-                if spec_extras_row:
-                    spec_extras = json.loads(spec_extras_row.value)
-                    if spec_extras.get('instrument', '') == 'en06':
-                        spec_extras['site'] = '(OGG 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    elif spec_extras.get('instrument', '') == 'en12':
-                        spec_extras['site'] = '(COJ 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    
-                    content_type_id = ContentType.objects.get(model='reduceddatum').id
-                    comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                    comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                    spec_extras['comments'] = comment_list
             
             # Calculate min/max flux
             datum = spectrum.value

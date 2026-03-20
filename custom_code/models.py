@@ -101,10 +101,6 @@ class ReducedDatumExtra(models.Model):
     target = models.ForeignKey(
         Target, on_delete=models.CASCADE
     )
-    reduced_datum = models. ForeignKey(
-        ReducedDatum, on_delete=models.CASCADE, verbose_name='ReducedDatum',
-        help_text='ReducedDatum this extra belongs to'
-    )
     data_product = models. ForeignKey(
         DataProduct, on_delete=models.CASCADE, verbose_name='DataProduct',
         help_text='DataProduct this extra belongs to'
@@ -117,7 +113,7 @@ class ReducedDatumExtra(models.Model):
         max_length=200, default='', verbose_name='Key',
         help_text='Keyword for information being stored'
     )
-    value = models.TextField(
+    value = models.JSONField(
         blank=True, default='', verbose_name='Value',
         help_text='String value of the information being stored'
     )

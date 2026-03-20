@@ -111,7 +111,7 @@ class CustomDataProductViewSet(DataProductViewSet):
                     data_product = dp,
                     data_type = dp_type,
                     key = 'upload_extras',
-                    value = json.dumps(upload_extras)
+                    value = upload_extras
                 )
                 reduced_datum_extra.save()
             except Exception:

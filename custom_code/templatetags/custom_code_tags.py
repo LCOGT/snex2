@@ -700,7 +700,7 @@ def dash_lightcurve(context, target, width, height):
     for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
                                    klass=ReducedDatumExtra.objects.filter(
                                        target=target,key='upload_extras',data_type='photometry')):
-        de_value = json.loads(de.value)
+        de_value = de.value
         inst = de_value.get('instrument', '')
         used_in = de_value.get('used_in', '')
         group = de_value.get('reducer_group', '')
@@ -1389,10 +1389,10 @@ def dash_spectra_page(context, target):
         # Query ReducedDatumExtra directly - no object-level permissions needed
         # (user already has target access if they can view this page)
         spec_extras_row = ReducedDatumExtra.objects.filter(
-            data_type='spectroscopy', target=target, key='spec_extras', reduced_datum=spectrum).first()
+            data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
         spec_extras = {}
         if spec_extras_row:
-            spec_extras = json.loads(spec_extras_row.value)
+            spec_extras = spec_extras_row.value
             if spec_extras.get('instrument', '') == 'en06':
                 spec_extras['site'] = '(OGG 2m)'
                 spec_extras['instrument'] += ' (FLOYDS)'
@@ -1404,23 +1404,6 @@ def dash_spectra_page(context, target):
             comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
             comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
             spec_extras['comments'] = comment_list
-
-        elif spectrum.data_product_id:
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='upload_extras', data_product_id=spectrum.data_product_id).first()
-            if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comment_list
         else:
             spec_extras = {}
 

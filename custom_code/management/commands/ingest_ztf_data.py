@@ -60,7 +60,7 @@ def get_ztf_data(target):
             data_product = dp,
             data_type = 'photometry',
             key = 'upload_extras',
-            value = json.dumps(datum_extra_value)
+            value = datum_extra_value
         )
 
     for alert in detections:
