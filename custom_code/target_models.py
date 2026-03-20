@@ -77,7 +77,7 @@ class SNExTarget(BaseTarget):
                     db_session.add(pipeline_target)
                     db_session.flush()
                     self.pipeline_id = pipeline_target.id
-                    db_session.add(Targetnames(targetid=pipeline_target.id, name=self.name, datecreated=now, lastmodified=now))
+                    db_session.add(Targetnames(targetid=pipeline_target.id, groupidcode=groupidcode, name=self.name, datecreated=now, lastmodified=now))
                     db_session.commit()
             except Exception as e:
                 logger.error(f'Failed to create target in the pipeline database for {self.name}: {e}')

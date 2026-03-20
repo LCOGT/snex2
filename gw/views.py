@@ -232,8 +232,6 @@ def submit_galaxy_observations_view(request):
                     assign_perm('tom_targets.change_target', gw, newtarget)
                     assign_perm('tom_targets.delete_target', gw, newtarget)
 
-                run_hook('target_post_save', target=newtarget, created=created, group_names=['GWO4'], wrapped_session=db_session)
-
                 ### Create and submit the observation requests
                 form_data = {'name': newtarget.name,
                              'target_id': newtarget.id,

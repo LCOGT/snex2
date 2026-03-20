@@ -8,7 +8,9 @@ from rest_framework.response import Response
 from rest_framework.mixins import CreateModelMixin
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_targets.models import Target, TargetName
+from tom_targets.api_views import TargetViewSet
 from custom_code.models import ReducedDatumExtra, Papers
+from custom_code.serializers import SNExTargetSerializer
 from .processors.data_processor import run_custom_data_processor
 import json
 
@@ -29,6 +31,9 @@ from rest_framework.authentication import SessionAuthentication, BasicAuthentica
 
 import logging
 logger = logging.getLogger(__name__)
+
+class SNExTargetViewSet(TargetViewSet):
+    serializer_class = SNExTargetSerializer
 
 class CustomDataProductViewSet(DataProductViewSet):
 
