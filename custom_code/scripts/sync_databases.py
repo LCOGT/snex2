@@ -453,8 +453,11 @@ def update_target(action, db_address=_SNEX2_DB):
             pipeline_id = targetname_row.targetid
             name = targetname_row.name
             target = Target.objects.get(pipeline_id=pipeline_id)
-            TargetName.objects.get_or_create(target=target, name=name)
-            
+            targetname, created = TargetName.objects.get_or_create(target=target, name=name)
+            if created:
+                logger.info(f'New target name {targetname} added to target {target}')
+            else:
+                logger.info(f'Target name already exists')
         except Exception as e:
             logger.exception(f"Failed to process target name for db_changes row {name.id} targets {name.rowid} with exception {e}")
             continue
