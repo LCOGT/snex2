@@ -364,7 +364,7 @@ def update_spec(action):
                     RDExtras_spec.value = spec_extras
                     RDExtras_spec.save()
 
-                    logger.info(f'rd and extra made: {reduced_datum} {RDExtras_spec}')
+                    logger.info(f'rd and extra made: {reduced_datum} {RDExtras_spec} for dataproduct: {data_product} and target {target}')
 
                     if spec_groupid is not None:
                         update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
