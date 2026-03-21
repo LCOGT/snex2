@@ -70,7 +70,7 @@ class SNExTarget(BaseTarget):
                     Targets.dec0 <= self.dec + 4/3600
                 ).first()
                 if not existing:
-                    existing_name = db_session.query(Targetnames).filter(func.lower(Targetnames.name) == self.name.lower()).first()
+                    existing_name = db_session.query(Targetnames).filter(func.lower(func.trim(Targetnames.name)) == self.name.strip().lower()).first()
                     if existing_name:
                         existing = db_session.query(Targets).filter(
                             Targets.id == existing_name.targetid
