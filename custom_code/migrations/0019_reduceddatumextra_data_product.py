@@ -52,8 +52,24 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='reduceddatumextra',
             name='data_product',
-            field=models.ForeignKey(default=1, help_text='DataProduct this extra belongs to', on_delete=django.db.models.deletion.CASCADE, to='tom_dataproducts.dataproduct', verbose_name='DataProduct'),
-            preserve_default=False,
+            field=models.ForeignKey(
+                null=True,
+                blank=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                to='tom_dataproducts.dataproduct',
+                verbose_name='DataProduct',
+                help_text='DataProduct this extra belongs to'
+            ),
         ),
-         migrations.RunPython(populate_reduced_datum_extras, migrations.RunPython.noop)
+        migrations.RunPython(populate_reduced_datum_extras, migrations.RunPython.noop),
+        migrations.AlterField(
+            model_name='reduceddatumextra',
+            name='data_product',
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                to='tom_dataproducts.dataproduct',
+                verbose_name='DataProduct',
+                help_text='DataProduct this extra belongs to'
+            ),
+        ),
     ]
