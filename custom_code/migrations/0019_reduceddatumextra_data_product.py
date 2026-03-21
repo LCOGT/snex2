@@ -8,7 +8,7 @@ def populate_reduced_datum_extras(apps, schema_editor):
     ReducedDatum = apps.get_model('tom_dataproducts', 'ReducedDatum')
     DataProduct = apps.get_model('tom_dataproducts', 'DataProduct')
 
-    for rdextra in ReducedDatumExtra.objects.filter(value__data_product_id='"data_product_id":'):
+    for rdextra in ReducedDatumExtra.objects.filter(value__has_key='data_product_id'):
         try:
             value = rdextra.value
             dp_pk = value.get('data_product_id', '')
@@ -31,6 +31,7 @@ def populate_reduced_datum_extras(apps, schema_editor):
                 rd = ReducedDatum.objects.get(pk=rd_pk)
             except ReducedDatum.DoesNotExist:
                 rdextra.delete()
+                continue
 
             rdextra_extras = ReducedDatumExtra.objects.filter(
                 key='spec_extras',
@@ -39,6 +40,7 @@ def populate_reduced_datum_extras(apps, schema_editor):
             if rdextra_extras:
                 rdextra_extras.data_product = rd.data_product
                 rdextra_extras.save()
+            rdextra.delete()
         except Exception as e:
             print(f'Failed to populate reduced_datum for ReducedDatumExtra {rdextra.pk}: {e}')
 
