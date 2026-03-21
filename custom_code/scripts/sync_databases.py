@@ -441,10 +441,26 @@ def update_target(action, db_address=_SNEX2_DB):
                     update_permissions(t_groupid, 'custom_code.view_target', target, snex1_groups)
 
         except Exception as e:
-            logger.exception(f"Failed to process spectrum for db_changes row {tresult.id} targets {tresult.rowid} with exception {e}")
+            logger.exception(f"Failed to process target for db_changes row {tresult.id} targets {tresult.rowid} with exception {e}")
             continue
 
         delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
+    
+    for name in name_result:
+        try:
+            name_id = name.rowid
+            targetname_row = get_current_row(Target_Names, name_id, db_address=settings.SNEX1_DB_URL)
+            pipeline_id = targetname_row.targetid
+            name = targetname_row.name
+            target = Target.objects.get(pipeline_id=pipeline_id)
+            TargetName.objects.get_or_create(target=target, name=name)
+            
+        except Exception as e:
+            logger.exception(f"Failed to process target name for db_changes row {name.id} targets {name.rowid} with exception {e}")
+            continue
+
+        delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
+    
    
 def run():
     """
