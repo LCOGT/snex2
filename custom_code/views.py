@@ -1720,7 +1720,7 @@ class FloydsInboxView(TemplateView):
         pipeline_ids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
 
         inbox_rows = []
-        for i in range(len(targetids)):
+        for i in range(len(pipeline_ids)):
             current_dict = {}
             t = Target.objects.get(pipeline_id=pipeline_ids[i])
             current_dict['targetid'] = t.id
