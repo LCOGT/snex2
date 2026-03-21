@@ -1236,9 +1236,6 @@ def load_single_spectrum_view(request):
             target = Target.objects.get(id=target_id)
             spectrum = ReducedDatum.objects.get(id=spectrum_id)
             
-            # Get spectrum extras
-            user = User.objects.get(username=request.user)
-            
             try:
                 z = target.redshift
             except:
@@ -1252,7 +1249,7 @@ def load_single_spectrum_view(request):
             spec_extras = {}
 
             if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
+                spec_extras = spec_extras_row.value
                 if spec_extras.get('instrument', '') == 'en06':
                     spec_extras['site'] = '(OGG 2m)'
                     spec_extras['instrument'] += ' (FLOYDS)'

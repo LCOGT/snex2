@@ -81,7 +81,8 @@ class SpecProcessor(SpectroscopyProcessor):
                         else:
                             value = Time(value).to_datetime()
                         date_obs = value
-                    rd_extras[keyword] = value
+                    if not rd_extras.get(keyword, ''):
+                        rd_extras[keyword] = value
                     break
         dim = len(flux.shape)
         if dim == 3:
@@ -118,7 +119,21 @@ class SpecProcessor(SpectroscopyProcessor):
         :rtype: AstroPy.Time
         """
 
-        data = ascii.read(data_product.data.path, names=['wavelength', 'flux'])
+        data = ascii.read(data_product.data.path)
+
+        if 'flux' in data.colnames and 'wavelength' in data.colnames:
+            pass
+        elif 'wavelength' in data.colnames and 'flux' not in data.colnames:
+            data.rename_column(data.colnames[1], 'flux')
+        elif data.colnames == ['col1', 'col2']:
+            data.rename_column('col1', 'wavelength')
+            data.rename_column('col2', 'flux')
+        elif data.colnames == ['col2', 'col1'] or (len(data.colnames) == 2 and 'col' in data.colnames[0]):
+            data.rename_column(data.colnames[0], 'wavelength')
+            data.rename_column(data.colnames[1], 'flux')
+        else:
+            raise InvalidFileFormatException('Could not determine wavelength/flux columns')
+        
         if len(data) < 1:
             raise InvalidFileFormatException('Empty table or invalid file type')
         facility_name = None
@@ -132,18 +147,23 @@ class SpecProcessor(SpectroscopyProcessor):
                 delim = '='
             else:
                 delim = ':'
+            parts = comment.split(delim)
+            if len(parts) < 2:
+                continue
 
+            keyword = parts[0].strip().lower()
+            value = parts[1].strip()
             if not date_obs and 'date-obs' in comment.lower():
-                date_obs = comment.split(delim)[1].split('/')[0].strip()
+                date_obs = value.split('/')[0].strip()
             else:
                 date_obs = datetime.now()
 
             if 'facility' in comment.lower():
-                facility_name = comment.split(delim)[1].strip()
+                facility_name = value
 
             keyword = comment.split(delim)[0].lower()
             if keyword in rd_extras.keys() and not rd_extras.get(keyword, ''):
-                rd_extras[keyword] = comment.split(delim)[1].strip()
+                rd_extras[keyword] = value
 
         facility = get_service_class(facility_name)() if facility_name else None
         wavelength_units = facility.get_wavelength_units() if facility else self.DEFAULT_WAVELENGTH_UNITS
