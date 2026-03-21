@@ -27,9 +27,10 @@ def populate_reduced_datum_extras(apps, schema_editor):
             snex_id = value.get('snex_id', '')
             if not rd_pk or not snex_id:
                 continue
-
-            rd = ReducedDatum.objects.get(pk=rd_pk)
-            rdextra.delete()
+            try:
+                rd = ReducedDatum.objects.get(pk=rd_pk)
+            except ReducedDatum.DoesNotExist:
+                rdextra.delete()
 
             rdextra_extras = ReducedDatumExtra.objects.filter(
                 key='spec_extras',
