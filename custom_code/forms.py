@@ -96,7 +96,7 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
             self.fields['groups'].queryset = Group.objects.all()
             self.fields['groups'].label = "Visible to"
         self.fields.pop('gwfollowupgalaxy_id', None)
-
+        self.fields.pop('pipeline_id', None)
 
     def save(self, commit=True):
         instance = super().save(commit=commit)
