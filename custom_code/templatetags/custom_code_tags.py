@@ -700,7 +700,7 @@ def dash_lightcurve(context, target, width, height):
     for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
                                    klass=ReducedDatumExtra.objects.filter(
                                        target=target,key='upload_extras',data_type='photometry')):
-        de_value = json.loads(de.value)
+        de_value = de.value
         inst = de_value.get('instrument', '')
         used_in = de_value.get('used_in', '')
         group = de_value.get('reducer_group', '')
@@ -720,14 +720,14 @@ def dash_lightcurve(context, target, width, height):
    
         if de_value.get('final_reduction', '')==True:
             final_reduction = True
-            final_reduction_datumid = de_value.get('data_product_id', '')
+            final_reduction_dp = de.data_product
 
             datum = get_objects_for_user(user,
                                 'tom_dataproducts.view_reduceddatum',
                                 klass=ReducedDatum.objects.filter(
                                     target=target,
                                     data_type='photometry',
-                                    data_product_id=final_reduction_datumid))
+                                    data_product_id=final_reduction_dp))
             datum_value = datum.first().value
             if isinstance(datum_value, str):
                 datum_value = json.loads(datum_value)
@@ -1388,51 +1388,22 @@ def dash_spectra_page(context, target):
 
         # Query ReducedDatumExtra directly - no object-level permissions needed
         # (user already has target access if they can view this page)
-        snex_id_row = ReducedDatumExtra.objects.filter(
-            data_type='spectroscopy', target=target, 
-            key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
-        ).first()
+        spec_extras_row = ReducedDatumExtra.objects.filter(
+            data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
         spec_extras = {}
-        if snex_id_row:
-            snex1_id = json.loads(snex_id_row.value)['snex_id']
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='spec_extras', 
-                value__icontains='"snex_id": {}'.format(snex1_id)
-            ).first()
-            if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
+        if spec_extras_row:
+            spec_extras = spec_extras_row.value
+            if spec_extras.get('instrument', '') == 'en06':
+                spec_extras['site'] = '(OGG 2m)'
+                spec_extras['instrument'] += ' (FLOYDS)'
+            elif spec_extras.get('instrument', '') == 'en12':
+                spec_extras['site'] = '(COJ 2m)'
+                spec_extras['instrument'] += ' (FLOYDS)'
 
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comment_list
-            
-            else:
-                spec_extras = {}
-        elif spectrum.data_product_id:
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='upload_extras',
-                value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
-            ).first()
-            if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comment_list
+            content_type_id = ContentType.objects.get(model='reduceddatum').id
+            comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+            spec_extras['comments'] = comment_list
         else:
             spec_extras = {}
 
@@ -1689,7 +1660,7 @@ def image_slideshow(context, target):
     if not settings.DEBUG:
         #NOTE: Production
         
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username, allimages=True)
         if not filepaths:
             logger.info(f'No images found for target {target}')
             return {'target': target,
@@ -1959,7 +1930,7 @@ def display_thumbnails(context, target):
     
     if not settings.DEBUG:
         #NOTE: Production
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username)
         if not filepaths:
             logger.info(f'No images found for target {target}')
             return {'top_images': [],

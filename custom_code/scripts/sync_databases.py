@@ -177,7 +177,7 @@ def update_phot(action):
                     db_session.commit()
                     
             else:
-                targetid = phot_row.targetid
+                pipeline_id = phot_row.targetid
                 dobs = phot_row.dateobs
                 tobs = phot_row.ut
                 if tobs is None:
@@ -216,8 +216,8 @@ def update_phot(action):
                         standard_classification_id = -1
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
-                if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
-                    target = Target.objects.get(pk = targetid)
+                if pipeline_id not in standard_ids and int(phot_row.filetype) in (1, 3):
+                    target = Target.objects.get(pipeline_id=pipeline_id)
                     logger.info(f'phot dictionary: {phot}')
 
                     #check if there is a duplicate:
@@ -289,29 +289,19 @@ def update_spec(action):
         try:
             id_ = result.rowid # The ID of the row in the spec table
             if action=='delete':
-                #Look up the dataproductid from the datum_extra table
-                rd_extra = ReducedDatumExtra.objects.get(
+                #Look up the reduceddatum id from the datum_extra table
+                rd_extra = ReducedDatumExtra.objects.filter(
                     data_type = 'spectroscopy',
-                    key = 'snex_id',
-                    value__icontains = f'"snex_id": {id_}')
-                rd_pk = json.load(rd_extra.value).get('snex2_id','')
+                    value__snex_id = id_)
+                for rde in rd_extra:
+                    if rde.data_product:
+                        dp = rde.data_product
+                    elif json.loads(rde.value).get('snex2_id',''):
+                        rd_pk = json.loads(rde.value).get('snex2_id','')
+                        rd = ReducedDatum.objects.get(pk = rd_pk)
+                        dp = rd.data_product
                 
-                rd = ReducedDatum.objects.get(pk = rd_pk)
-                dp = rd.data_product
-                rd.delete()
-                dp.delete() #might only need data product to delete, then will cascade to rd
-
-                ReducedDatumExtra.objects.get(
-                    target_id = targetid,
-                    data_type = 'spectroscopy',
-                    key = 'snex_id',
-                    value__icontains = f'"snex_id": {id_}').delete()
-                
-                ReducedDatumExtra.objects.get(
-                    target_id = targetid,
-                    data_type = 'spectroscopy',
-                    key = 'spec_extras',
-                    value__icontains = f'"snex_id": {id_}').delete()
+                dp.delete()
 
             else:
                 spec_row = get_current_row(Spec, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the spec table
@@ -319,7 +309,7 @@ def update_spec(action):
                     delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
                     continue
 
-                targetid = spec_row.targetid
+                pipeline_id = spec_row.targetid
                 time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
@@ -333,8 +323,8 @@ def update_spec(action):
                         standard_classification_id = -1
                     standard_list = db_session.query(Targets).filter(Targets.classificationid==standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
-                if targetid not in standard_ids:
-                    target = Target.objects.get(pk = targetid)
+                if pipeline_id not in standard_ids:
+                    target = Target.objects.get(pipeline_id = pipeline_id)
                     #created True means new DataProduct was made, created False is object already existed, like just "get"
                     data_product, dp_created = DataProduct.objects.get_or_create(
                         target = target, 
@@ -357,16 +347,6 @@ def update_spec(action):
                         source_name = '', 
                         source_location = '')
 
-                    newspec_extra_value = json.dumps({'snex_id': int(id_), 'snex2_id': int(reduced_datum.id)})
-                    RDExtras_snex_id, rd_snexid_created =  ReducedDatumExtra.objects.get_or_create(
-                        target = target,
-                        data_type = 'spectroscopy',
-                        key = 'snex_id',
-                        value__icontains = f'"snex_id": {id_}')
-
-                    RDExtras_snex_id.value = newspec_extra_value
-                    RDExtras_snex_id.save()
-
                     spec_extras = {}
                     for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
                         if getattr(spec_row, key):
@@ -374,14 +354,15 @@ def update_spec(action):
                     spec_extras['snex_id'] = int(id_)
                     RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
                         target = target,
+                        data_product = data_product,
                         data_type='spectroscopy',
                         key='spec_extras',
-                        value__icontains = f'"snex_id": {id_}')
+                        value__snex_id = id_)
 
-                    RDExtras_spec.value = json.dumps(spec_extras)
+                    RDExtras_spec.value = spec_extras
                     RDExtras_spec.save()
 
-                    logger.info(f'rd and extras made: {reduced_datum}, {RDExtras_snex_id} {RDExtras_spec}')
+                    logger.info(f'rd and extra made: {reduced_datum} {RDExtras_spec}')
 
                     if spec_groupid is not None:
                         update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
@@ -411,8 +392,8 @@ def update_target(action, db_address=_SNEX2_DB):
 
     for tresult in target_result:
         try:
-            target_id = tresult.rowid # The ID of the row in the targets table
-            target_row = get_current_row(Targets, target_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to target_id in the targets table
+            pipeline_id = tresult.rowid # The ID of the row in the targets table
+            target_row = get_current_row(Targets, pipeline_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to pipeline_id in the targets table
 
             t_ra = target_row.ra0
             t_dec = target_row.dec0
@@ -433,14 +414,12 @@ def update_target(action, db_address=_SNEX2_DB):
                 db_session.commit()
 
             if action=='delete':
-                Target.objects.delete(id=target_id)
+                Target.objects.delete(pipeline_id=pipeline_id)
 
             else:
-                target, created = Target.objects.get_or_create(id=target_id)
-                logger.info(f'target to sync: {target_id}, target in snex2: {target}, created? {created}')
-                with get_session(db_address = db_address) as db_session:
-                    if 'postgresql' in db_address:
-                        db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
+                target, created = Target.objects.get_or_create(pipeline_id=pipeline_id)
+                logger.info(f'target to sync: {pipeline_id}, target in snex2: {target}, created? {created}')
+
                 if created:
                     target.name = t_name
                     target.ra = t_ra
@@ -452,9 +431,9 @@ def update_target(action, db_address=_SNEX2_DB):
                     target.scheme = ''
                     target.permissions = 'PRIVATE'
                     target.save()
-                    update_permissions(t_groupid, 'change_target', target, snex1_groups)
-                    update_permissions(t_groupid, 'delete_target', target, snex1_groups)
-                    update_permissions(t_groupid, 'view_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'custom_code.change_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'custom_code.delete_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'custom_code.view_target', target, snex1_groups)
 
         except Exception as e:
             logger.exception(f"Failed to process spectrum for db_changes row {tresult.id} targets {tresult.rowid} with exception {e}")
