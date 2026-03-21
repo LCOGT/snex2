@@ -139,7 +139,7 @@ class TargetListView(PermissionListMixin, FilterView):
     strict = False
     model = Target
     filterset_class = CustomTargetFilter
-    permission_required = 'tom_targets.view_target'
+    permission_required = 'custom_code.view_target'
     ordering = ['-id']
 
     def get_context_data(self, *args, **kwargs):
@@ -613,24 +613,23 @@ def change_target_known_to_view(request):
     group = Group.objects.get(name=group_name)
     target_name = request.GET.get('target')
     target = Target.objects.get(name=target_name)
-    allowed_ids = get_objects_for_user(request.user, 'tom_targets.change_target').values_list('pk', flat=True)
-    if target.id not in allowed_ids:
+    if target not in get_objects_for_user(request.user, 'custom_code.change_target'):
         response_data = {'failure': 'Error'}
         return HttpResponse(json.dumps(response_data), content_type='application/json')
 
     if action == 'add':
         # Add permissions for this group
-        assign_perm('tom_targets.view_target', group, target)
-        assign_perm('tom_targets.change_target', group, target)
-        assign_perm('tom_targets.delete_target', group, target)
+        assign_perm('custom_code.view_target', group, target)
+        assign_perm('custom_code.change_target', group, target)
+        assign_perm('custom_code.delete_target', group, target)
         response_data = {'success': 'Added'}
         return HttpResponse(json.dumps(response_data), content_type='application/json')
 
     elif action == 'remove':
         # Remove permissions for this group
-        remove_perm('tom_targets.view_target', group, target)
-        remove_perm('tom_targets.change_target', group, target)
-        remove_perm('tom_targets.delete_target', group, target)
+        remove_perm('custom_code.view_target', group, target)
+        remove_perm('custom_code.change_target', group, target)
+        remove_perm('custom_code.delete_target', group, target)
         response_data = {'success': 'Removed'}
         return HttpResponse(json.dumps(response_data), content_type='application/json')
         
@@ -770,7 +769,7 @@ def remove_target_from_group_view(request):
     
     list_type = request.GET.get('list')
 
-    if request.user.has_perm('tom_targets.view_target', target) and target in targetlist.targets.all():
+    if request.user.has_perm('custom_code.view_target', target) and target in targetlist.targets.all():
         targetlist.targets.remove(target)
 
         if list_type == 'observing_run': 
@@ -2041,7 +2040,7 @@ class TargetFilteringView(FormView):
         if self.request.user.is_authenticated:
             qs = get_objects_for_user(
                 self.request.user,
-                'tom_targets.view_target',
+                'custom_code.view_target',
                 accept_global_perms=True
             ).annotate(
                 phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),

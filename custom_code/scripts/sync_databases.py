@@ -177,7 +177,7 @@ def update_phot(action):
                     db_session.commit()
                     
             else:
-                targetid = phot_row.targetid
+                pipeline_id = phot_row.targetid
                 dobs = phot_row.dateobs
                 tobs = phot_row.ut
                 if tobs is None:
@@ -216,8 +216,8 @@ def update_phot(action):
                         standard_classification_id = -1
                     standard_list = db_session.query(Targets).filter(Targets.classificationid == standard_classification_id)
                     standard_ids = [x.id for x in standard_list]
-                if targetid not in standard_ids and int(phot_row.filetype) in (1, 3):
-                    target = Target.objects.get(pk = targetid)
+                if pipeline_id not in standard_ids and int(phot_row.filetype) in (1, 3):
+                    target = Target.objects.get(pipeline_id=pipeline_id)
                     logger.info(f'phot dictionary: {phot}')
 
                     #check if there is a duplicate:
@@ -392,8 +392,8 @@ def update_target(action, db_address=_SNEX2_DB):
 
     for tresult in target_result:
         try:
-            target_id = tresult.rowid # The ID of the row in the targets table
-            target_row = get_current_row(Targets, target_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to target_id in the targets table
+            pipeline_id = tresult.rowid # The ID of the row in the targets table
+            target_row = get_current_row(Targets, pipeline_id, db_address=settings.SNEX1_DB_URL) # The row corresponding to pipeline_id in the targets table
 
             t_ra = target_row.ra0
             t_dec = target_row.dec0
@@ -414,14 +414,12 @@ def update_target(action, db_address=_SNEX2_DB):
                 db_session.commit()
 
             if action=='delete':
-                Target.objects.delete(id=target_id)
+                Target.objects.delete(pipeline_id=pipeline_id)
 
             else:
-                target, created = Target.objects.get_or_create(id=target_id)
-                logger.info(f'target to sync: {target_id}, target in snex2: {target}, created? {created}')
-                with get_session(db_address = db_address) as db_session:
-                    if 'postgresql' in db_address:
-                        db_session.execute(select(func.setval('tom_targets_target_id_seq', target_id)))
+                target, created = Target.objects.get_or_create(pipeline_id=pipeline_id)
+                logger.info(f'target to sync: {pipeline_id}, target in snex2: {target}, created? {created}')
+
                 if created:
                     target.name = t_name
                     target.ra = t_ra
@@ -433,9 +431,9 @@ def update_target(action, db_address=_SNEX2_DB):
                     target.scheme = ''
                     target.permissions = 'PRIVATE'
                     target.save()
-                    update_permissions(t_groupid, 'change_target', target, snex1_groups)
-                    update_permissions(t_groupid, 'delete_target', target, snex1_groups)
-                    update_permissions(t_groupid, 'view_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'custom_code.change_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'custom_code.delete_target', target, snex1_groups)
+                    update_permissions(t_groupid, 'custom_code.view_target', target, snex1_groups)
 
         except Exception as e:
             logger.exception(f"Failed to process spectrum for db_changes row {tresult.id} targets {tresult.rowid} with exception {e}")
