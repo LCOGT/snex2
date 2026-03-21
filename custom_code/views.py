@@ -613,8 +613,8 @@ def change_target_known_to_view(request):
     group = Group.objects.get(name=group_name)
     target_name = request.GET.get('target')
     target = Target.objects.get(name=target_name)
-    
-    if target not in get_objects_for_user(request.user, 'tom_targets.change_target'):
+    allowed_ids = get_objects_for_user(request.user, 'tom_targets.change_target').values_list('pk', flat=True)
+    if target.id not in allowed_ids:
         response_data = {'failure': 'Error'}
         return HttpResponse(json.dumps(response_data), content_type='application/json')
 

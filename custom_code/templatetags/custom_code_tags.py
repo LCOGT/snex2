@@ -1035,18 +1035,18 @@ def observation_summary(context, target = None, is_active = False):
     else:
         obs_records = ObservationRecord.objects.all()
 
-    obs_groups = ObservationGroup.objects.filter(observation_records__in = obs_records, dynamiccadence__active=is_active).distinct().prefetch_related('observation_records', 'dynamiccadence_set')
+    obs_groups = ObservationGroup.objects.filter(observation_records__in=obs_records, dynamiccadence__active=is_active).distinct().order_by('-modified')
 
     parameters_summary = []
+    obs_records_active = []
     content_type_obs_group = ContentType.objects.get_for_model(ObservationGroup)
 
     for group in obs_groups:
-        all_obs = group.observation_records.all()
-        obs = all_obs.filter(status = 'PENDING').first() or all_obs.order_by('-id').first()
-        
+        obs = group.observation_records.order_by('-id').first()
         if not obs:
             continue
-
+        obs_records_active.append(obs)
+    
         summary_dict = call_facility_formats(obs, group, is_active)
         
         comments = Comment.objects.filter(object_pk = group.id, content_type = content_type_obs_group)
@@ -1055,7 +1055,7 @@ def observation_summary(context, target = None, is_active = False):
         parameters_summary.append(summary_dict)
 
     return {
-        'observations': obs_records,
+        'observations': obs_records_active,
         'parameters': parameters_summary,
         'is_active': is_active
     }
