@@ -2,6 +2,7 @@ from django.db import models
 from tom_targets.models import BaseTarget
 from django.core.exceptions import ValidationError
 from custom_code.utils import _load_table, _return_session
+from sqlalchemy import func
 from datetime import datetime
 from django.conf import settings
 import logging
@@ -69,9 +70,7 @@ class SNExTarget(BaseTarget):
                     Targets.dec0 <= self.dec + 4/3600
                 ).first()
                 if not existing:
-                    existing_name = db_session.query(Targetnames).filter(
-                        Targetnames.name == self.name
-                    ).first()
+                    existing_name = db_session.query(Targetnames).filter(func.lower(Targetnames.name) == self.name.lower()).first()
                     if existing_name:
                         existing = db_session.query(Targets).filter(
                             Targets.id == existing_name.targetid
