@@ -446,9 +446,9 @@ def update_target(action, db_address=_SNEX2_DB):
 
         delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
     
-    for name in name_result:
+    for nresult in name_result:
         try:
-            name_id = name.rowid
+            name_id = nresult.rowid
             targetname_row = get_current_row(Target_Names, name_id, db_address=settings.SNEX1_DB_URL)
             pipeline_id = targetname_row.targetid
             name = targetname_row.name
@@ -462,7 +462,7 @@ def update_target(action, db_address=_SNEX2_DB):
             logger.exception(f"Failed to process target name for db_changes row {name.id} targets {name.rowid} with exception {e}")
             continue
 
-        delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
+        delete_row(Db_Changes, nresult.id, db_address=settings.SNEX1_DB_URL)
     
    
 def run():
