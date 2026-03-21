@@ -68,6 +68,14 @@ class SNExTarget(BaseTarget):
                     Targets.dec0 >= self.dec - 4/3600,
                     Targets.dec0 <= self.dec + 4/3600
                 ).first()
+                if not existing:
+                    existing_name = db_session.query(Targetnames).filter(
+                        Targetnames.name == self.name
+                    ).first()
+                    if existing_name:
+                        existing = db_session.query(Targets).filter(
+                            Targets.id == existing_name.targetid
+                        ).first()
                 if existing:
                     self.pipeline_id = existing.id
                 else:
