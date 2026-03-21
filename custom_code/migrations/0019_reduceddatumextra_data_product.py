@@ -42,6 +42,7 @@ def populate_reduced_datum_extras(apps, schema_editor):
         except Exception as e:
             print(f'Failed to populate reduced_datum for ReducedDatumExtra {rdextra.pk}: {e}')
 
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -63,14 +64,4 @@ class Migration(migrations.Migration):
             ),
         ),
         migrations.RunPython(populate_reduced_datum_extras, migrations.RunPython.noop),
-        migrations.AlterField(
-            model_name='reduceddatumextra',
-            name='data_product',
-            field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE,
-                to='tom_dataproducts.dataproduct',
-                verbose_name='DataProduct',
-                help_text='DataProduct this extra belongs to'
-            ),
-        ),
     ]
