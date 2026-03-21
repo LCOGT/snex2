@@ -363,8 +363,9 @@ def update_spec(action):
 
                     RDExtras_spec.value = spec_extras
                     RDExtras_spec.save()
+                    logger.info(f'new objects created? dp: {dp_created}, rd: {rd_created}, rd_extra: {rd_extras_created}')
 
-                    logger.info(f'rd and extra made: {reduced_datum} {RDExtras_spec} for dataproduct: {data_product} and target {target}')
+                    logger.info(f'rd and extra made or updated: {reduced_datum} {RDExtras_spec} for dataproduct: {data_product} and target {target}')
 
                     if spec_groupid is not None:
                         update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
@@ -374,6 +375,8 @@ def update_spec(action):
         except Exception as e:
             logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid} with exception {e}")
             continue
+        
+        delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         
 
