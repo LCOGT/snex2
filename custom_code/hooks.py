@@ -230,14 +230,14 @@ def get_unreduced_spectra(allspec=True):
             not_(targetnames.name.contains('test_'))
             )
         )
-        targetids = [s.targetid for s in unreduced_spectra]
+        pipeline_ids = [s.targetid for s in unreduced_spectra]
         propids = [s.propid for s in unreduced_spectra]
         dateobs = [s.dateobs for s in unreduced_spectra]
         paths = [s.filepath for s in unreduced_spectra]
         filenames = [s.filename for s in unreduced_spectra]
         imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in unreduced_spectra]
 
-    return targetids, propids, dateobs, paths, filenames, imgpaths
+    return pipeline_ids, propids, dateobs, paths, filenames, imgpaths
 
 
 def get_standards_from_snex1(pipeline_id):

@@ -1717,13 +1717,13 @@ class FloydsInboxView(TemplateView):
 
         context = super().get_context_data(**kwargs)
 
-        targetids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
+        pipeline_ids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
 
         inbox_rows = []
         for i in range(len(targetids)):
             current_dict = {}
-            t = Target.objects.get(id=targetids[i])
-            current_dict['targetid'] = targetids[i]
+            t = Target.objects.get(pipeline_id=pipeline_ids[i])
+            current_dict['targetid'] = t.id
             current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
             current_dict['propid'] = propids[i]
             current_dict['dateobs'] = dateobs[i]
