@@ -296,8 +296,8 @@ def update_spec(action):
                 for rde in rd_extra:
                     if rde.data_product:
                         dp = rde.data_product
-                    elif json.loads(rde.value).get('snex2_id',''):
-                        rd_pk = json.loads(rde.value).get('snex2_id','')
+                    elif rde.value.get('snex2_id',''):
+                        rd_pk = rde.value.get('snex2_id','')
                         rd = ReducedDatum.objects.get(pk = rd_pk)
                         dp = rd.data_product
                 
@@ -338,21 +338,23 @@ def update_spec(action):
                         data_product.featured = False
                         data_product.save()
 
-                    reduced_datum, rd_created = ReducedDatum.objects.get_or_create(
+                    reduced_datum, rd_created = ReducedDatum.objects.update_or_create(
                         target = target, 
                         data_product = data_product, 
-                        value = spec,
-                        timestamp = time,
                         data_type = 'spectroscopy', 
-                        source_name = '', 
-                        source_location = '')
+                        defaults = {
+                            'value': spec,
+                            'timestamp': time,
+                            'source_name': '',
+                            'source_location': '',
+                        })
 
                     spec_extras = {}
                     for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
                         if getattr(spec_row, key):
                             spec_extras[key] = getattr(spec_row, key)
                     spec_extras['snex_id'] = int(id_)
-                    RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
+                    RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.update_or_create(
                         target = target,
                         data_product = data_product,
                         data_type='spectroscopy',
