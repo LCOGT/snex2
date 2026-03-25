@@ -206,10 +206,11 @@ def _modify_sequence(obs, user, data):
         })
 
         new_record.save()
-        
+        logger.info(f'New observation {new_record} submitted with status: {new_record.status}')
         new_obs_group.observation_records.add(new_record)
 
-        facility.update_observation_status(new_record.observation_id)
+        facility.update_observation_status(lco_id)
+        logger.info(f'Status updated: {new_record.status}')
 
     DynamicCadence.objects.create(
         observation_group=new_obs_group,
