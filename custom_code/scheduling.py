@@ -95,6 +95,13 @@ def cancel_observation(obs):
 
     facility_class = get_service_class(obs.facility)
     facility = facility_class()
+    
+    try:
+        dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
+        dynamic_cadence.active = False
+        dynamic_cadence.save()
+    except DynamicCadence.DoesNotExist:
+        logger.warning(f"No active cadence found for group {obs_group.id}")
 
     if not getattr(obs, 'terminal', False):
         success = facility.cancel_observation(obs.observation_id)
@@ -104,13 +111,6 @@ def cancel_observation(obs):
         obs.status = 'CANCELED'
         obs.save()
     
-    try:
-        dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
-        dynamic_cadence.active = False
-        dynamic_cadence.save()
-    except DynamicCadence.DoesNotExist:
-        logger.warning(f"No active cadence found for group {obs_group.id}")
-
     first_obs = obs_group.observation_records.order_by('created').first()
     if first_obs:
         first_obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
