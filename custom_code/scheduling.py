@@ -23,18 +23,17 @@ def change_obs_from_scheduling(action, obs_id, user, data):
     '''
     obs = ObservationRecord.objects.get(id=obs_id)
 
-    with transaction.atomic():
-        if action == 'stop':
-            logger.info(f'User {user.username} stopping sequence for obs {obs_id}')
-            return _stop_sequence(obs, user, data)
-        elif action == 'continue':
-            logger.info(f'User {user.username} continuing sequence for obs {obs_id}')
-            return _continue_sequence(obs, user, data)
-        elif action == 'modify':
-            logger.info(f'User {user.username} modifying sequence for obs {obs_id}')
-            return _modify_sequence(obs, user, data)
-        
-        return None
+    if action == 'stop':
+        logger.info(f'User {user.username} stopping sequence for obs {obs_id}')
+        return _stop_sequence(obs, user, data)
+    elif action == 'continue':
+        logger.info(f'User {user.username} continuing sequence for obs {obs_id}')
+        return _continue_sequence(obs, user, data)
+    elif action == 'modify':
+        logger.info(f'User {user.username} modifying sequence for obs {obs_id}')
+        return _modify_sequence(obs, user, data)
+    
+    return None
     
 def _stop_sequence(obs, user, data):
     logger.info(f'Stopping Sequence {obs.id} for target {obs.target.id}')
