@@ -177,7 +177,7 @@ def _modify_sequence(obs, user, data):
     new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
     new_params['end'] = (now + timedelta(days=delay + (data['cadence_frequency_days']))).strftime('%Y-%m-%dT%H:%M:%S')
 
-    filters = ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
+    filters = ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
     for f in filters:
         if f in data and data[f]:
             new_params[f] = data[f]
