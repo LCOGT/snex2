@@ -96,6 +96,7 @@ def cancel_observation(obs):
     facility_class = get_service_class(obs.facility)
     facility = facility_class()
     logger.info(f'Observation ID to be canceled: {obs} in obsgroup: {obs_group}')
+    facility.update_observation_status(obs.observation_id)
     try:
         dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
         logger.info(f'Current cadence status: {dynamic_cadence.active}')
