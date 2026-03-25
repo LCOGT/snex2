@@ -110,6 +110,9 @@ def cancel_observation(obs):
     if not getattr(obs, 'terminal', False):
         success = facility.cancel_observation(obs.observation_id)
         if not success:
+            logger.error(f'Facility rejected cancel for observation {obs.observation_id}, re-activating cadence')
+            dynamic_cadence.active = True
+            dynamic_cadence.save()
             return False
         obs.status = 'CANCELED'
         obs.save()
@@ -119,7 +122,7 @@ def cancel_observation(obs):
     if first_obs:
         first_obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
         first_obs.save()
-    
+
     return True
     
 def _continue_sequence(obs, user, data):
@@ -148,8 +151,10 @@ def _modify_sequence(obs, user, data):
     logger.info(f'Modifying Sequence {obs.id} for target {obs.target.id}')
     
     # Cancel the current sequence
-    _stop_sequence(obs, user, data)
-
+    result = _stop_sequence(obs, user, data)
+    if 'failure' in result:
+        return result
+    
     new_params = obs.parameters.copy()
 
     if not settings.TARGET_PERMISSIONS_ONLY:
@@ -203,6 +208,8 @@ def _modify_sequence(obs, user, data):
         new_record.save()
         
         new_obs_group.observation_records.add(new_record)
+
+        facility.update_observation_status(new_record.observation_id)
 
     DynamicCadence.objects.create(
         observation_group=new_obs_group,
