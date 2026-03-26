@@ -146,7 +146,7 @@ def cancel_observation(obs_group):
     return True
 
 def _continue_sequence(obs_group, data):
-    obs = obs_group.observation_records.order_by('created').first()
+    obs = obs_group.observation_records.filter(status='PENDING').first()
     if not obs:
         return {'failure': 'No observations found in group'}
     
