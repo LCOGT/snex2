@@ -265,21 +265,19 @@ def _modify_sequence(obs_group, user, data):
     return {'success': 'Modified'}
 
 def _sync_permissions(old_group, new_group):
-    """Sync permissions from old ObservationGroup to new ObservationGroup."""
     try:
         group_ids = GroupObjectPermission.objects.filter(
             object_pk=old_group.id,
             content_type=ContentType.objects.get_for_model(ObservationGroup)
         ).values_list('group_id', flat=True).distinct()
-        
         groups = Group.objects.filter(id__in=group_ids)
-        logger.info(f'Syncing permissions for {groups.count()} group(s) from old group {old_group.id} to new group {new_group.id}')
-        
         for group in groups:
             assign_perm('tom_observations.view_observationgroup', group, new_group)
+            assign_perm('tom_observations.change_observationgroup', group, new_group)
+            assign_perm('tom_observations.delete_observationgroup', group, new_group)
             for record in new_group.observation_records.all():
                 assign_perm('tom_observations.view_observationrecord', group, record)
-                
-        logger.info(f'Successfully synced permissions to {new_group.observation_records.count()} observation records')
+                assign_perm('tom_observations.change_observationrecord', group, record)
+                assign_perm('tom_observations.delete_observationrecord', group, record)
     except Exception as e:
         logger.error(f'Failed to sync permissions: {e}', exc_info=True)

@@ -891,7 +891,22 @@ class CustomObservationCreateView(ObservationCreateView):
     
     def form_valid(self, form):
         form.cleaned_data['start_user'] = self.request.user.username
-        return super().form_valid(form)
+        response = super().form_valid(form)
+    
+        if not settings.TARGET_PERMISSIONS_ONLY:
+            groups = form.cleaned_data.get('groups', [])
+            if groups:
+                target = self.get_target()
+                latest_record = ObservationRecord.objects.filter(
+                    target=target
+                ).order_by('-created').first()
+                if latest_record:
+                    for og in latest_record.observationgroup_set.all():
+                        assign_perm('tom_observations.view_observationgroup', groups, og)
+                        assign_perm('tom_observations.change_observationgroup', groups, og)
+                        assign_perm('tom_observations.delete_observationgroup', groups, og)
+
+        return response
     
 
 def make_tns_request_view(request):
