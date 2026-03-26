@@ -2,6 +2,7 @@ import logging
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from tom_observations.models import ObservationGroup
+from django.contrib.auth.models import Group
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm
 
@@ -20,9 +21,30 @@ class SnexCadencePermissionMixin:
             object_pk=obs_group.id,
             content_type=group_ct
         )
-        for record in new_observations:
-            for gop in group_perms:
-                assign_perm(gop.permission.codename, gop.group, record)
+        if not group_perms.exists():
+            target = new_observations[0].target
+            target_ct = ContentType.objects.get_for_model(target.__class__)
+            target_group_ids = GroupObjectPermission.objects.filter(
+                object_pk=target.id,
+                content_type=target_ct
+            ).values_list('group_id', flat=True).distinct()
+            groups = Group.objects.filter(id__in=target_group_ids)
+            for group in groups:
+                assign_perm('tom_observations.view_observationgroup', group, obs_group)
+                assign_perm('tom_observations.change_observationgroup', group, obs_group)
+                assign_perm('tom_observations.delete_observationgroup', group, obs_group)
+                for record in new_observations:
+                    assign_perm('tom_observations.view_observationrecord', group, record)
+                    assign_perm('tom_observations.change_observationrecord', group, record)
+                    assign_perm('tom_observations.delete_observationrecord', group, record)
+        else:
+            group_ids = group_perms.values_list('group_id', flat=True).distinct()
+            groups = Group.objects.filter(id__in=group_ids)
+            for group in groups:
+                for record in new_observations:
+                    assign_perm('tom_observations.view_observationrecord', group, record)
+                    assign_perm('tom_observations.change_observationrecord', group, record)
+                    assign_perm('tom_observations.delete_observationrecord', group, record)
 
 class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCadenceAfterFailureStrategy):
     cadence_fields = {'cadence_frequency', 'reminder_date'}
