@@ -574,7 +574,8 @@ def observation_sequence_cancel_view(request):
 def scheduling_view(request):
     obs_id = request.GET.get('observation_id')
     obs = ObservationRecord.objects.get(id=obs_id)
-    
+    obs_group = obs.observationgroup_set.first()
+
     if obs.parameters.get('observation_type', '') == 'IMAGING':
         form = PhotSchedulingForm(request.GET, initial=obs.parameters)
     else:
@@ -595,7 +596,7 @@ def scheduling_view(request):
             form.cleaned_data['comment'] = cancel_reason
             response_data = change_obs_from_scheduling(
                 action=action,
-                obs_id=form.cleaned_data['observation_id'],
+                obs_group=obs_group,
                 user=request.user,
                 data=form.cleaned_data
             )

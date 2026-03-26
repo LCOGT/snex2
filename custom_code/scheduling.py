@@ -1,52 +1,48 @@
 from django.db import transaction
 from guardian.models import GroupObjectPermission
-from guardian.shortcuts import get_groups_with_perms, assign_perm
+from guardian.shortcuts import assign_perm
 from django.contrib.auth.models import Group
 from django.conf import settings
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from django_comments.models import Comment
-from guardian.shortcuts import assign_perm
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.facility import get_service_class
 import logging
 
 logger = logging.getLogger(__name__)
-def change_obs_from_scheduling(action, obs_id, user, data):
+
+def change_obs_from_scheduling(action, obs_group, user, data):
     '''
     Logic of the scheduling page
     params:
     action: str, modify, continue, stop
-    obs_id: ObservationRecord id
+    obs_group: ObservationGroup instance
+    user: User instance
     data: cleaned data from PhotSchedulingForm or SpecSchedulingForm
     '''
-    obs = ObservationRecord.objects.get(id=obs_id)
-
     if action == 'stop':
-        logger.info(f'User {user.username} stopping sequence for obs {obs_id}')
-        return _stop_sequence(obs, user, data)
+        logger.info(f'User {user.username} stopping sequence for group {obs_group.id}')
+        return _stop_sequence(obs_group, user, data)
     elif action == 'continue':
-        logger.info(f'User {user.username} continuing sequence for obs {obs_id}')
-        return _continue_sequence(obs, user, data)
+        logger.info(f'User {user.username} continuing sequence for group {obs_group.id}')
+        return _continue_sequence(obs_group, data)
     elif action == 'modify':
-        logger.info(f'User {user.username} modifying sequence for obs {obs_id}')
-        return _modify_sequence(obs, user, data)
+        logger.info(f'User {user.username} modifying sequence for group {obs_group.id}')
+        return _modify_sequence(obs_group, user, data)
     
-    return None
+    return {'failure': 'Invalid action'}
+
+def _stop_sequence(obs_group, user, data):
+    logger.info(f'Stopping Sequence group {obs_group.id}')
     
-def _stop_sequence(obs, user, data):
-    logger.info(f'Stopping Sequence {obs.id} for target {obs.target.id}')
-    
-    ## Cancel observation request in LCO portal
-    canceled = cancel_observation(obs)
+    canceled = cancel_observation(obs_group)
     if not canceled:
         return {'failure': 'The facility (LCO) rejected the cancellation request.'}
     
-    obs_group = obs.observationgroup_set.first()
     comment = data.get('comment', '')
-
-    if comment and obs_group:
+    if comment:
         save_comments(comment, obs_group.id, user)
         logger.info(f'Comment {comment} by user {user} saved for obs group {obs_group.id}')
 
@@ -80,43 +76,67 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
         if created:
             logger.info(f'New comment created for {actual_model} {object_id}')
         else:
-            logger.info(f'Comment already created for {actual_model} {object_id}')
+            logger.info(f'Comment already exists for {actual_model} {object_id}')
             
         return newcomment
     except Exception as e:
-        logger.error(f'Comment save failed: {e}')
+        logger.error(f'Comment save failed: {e}', exc_info=True)
         return False
 
-def cancel_observation(obs):
-    obs_group = obs.observationgroup_set.first()
-    if not obs_group:
+def cancel_observation(obs_group):    
+    if not obs_group.observation_records.exists():
+        logger.error(f'No observation records found in group {obs_group.id}')
         return False
-
-    facility_class = get_service_class(obs.facility)
-    facility = facility_class()
-    logger.info(f'Observation ID to be canceled: {obs} in obsgroup: {obs_group}')
-    facility.update_observation_status(obs.observation_id)
+    
+    first_obs = obs_group.observation_records.first()
+    try:
+        facility_class = get_service_class(first_obs.facility)
+        facility = facility_class()
+    except Exception as e:
+        logger.error(f'Failed to get facility service for {first_obs.facility}: {e}', exc_info=True)
+        return False
+    
+    for record in obs_group.observation_records.all():
+        try:
+            facility.update_observation_status(record.observation_id)
+            record.refresh_from_db()
+        except Exception as e:
+            logger.error(f'Failed to update status for observation {record.id}: {e}', exc_info=True)
+    
+    pending_observations = obs_group.observation_records.filter(status='PENDING')
+    logger.info(f'Found {pending_observations.count()} PENDING observation(s) in group {obs_group.id}')
+    
     try:
         dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
         logger.info(f'Current cadence status: {dynamic_cadence.active}')
         dynamic_cadence.active = False
         dynamic_cadence.save()
-        logger.info(f'Dynamic Cadence Turned off')
-
+        logger.info(f'Dynamic Cadence turned off')
     except DynamicCadence.DoesNotExist:
-        logger.warning(f"No active cadence found for group {obs_group.id}")
+        logger.warning(f"No dynamic cadence found for group {obs_group.id}")
         return False
-    logger.info(f'Current observation status: {obs.status}')
-    if not getattr(obs, 'terminal', False):
-        success = facility.cancel_observation(obs.observation_id)
-        if not success:
-            logger.error(f'Facility rejected cancel for observation {obs.observation_id}, re-activating cadence')
-            dynamic_cadence.active = True
-            dynamic_cadence.save()
-            return False
-        obs.status = 'CANCELED'
-        obs.save()
-        logger.info(f'Observation canceled')
+
+    all_canceled = True
+    for obs_to_cancel in pending_observations:
+        logger.info(f'Canceling PENDING observation {obs_to_cancel.id}')
+        try:
+            success = facility.cancel_observation(obs_to_cancel.observation_id)
+            if not success:
+                logger.error(f'Facility rejected cancel for observation {obs_to_cancel.observation_id}')
+                all_canceled = False
+            else:
+                obs_to_cancel.status = 'CANCELED'
+                obs_to_cancel.save()
+                logger.info(f'Observation {obs_to_cancel.id} canceled successfully')
+        except Exception as e:
+            logger.error(f'Exception while canceling observation {obs_to_cancel.observation_id}: {e}', exc_info=True)
+            all_canceled = False
+    
+    if not all_canceled:
+        logger.error(f'One or more cancellations failed, re-activating cadence')
+        dynamic_cadence.active = True
+        dynamic_cadence.save()
+        return False
     
     first_obs = obs_group.observation_records.order_by('created').first()
     if first_obs:
@@ -124,15 +144,18 @@ def cancel_observation(obs):
         first_obs.save()
 
     return True
+
+def _continue_sequence(obs_group, data):
+    obs = obs_group.observation_records.order_by('created').first()
+    if not obs:
+        return {'failure': 'No observations found in group'}
     
-def _continue_sequence(obs, user, data):
-    logger.info(f'Continuing Sequence {obs.id} for target {obs.target.id} as-is')
+    logger.info(f'Continuing Sequence group {obs_group.id} as-is')
     
-    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
+    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
         if key in data.keys() and key in obs.parameters.keys():
             if data[key] != obs.parameters[key]:
-                response_data = {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
-                return response_data
+                return {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
 
     obs.parameters['reminder'] = data['reminder']
     now = datetime.utcnow()
@@ -140,26 +163,29 @@ def _continue_sequence(obs, user, data):
     obs.parameters['reminder_date'] = reminder_date
     obs.save()
 
-    cad = DynamicCadence.objects.filter(observation_group__observation_records=obs).first()
-    cad.cadence_parameters['reminder_date'] = reminder_date
-    cad.save()
+    try:
+        cad = DynamicCadence.objects.get(observation_group=obs_group)
+        cad.cadence_parameters['reminder_date'] = reminder_date
+        cad.save()
+    except DynamicCadence.DoesNotExist:
+        logger.error(f'No dynamic cadence found for group {obs_group.id}')
+        return {'failure': 'No active cadence found for this sequence'}
 
     return {'success': 'Continued'}
 
-
-def _modify_sequence(obs, user, data):
-    logger.info(f'Modifying Sequence {obs.id} for target {obs.target.id}')
+@transaction.atomic
+def _modify_sequence(obs_group, user, data):
+    obs = obs_group.observation_records.order_by('created').first()
+    if not obs:
+        return {'failure': 'No observations found in group'}
     
-    # Cancel the current sequence
-    result = _stop_sequence(obs, user, data)
+    logger.info(f'Modifying Sequence group {obs_group.id} for target {obs.target.id}')
+    
+    result = _stop_sequence(obs_group, user, data)
     if 'failure' in result:
         return result
     
     new_params = obs.parameters.copy()
-
-    if not settings.TARGET_PERMISSIONS_ONLY:
-        new_params['groups'] = get_groups_with_perms(obs)
-    
     new_params['comment'] = ''
     new_params['ipp_value'] = data['ipp_value']
     new_params['max_airmass'] = data['max_airmass']
@@ -171,24 +197,32 @@ def _modify_sequence(obs, user, data):
     
     new_params['reminder'] = data['reminder']
     new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
-    
     new_params['start_user'] = user.username
-
     new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
-    new_params['end'] = (now + timedelta(days=delay + (data['cadence_frequency_days']))).strftime('%Y-%m-%dT%H:%M:%S')
+    new_params['end'] = (now + timedelta(days=delay + data['cadence_frequency_days'])).strftime('%Y-%m-%dT%H:%M:%S')
 
     filters = ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
     for f in filters:
         if f in data and data[f]:
             new_params[f] = data[f]
 
-    facility = get_service_class(obs.facility)()
-    form_class = facility.get_form(data['observation_type'])
-    form = form_class(new_params)
-    if not form.is_valid():
-        raise Exception(f"New parameters invalid for {obs.facility}: {form.errors}")
+    try:
+        facility = get_service_class(obs.facility)()
+        form_class = facility.get_form(data['observation_type'])
+        form = form_class(new_params)
+        
+        if not form.is_valid():
+            logger.error(f"Form validation failed: {form.errors}")
+            raise Exception(f"New parameters invalid for {obs.facility}: {form.errors}")
 
-    observation_ids = facility.submit_observation(form.observation_payload())
+        observation_ids = facility.submit_observation(form.observation_payload())
+        
+        if not observation_ids:
+            raise Exception("Facility did not return any observation IDs")
+            
+    except Exception as e:
+        logger.error(f'Failed to submit new observation: {e}', exc_info=True)
+        raise
 
     new_obs_group = ObservationGroup.objects.create(name=data['name'])
     
@@ -204,32 +238,48 @@ def _modify_sequence(obs, user, data):
             'reminder': new_params['reminder'],
             'reminder_date': new_params['reminder_date']
         })
-
         new_record.save()
-        logger.info(f'New observation {new_record} submitted with status: {new_record.status}')
+        logger.info(f'New observation {new_record.id} created with LCO ID: {lco_id}')
         new_obs_group.observation_records.add(new_record)
 
-        facility.update_observation_status(lco_id)
-        logger.info(f'Status updated: {new_record.status}')
+        try:
+            facility.update_observation_status(new_record.observation_id)
+            new_record.refresh_from_db()
+            logger.info(f'Status updated for observation {new_record.id}: {new_record.status}')
+        except Exception as e:
+            logger.error(f'Failed to update status for new observation {new_record.id}: {e}', exc_info=True)
 
     DynamicCadence.objects.create(
         observation_group=new_obs_group,
         cadence_strategy=new_params.get('cadence_strategy', 'SnexResumeCadenceAfterFailureStrategy'),
-        cadence_parameters={'cadence_frequency': new_params['cadence_frequency'], 'reminder_date': new_params['reminder_date']},
+        cadence_parameters={
+            'cadence_frequency': new_params['cadence_frequency'],
+            'reminder_date': new_params['reminder_date']
+        },
         active=True
     )
-    _sync_permissions(obs, new_obs_group)
+    
+    _sync_permissions(obs_group, new_obs_group)
+    logger.info(f'Permissions synced from old group {obs_group.id} to new group {new_obs_group.id}')
 
     return {'success': 'Modified'}
 
-def _sync_permissions(old_obs, new_group):
-    group_ids = GroupObjectPermission.objects.filter(
-        object_pk=old_obs.id,
-        content_type=ContentType.objects.get_for_model(ObservationRecord)
-    ).values_list('group_id', flat=True).distinct()
-    groups = Group.objects.filter(id__in=group_ids)
-    for group in groups:
-        assign_perm('tom_observations.view_observationgroup', group, new_group)
-        # Also assign to the new records within the group
-        for record in new_group.observation_records.all():
-            assign_perm('tom_observations.view_observationrecord', group, record)
+def _sync_permissions(old_group, new_group):
+    """Sync permissions from old ObservationGroup to new ObservationGroup."""
+    try:
+        group_ids = GroupObjectPermission.objects.filter(
+            object_pk=old_group.id,
+            content_type=ContentType.objects.get_for_model(ObservationGroup)
+        ).values_list('group_id', flat=True).distinct()
+        
+        groups = Group.objects.filter(id__in=group_ids)
+        logger.info(f'Syncing permissions for {groups.count()} group(s) from old group {old_group.id} to new group {new_group.id}')
+        
+        for group in groups:
+            assign_perm('tom_observations.view_observationgroup', group, new_group)
+            for record in new_group.observation_records.all():
+                assign_perm('tom_observations.view_observationrecord', group, record)
+                
+        logger.info(f'Successfully synced permissions to {new_group.observation_records.count()} observation records')
+    except Exception as e:
+        logger.error(f'Failed to sync permissions: {e}', exc_info=True)
