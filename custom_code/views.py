@@ -548,18 +548,14 @@ def observation_sequence_cancel_view(request):
     
     obsr_id = int(float(request.GET['pk']))
     obsr = ObservationRecord.objects.get(id=obsr_id)
-    # obsr is the template observation record, so need to get the most recent one from this sequence to cancel
-    last_obs = obsr.observationgroup_set.first().observation_records.all().order_by('-id').first()
+    obs_group = obsr.observationgroup_set.first()
+    
+    try:
+        canceled = cancel_observation(obs_group)
 
-    if last_obs:
-        canceled = cancel_observation(last_obs)
-        
         if not canceled:
             response_data = {'failure': 'Error'}
             return HttpResponse(json.dumps(response_data), content_type='application/json')
-    
-    try:
-        obs_group = obsr.observationgroup_set.first()
         # Get comments, if any
         comments = json.loads(request.GET['comment'])
         if comments.get('cancel', ''):

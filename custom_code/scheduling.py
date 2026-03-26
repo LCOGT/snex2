@@ -125,9 +125,9 @@ def cancel_observation(obs_group):
                 logger.error(f'Facility rejected cancel for observation {obs_to_cancel.observation_id}')
                 all_canceled = False
             else:
-                obs_to_cancel.status = 'CANCELED'
-                obs_to_cancel.save()
-                logger.info(f'Observation {obs_to_cancel.id} canceled successfully')
+                facility.update_observation_status(obs_to_cancel.observation_id)
+                obs_to_cancel.refresh_from_db()
+                logger.info(f'Observation {obs_to_cancel.id} status updated from facility to {obs_to_cancel.status}')
         except Exception as e:
             logger.error(f'Exception while canceling observation {obs_to_cancel.observation_id}: {e}', exc_info=True)
             all_canceled = False
