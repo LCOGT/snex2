@@ -64,7 +64,7 @@
     <td>{{ row.dateobs }}</td>
     <td>{{ row.path }}</td>
     <td>
-      {% plotly_app name="Spectra_Individual" ratio=0.5 initial_arguments=row.dash_context %}
+      {% plotly_app name="Spectra_Individual" ratio=0.5 initial_arguments={{ row.dash_context }} %}
     </td>
     <td><img width="270" src="{{ row.img }}" alt="img"></td>
     <td>

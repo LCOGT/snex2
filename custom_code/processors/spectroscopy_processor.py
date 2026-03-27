@@ -51,9 +51,18 @@ class SpecProcessor(SpectroscopyProcessor):
 
     def _process_spectrum_from_fits(self, data_product, rd_extras):
 
-        data_aws = default_storage.open(data_product.data.name, 'rb')
+        # update to work with banzai floyds - look at PR
+
+        data_aws = default_storage.open(data_product.data.name, 'rb') # data product for spectrum
                 
         flux, header = fits.getdata(data_aws.open(), header=True)
+
+        #match banzai header info
+        if 'SPECTRUM' in hlist:
+            hdu = hlist['PRIMARY']
+        else:
+            hdu = hlist[0]
+            hdu.verify('fix')  # Fix any header entries that don't conform to fits standards
 
         for facility_class in get_service_classes():
             facility = get_service_class(facility_class)()
