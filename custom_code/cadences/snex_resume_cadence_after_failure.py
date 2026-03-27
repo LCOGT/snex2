@@ -39,7 +39,7 @@ class SnexCadencePermissionMixin:
             content_type=group_ct
         )
         
-        logger.info(f'Group permissions on observation group: {group_perms}')
+        logger.info(f'Found {group_perms.count()} group with permissions to observation group {obs_group.id}')
         
         if not group_perms.exists():
             target = new_observations[0].target
