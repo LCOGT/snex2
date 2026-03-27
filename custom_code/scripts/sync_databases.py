@@ -296,8 +296,8 @@ def update_spec(action):
                 for rde in rd_extra:
                     if rde.data_product:
                         dp = rde.data_product
-                    elif json.loads(rde.value).get('snex2_id',''):
-                        rd_pk = json.loads(rde.value).get('snex2_id','')
+                    elif rde.value.get('snex2_id',''):
+                        rd_pk = rde.value.get('snex2_id','')
                         rd = ReducedDatum.objects.get(pk = rd_pk)
                         dp = rd.data_product
                 
@@ -338,21 +338,23 @@ def update_spec(action):
                         data_product.featured = False
                         data_product.save()
 
-                    reduced_datum, rd_created = ReducedDatum.objects.get_or_create(
+                    reduced_datum, rd_created = ReducedDatum.objects.update_or_create(
                         target = target, 
                         data_product = data_product, 
-                        value = spec,
-                        timestamp = time,
                         data_type = 'spectroscopy', 
-                        source_name = '', 
-                        source_location = '')
+                        defaults = {
+                            'value': spec,
+                            'timestamp': time,
+                            'source_name': '',
+                            'source_location': '',
+                        })
 
                     spec_extras = {}
                     for key in ['telescope', 'instrument', 'exptime', 'slit', 'airmass', 'reducer']:
                         if getattr(spec_row, key):
                             spec_extras[key] = getattr(spec_row, key)
                     spec_extras['snex_id'] = int(id_)
-                    RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.get_or_create(
+                    RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.update_or_create(
                         target = target,
                         data_product = data_product,
                         data_type='spectroscopy',
@@ -361,8 +363,9 @@ def update_spec(action):
 
                     RDExtras_spec.value = spec_extras
                     RDExtras_spec.save()
+                    logger.info(f'new objects created? dp: {dp_created}, rd: {rd_created}, rd_extra: {rd_extras_created}')
 
-                    logger.info(f'rd and extra made: {reduced_datum} {RDExtras_spec}')
+                    logger.info(f'rd and extra made or updated: {reduced_datum} {RDExtras_spec} for dataproduct: {data_product} and target {target}')
 
                     if spec_groupid is not None:
                         update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
@@ -372,6 +375,8 @@ def update_spec(action):
         except Exception as e:
             logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid} with exception {e}")
             continue
+        
+        delete_row(Db_Changes, result.id, db_address=settings.SNEX1_DB_URL)
 
         
 
@@ -436,10 +441,29 @@ def update_target(action, db_address=_SNEX2_DB):
                     update_permissions(t_groupid, 'custom_code.view_target', target, snex1_groups)
 
         except Exception as e:
-            logger.exception(f"Failed to process spectrum for db_changes row {tresult.id} targets {tresult.rowid} with exception {e}")
+            logger.exception(f"Failed to process target for db_changes row {tresult.id} targets {tresult.rowid} with exception {e}")
             continue
 
         delete_row(Db_Changes, tresult.id, db_address=settings.SNEX1_DB_URL)
+    
+    for nresult in name_result:
+        try:
+            name_id = nresult.rowid
+            targetname_row = get_current_row(Target_Names, name_id, db_address=settings.SNEX1_DB_URL)
+            pipeline_id = targetname_row.targetid
+            name = targetname_row.name
+            target = Target.objects.get(pipeline_id=pipeline_id)
+            targetname, created = TargetName.objects.get_or_create(target=target, name=name)
+            if created:
+                logger.info(f'New target name {targetname} added to target {target}')
+            else:
+                logger.info(f'Target name already exists')
+        except Exception as e:
+            logger.exception(f"Failed to process target name for db_changes row {name.id} targets {name.rowid} with exception {e}")
+            continue
+
+        delete_row(Db_Changes, nresult.id, db_address=settings.SNEX1_DB_URL)
+    
    
 def run():
     """

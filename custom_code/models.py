@@ -114,7 +114,7 @@ class ReducedDatumExtra(models.Model):
         help_text='Keyword for information being stored'
     )
     value = models.JSONField(
-        blank=True, default='', verbose_name='Value',
+        blank=True, default=dict, verbose_name='Value',
         help_text='String value of the information being stored'
     )
     float_value = models.FloatField(
