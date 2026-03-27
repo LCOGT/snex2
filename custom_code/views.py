@@ -44,6 +44,7 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
+from guardian.models import GroupObjectPermission
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct, ReducedDatum
@@ -874,7 +875,6 @@ class ObservationListExtrasView(ListView):
 
 
 class CustomObservationCreateView(ObservationCreateView):
-
     def get_form(self):
         """
         Gets an instance of the form appropriate for the request.
@@ -888,25 +888,36 @@ class CustomObservationCreateView(ObservationCreateView):
             'submit-lco-obs', kwargs={'facility': 'LCO'}
         )
         return form
-    
     def form_valid(self, form):
         form.cleaned_data['start_user'] = self.request.user.username
         response = super().form_valid(form)
-    
         if not settings.TARGET_PERMISSIONS_ONLY:
-            groups = form.cleaned_data.get('groups', [])
+            target = self.get_target()
+            groups = form.cleaned_data.get('groups')
+            if not groups:
+                target_ct = ContentType.objects.get_for_model(Target)
+                target_group_ids = GroupObjectPermission.objects.filter(
+                    object_pk=target.id,
+                    content_type=target_ct
+                ).values_list('group_id', flat=True).distinct()
+                groups = Group.objects.filter(id__in=target_group_ids)
             if groups:
-                target = self.get_target()
                 latest_record = ObservationRecord.objects.filter(
                     target=target
                 ).order_by('-created').first()
                 if latest_record:
-                    for og in latest_record.observationgroup_set.all():
-                        assign_perm('tom_observations.view_observationgroup', groups, og)
-                        assign_perm('tom_observations.change_observationgroup', groups, og)
-                        assign_perm('tom_observations.delete_observationgroup', groups, og)
-
+                    obsgroup = latest_record.observationgroup_set.first()
+                    if obsgroup:
+                        for group in groups:
+                            assign_perm('tom_observations.view_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.change_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.delete_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.view_observationrecord', group, latest_record)
+                            assign_perm('tom_observations.change_observationrecord', group, latest_record)
+                            assign_perm('tom_observations.delete_observationrecord', group, latest_record)
         return response
+    
+    
     
 
 def make_tns_request_view(request):
