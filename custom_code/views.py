@@ -916,9 +916,6 @@ class CustomObservationCreateView(ObservationCreateView):
                             assign_perm('tom_observations.change_observationrecord', group, latest_record)
                             assign_perm('tom_observations.delete_observationrecord', group, latest_record)
         return response
-    
-    
-    
 
 def make_tns_request_view(request):
     target_id = request.GET.get('target_id')
