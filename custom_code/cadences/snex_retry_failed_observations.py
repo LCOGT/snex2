@@ -1,11 +1,12 @@
 from tom_observations.models import ObservationRecord
 from tom_observations.cadences.retry_failed_observations import RetryFailedObservationsStrategy
 from tom_observations.facility import get_service_class
+from custom_code.cadences.snex_resume_cadence_after_failure import SnexCadencePermissionMixin
 import logging
 
 logger = logging.getLogger(__name__)
 
-class SnexRetryFailedObservationsStrategy(RetryFailedObservationsStrategy):
+class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFailedObservationsStrategy):
     cadence_fields = {'cadence_frequency', 'reminder_date'}
 
     def run(self):
@@ -67,4 +68,5 @@ class SnexRetryFailedObservationsStrategy(RetryFailedObservationsStrategy):
         for obsr in new_observations:
             facility.update_observation_status(obsr.observation_id)
 
+        self.sync_permissions_to_records(new_observations)
         return new_observations

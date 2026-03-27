@@ -44,6 +44,7 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
+from guardian.models import GroupObjectPermission
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct, ReducedDatum
@@ -548,18 +549,14 @@ def observation_sequence_cancel_view(request):
     
     obsr_id = int(float(request.GET['pk']))
     obsr = ObservationRecord.objects.get(id=obsr_id)
-    # obsr is the template observation record, so need to get the most recent one from this sequence to cancel
-    last_obs = obsr.observationgroup_set.first().observation_records.all().order_by('-id').first()
+    obs_group = obsr.observationgroup_set.first()
+    
+    try:
+        canceled = cancel_observation(obs_group)
 
-    if last_obs:
-        canceled = cancel_observation(last_obs)
-        
         if not canceled:
             response_data = {'failure': 'Error'}
             return HttpResponse(json.dumps(response_data), content_type='application/json')
-    
-    try:
-        obs_group = obsr.observationgroup_set.first()
         # Get comments, if any
         comments = json.loads(request.GET['comment'])
         if comments.get('cancel', ''):
@@ -574,7 +571,8 @@ def observation_sequence_cancel_view(request):
 def scheduling_view(request):
     obs_id = request.GET.get('observation_id')
     obs = ObservationRecord.objects.get(id=obs_id)
-    
+    obs_group = obs.observationgroup_set.first()
+
     if obs.parameters.get('observation_type', '') == 'IMAGING':
         form = PhotSchedulingForm(request.GET, initial=obs.parameters)
     else:
@@ -595,7 +593,7 @@ def scheduling_view(request):
             form.cleaned_data['comment'] = cancel_reason
             response_data = change_obs_from_scheduling(
                 action=action,
-                obs_id=form.cleaned_data['observation_id'],
+                obs_group=obs_group,
                 user=request.user,
                 data=form.cleaned_data
             )
@@ -877,7 +875,6 @@ class ObservationListExtrasView(ListView):
 
 
 class CustomObservationCreateView(ObservationCreateView):
-
     def get_form(self):
         """
         Gets an instance of the form appropriate for the request.
@@ -891,11 +888,34 @@ class CustomObservationCreateView(ObservationCreateView):
             'submit-lco-obs', kwargs={'facility': 'LCO'}
         )
         return form
-    
     def form_valid(self, form):
         form.cleaned_data['start_user'] = self.request.user.username
-        return super().form_valid(form)
-    
+        response = super().form_valid(form)
+        if not settings.TARGET_PERMISSIONS_ONLY:
+            target = self.get_target()
+            groups = form.cleaned_data.get('groups')
+            if not groups:
+                target_ct = ContentType.objects.get_for_model(Target)
+                target_group_ids = GroupObjectPermission.objects.filter(
+                    object_pk=target.id,
+                    content_type=target_ct
+                ).values_list('group_id', flat=True).distinct()
+                groups = Group.objects.filter(id__in=target_group_ids)
+            if groups:
+                latest_record = ObservationRecord.objects.filter(
+                    target=target
+                ).order_by('-created').first()
+                if latest_record:
+                    obsgroup = latest_record.observationgroup_set.first()
+                    if obsgroup:
+                        for group in groups:
+                            assign_perm('tom_observations.view_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.change_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.delete_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.view_observationrecord', group, latest_record)
+                            assign_perm('tom_observations.change_observationrecord', group, latest_record)
+                            assign_perm('tom_observations.delete_observationrecord', group, latest_record)
+        return response
 
 def make_tns_request_view(request):
     target_id = request.GET.get('target_id')
