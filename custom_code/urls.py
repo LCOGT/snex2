@@ -1,6 +1,6 @@
 from django.urls import path
 
-from custom_code.views import TNSTargets, PaperCreateView, scheduling_view, ReferenceStatusUpdateView, ObservationGroupDetailView, observation_sequence_cancel_view, AuthorshipInformation, download_photometry_view, get_target_standards_view, SNEx2SpectroscopyTNSSharePassthrough, CustomUserUpdateView, TargetFilteringView
+from custom_code.views import TNSTargets, PaperCreateView, scheduling_view, ReferenceStatusUpdateView, ObservationGroupDetailView, observation_sequence_cancel_view, AuthorshipInformation, download_photometry_view, get_target_standards_view, SNEx2SpectroscopyTNSSharePassthrough, CustomUserUpdateView, TargetFilteringView, FloydsInboxView
 
 app_name = 'custom_code'
 
@@ -17,5 +17,6 @@ urlpatterns = [
     path('tns-share-spectrum/<int:pk>/<int:datum_pk>', SNEx2SpectroscopyTNSSharePassthrough.as_view(), name='tns-share-spectrum'),
     path('users/<int:pk>/update/', CustomUserUpdateView.as_view(), name='custom-user-update'),
     path('target_filter/', TargetFilteringView.as_view(), name='target_filter'),
+    path('update-spec-approval/', FloydsInboxView.update_spec_approval, name='update-spec-approval')
 
 ]

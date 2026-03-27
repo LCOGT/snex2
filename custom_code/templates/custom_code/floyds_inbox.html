@@ -1,5 +1,6 @@
 {% extends 'tom_common/base.html' %}
 {% load bootstrap4 static %}
+{% load plotly_dash %}
 {% block title %}Floyds Inbox{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -10,7 +11,7 @@
     <h3>Floyds Inbox</h3>
   </div>
 </nav>
-<h4>Spectra in need of reduction:</h4>
+<!-- <h4>Spectra in need of reduction:</h4>
 <table class="table">
   <thead>
     <tr>
@@ -37,6 +38,103 @@
     <td><img width="270" src="{{ row.img }}" alt="img"></td>
   </tr>
   {% endfor %}
-</table>
-{% endblock %}
+</table> -->
 
+
+<h4>Banzai spectra reductions in need of approval:</h4>
+<table class="table">
+  <thead>
+    <tr>
+      <th style="width: 10%;">Target</th>
+      <th style="width: 10%;">Proposal</th>
+      <th style="width: 5%;">Date</th>
+      <th style="width: 10%;">Path</th>
+      <th style="width: 35%;">Reduction Preview</th>
+      <th style="width: 25%;">2D Image</th>
+      <th style="width: 5%;">Approval?</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in banzai_inbox_rows %}
+  <tr>
+    <td>
+      <a href="{% url 'targets:detail' row.targetid %}">{{ row.targetnames }}</a>
+    </td>
+    <td>{{ row.propid }}</td>
+    <td>{{ row.dateobs }}</td>
+    <td>{{ row.path }}</td>
+    <td>
+      {% plotly_app name="Spectra_Individual" ratio=0.5 initial_arguments=row.dash_context %}
+    </td>
+    <td><img width="270" src="{{ row.img }}" alt="img"></td>
+    <td>
+      {# BUG FIX: type= and onclick= must be HTML attributes, not text content.    #}
+      {# BUG FIX: use class= instead of id= so all rows get the event listener.   #}
+      {# BUG FIX: data-path stored on the button so JS can read it via .data().   #}
+      <button type="button"
+              class="btn btn-success btn-sm approve-btn"
+              data-target_id="{{ row.targetid }}"
+              data-specid="{{ row.specid }}"
+              data-path="{{ row.path }}">
+        Approve Extraction
+      </button>
+      <a href="https://banzai-floyds.lco.earth/" class="btn btn-secondary btn-sm">Re-extract</a>
+      <button type="button"
+              class="btn btn-danger btn-sm reject-btn"
+              data-target_id="{{ row.targetid }}"
+              data-specid="{{ row.specid }}"
+              data-path="{{ row.path }}">
+        Reject Spectrum
+      </button>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<script>
+  function update_spec_approval(target_id, specid, path, approval) {
+    $.ajax({
+      url: "{% url 'custom_code:update-spec-approval' %}",
+      method: "GET",
+      data: {
+        'target_id': target_id,   
+        'specid':    specid,
+        'path':      path,
+        'approval':  approval
+      },
+      dataType: "json",
+      success: function(response) {
+        console.log("Approval update succeeded:", response);
+        // TODO: visually update the row (e.g. disable buttons, show checkmark)
+      },
+      error: function(xhr, status, err) {
+        console.error("Approval update failed:", status, err);
+      }
+    });
+  }
+
+  $(document).ready(function() {
+
+    // BUG FIX: bind to class selectors so all rows are covered, not just the first.
+    // BUG FIX: use .closest('tr').find() to read data from the *clicked* row's button.
+    $(document).on('click', '.approve-btn', function() {
+      const btn      = $(this);
+      const targetid = btn.data('target_id');
+      const specid   = btn.data('specid');
+      const path     = btn.data('path');
+      update_spec_approval(targetid, specid, path, 'True');
+    });
+
+    $(document).on('click', '.reject-btn', function() {
+      const btn      = $(this);
+      const targetid = btn.data('target_id');
+      const specid   = btn.data('specid');
+      const path     = btn.data('path');
+      update_spec_approval(targetid, specid, path, 'False');
+    });
+
+  });
+</script>
+
+{% endblock %}

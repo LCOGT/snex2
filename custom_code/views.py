@@ -18,6 +18,7 @@ from tom_targets.models import TargetList, Target, TargetName
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
 from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
 from custom_code.forms import SNEx2UserCreationForm, SNEx2RegistrationApprovalForm
+from custom_code.dash_apps import spectra_individual
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
 from django.contrib.auth.models import User, Group
@@ -30,11 +31,9 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 from astropy.time import Time
 from astropy.io import fits
-import time
 from datetime import datetime, date, timedelta
 import json
-from io import StringIO
-import random
+from io import StringIO, BytesIO
 import numpy as np
 import matplotlib.pyplot as plt
 import base64
@@ -44,7 +43,7 @@ from custom_code.templatetags import custom_code_tags
 from tom_observations.templatetags.observation_extras import observing_buttons
 from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
 from tom_targets.templatetags.targets_extras import target_groups
-from custom_code.hooks import _get_tns_params, _return_session, get_unreduced_spectra, get_standards_from_snex1, get_banzai_spectra
+from custom_code.hooks import _get_tns_params, _return_session, get_standards_from_snex1, get_banzai_spectra#, get_unreduced_spectra,
 from custom_code.thumbnails import make_thumb
 
 from custom_code.forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm, PhotSchedulingForm, SpecSchedulingForm
@@ -1688,102 +1687,155 @@ class FloydsInboxView(TemplateView):
 
     #     return context
 
+    def update_spec_approval(self, request):
+        # get the target_id and path and approval status from the button
+        target_id = request.GET.get('target_id')
+        specid    = request.GET.get('specid')
+        path      = request.GET.get('path')
+        approval  = request.GET.get('approval')
 
-    # def make_combined_extraction_plot(frame_1d):
-    #     """ Taken from banzai-floyds-ui/gui/plots.py"""
-    #     extraction_data = frame_1d['SPECTRUM'].data
-    #     extraction_data.sort(order='wavelength')
-    #     figure_data = dict(type='scatter', x=extraction_data['wavelength'], y=extraction_data['flux'],
-    #                     line=dict(color=DARK_BLUE), mode='lines')
-    #     layout = {
-    #         'template': PLOTLY_TEMPLATE,
-    #         'title': dict(text=f'Combined Extraction: {frame_1d[0].header["ORIGNAME"].replace("-e00", "-e91-1d")}'),
-    #         'showlegend': False,
-    #         'yaxis': {
-    #             'title': {'text': f'Flux ({ERGS_PER_SECOND_PER_CM2_PER_ANGSTROM})'},
-    #             'exponentformat': 'power'
-    #         },
-    #         'xaxis': {'title': dict(text=f'Wavelength ({ANGSTROM})'), 'tickformat': '.0f'}
-    #     }
-    #     return {'data': [figure_data,], 'layout': layout}
-    
-    def make_spec_thumb(filename):
+        if not all([target_id, path, approval]):
+            return JsonResponse({'error': 'Missing required parameters.'}, status=400)
+
+        approved = (approval == 'True') # string to boolean
+
+        basename   = path.split('/')[-1].replace('.fits', '')
+        parts      = basename.split('-')
+        # basename format: site-instrument-dateobs-id-rlevel
+        # e.g.             ogg2m001-en06-20241015-0012-e91_1d
+        instrument = parts[1] if len(parts) > 1 else ''
+        dateobs    = parts[2] if len(parts) > 2 else ''
 
 
-        with fits.open(filename) as hdul:
-            hdul.info()  # see what extensions exist
+        try:
+            target = Target.objects.get(id=target_id)
+        except Target.DoesNotExist:
+            raise Http404
+
+        if specid:
+            # Clean path: look up the ReducedDatum directly by its PK
+            try:
+                rd = ReducedDatum.objects.get(id=specid, target=target)
+            except ReducedDatum.DoesNotExist:
+                return JsonResponse({'error': f'No ReducedDatum found for specid {specid}'}, status=404)
+        else:
+            # Fallback: match by archive basename stored in source_location
+            rd = ReducedDatum.objects.filter(
+                target=target,
+                data_type='spectroscopy',
+                source_location=basename,
+            ).first()
+            if rd is None:
+                return JsonResponse(
+                    {'error': f'No ReducedDatum found for basename {basename}'},
+                    status=404
+                )
             
-            # Typically flux is in extension 0 or 1
-            # Wavelength may be in a separate extension or derived from header WCS
-            flux = hdul[0].data  # or hdul['FLUX'].data
-            
-            # Option A: wavelength from a dedicated extension
-            wavelength = hdul['WAVELENGTH'].data  # or hdul[1].data
-            
-            # Option B: wavelength from WCS header keywords
-            header = hdul[0].header
-            crval = header['CRVAL1']   # starting wavelength
-            cdelt = header['CDELT1']   # wavelength step per pixel
-            naxis = header['NAXIS1']   # number of pixels
-            wavelength = crval + cdelt * np.arange(naxis)
+        approval_value = json.dumps({'approval': str(approved)})
 
+        rde, created = ReducedDatumExtra.objects.update_or_create(
+            reduced_datum=rd,
+            data_type='spectroscopy',
+            key='approval',
+            defaults={'value': approval_value}
+        )
 
-            fig, ax = plt.subplots(figsize=(12, 4))
-            ax.plot(wavelength, flux, color='#1a3a5c', linewidth=0.8)
+        logger.info(
+            f"{'Created' if created else 'Updated'} approval={approved} "
+            f"for ReducedDatum id={rd.id} (target={target.name})"
+        )
+        # Need to add logic to let approval ==True and 'None' to appear on target pages
+        if not approved:
+            raw_basename = basename.replace('e91_1d', 'e00')
+            raw_filename = raw_basename + '.fits'
 
-            ax.set_xlabel('Wavelength (Å)', fontsize=12)
-            ax.set_ylabel('Flux (erg s⁻¹ cm⁻² Å⁻¹)', fontsize=12)
-            ax.set_title(f'Combined Extraction: {filename}', 
-                        fontsize=12, color='steelblue')
+            with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+                speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
+                
+                raw_spectrum = db_session.query(speclcoraw).filter(
+                    speclcoraw.targetid == target_id,
+                    speclcoraw.filename == raw_filename
+                ).first()
 
-            ax.set_xlim(wavelength.min(), wavelength.max())
-            ax.set_ylim(0, None)
-            ax.set_facecolor('#dce8f5')
-            fig.patch.set_facecolor('white')
-            ax.grid(True, color='white', linewidth=0.8)
+                if raw_spectrum:
+                    db_session.query(speclcoraw).filter(
+                        speclcoraw.targetid == target_id,
+                        speclcoraw.filename == raw_filename
+                    ).update({'markedasbad': 1})
+                    db_session.commit()
+                    logger.info(f"Marked {raw_filename} as bad for target id={target_id}")
+                else:
+                    logger.warning(f"Could not find {raw_filename} for target id={target_id} in speclcoraw")
+                    
 
-            plt.tight_layout()
+        return JsonResponse({
+                    'status':    'ok',
+                    'specid':    rd.id,
+                    'target_id': target.id,
+                    'approval':  approved,
+                })
 
-            buf = BytesIO()
-            fig.savefig(buf, format='png')
-            return buf
-            
-            
+        
         
     def get_context_data(self, **kwargs):
 
         context = super().get_context_data(**kwargs)
 
-        targetids, propids, dateobs, paths, filenames, frames = get_banzai_spectra()
-
-        inbox_rows = []
-        for i in range(len(targetids)):
+        [targetnames, propids, dateobs, paths, specids, thumb_urls] = get_banzai_spectra()
+        
+        targetids = []
+        banzai_inbox_rows = []
+        logger.info(f"targetnames: {targetnames}")
+        for i in range(len(targetnames)):
             current_dict = {}
+            
+            current_dict['targetnames'] = targetnames[i]
+            logger.info(f"targetnames: {targetnames}")
+            # Add the SNEx2 targetid of the target to request
+
+                
+            targetquery = Target.objects.filter(name=targetnames[i])
+            logger.info(f"get_context_data targetquery, targetname: {targetquery} , {targetnames[i]}")
+            if not targetquery:
+                targetquery = TargetName.objects.filter(name=targetnames[i])
+                logger.info(f"targetquery in if statement: {targetquery}")
+                targetid = targetquery.first().target_id
+                logger.info(f"in if statement: Targetid: {targetid}")
+                targetids.append(targetid)
+            else:
+                logger.info(f"targetquery in else statement: {targetquery}")
+                targetid = targetquery.first().id
+                logger.info(f"in else statement Targetid: {targetid}")
+                targetids.append(targetid)
+
             t = Target.objects.get(id=targetids[i])
+
             current_dict['targetid'] = targetids[i]
-            current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
             current_dict['propid'] = propids[i]
-            current_dict['dateobs'] = dateobs[i]
+            current_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
+            #current_dict['dateobs'] = dateobs[i].split('T')[0]
             current_dict['path'] = paths[i]
-            current_dict['filename'] = filenames[i]
-            current_dict['frame'] = frames[i]
+            #need rowid in spec table for banzai reduction
+            dash_context = {
+                'spectrum_id': specids[i],
+                'target_id': targetids[i],
+            }
+            current_dict['dash_context'] = dash_context
+            image_data = requests.get(thumb_urls[i])
+            thumb = base64.b64encode(image_data.content).decode('utf-8')
+            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb)
+
+
+            banzai_inbox_rows.append(current_dict)
             
-            # with open(imgpaths[i], 'rb') as imagefile:
-            #     b64_image = base64.b64encode(imagefile.read())
-            #     thumb = b64_image.decode('utf-8')
-            combined_sci_plot = self.make_spec_thumb(filenames[i])
+            #load_single_spectrum_view --> !!!
+            # need to pass in spec_id to banzai_inbox_rows -- is this the same as snex2_id?
 
-            combined_sci_plot.seek(0)
+        for row in banzai_inbox_rows:
+            logger.info(f"printing row and target: {row['targetid']}, {row['targetnames']}")
 
-            b64_image = base64.b64encode(combined_sci_plot.read())
-            thumb = b64_image.decode('utf-8')
-
-            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
-            
-            inbox_rows.append(current_dict)
-
-        context['inbox_rows'] = inbox_rows
-
+        context['banzai_inbox_rows'] = banzai_inbox_rows
+        
         return context
 
 

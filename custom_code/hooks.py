@@ -1,23 +1,30 @@
 import os
 import requests
 import logging
-from astropy.time import Time
+from astropy.time import Time, TimezoneInfo
+from tom_dataproducts.models import ReducedDatum
+from custom_code.models import ReducedDatumExtra
 import json
-from tom_targets.models import Target
+from tom_targets.models import Target, TargetName
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
-
-from datetime import datetime, date
+from requests_oauthlib import OAuth1
+from astropy.coordinates import SkyCoord
+from astropy import units as u
+from datetime import datetime, date, timedelta
 import numpy as np
 from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
 from custom_code.scheduling import save_comments
+import ingest_banzai_spec
 
 from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
 from sqlalchemy.ext.automap import automap_base
 from contextlib import contextmanager
 from collections import OrderedDict
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -294,60 +301,60 @@ def find_images_from_snex1(targetid, username, allimages=False):
 
     return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
 
-def get_unreduced_spectra(allspec=True):
-    '''
-    Hook to find unreduced spectra for FLOYDS inbox
-    '''
-    token = os.environ['LCO_APIKEY']
+# def get_unreduced_spectra(allspec=True):
+#     '''
+#     Hook to find unreduced spectra for FLOYDS inbox
+#     '''
+#     token = os.environ['LCO_APIKEY']
 
-    response = requests.get('https://observe.lco.global/api/proposals?active=True&limit=50/',
-                             headers={'Authorization': 'Token ' + token}).json()
+#     response = requests.get('https://observe.lco.global/api/proposals?active=True&limit=50/',
+#                              headers={'Authorization': 'Token ' + token}).json()
 
-    proposals = [prop['id'] for prop in response['results']]
+#     proposals = [prop['id'] for prop in response['results']]
     
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
-        targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-        classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
-        spec = _load_table('spec', db_address=settings.SNEX1_DB_URL)
+#     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+#         speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
+#         targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
+#         targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
+#         classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
+#         spec = _load_table('spec', db_address=settings.SNEX1_DB_URL)
 
-        original_filenames = [s.original for s in db_session.query(spec).filter(and_(spec.original!='None', spec.original!=None))]
+#         original_filenames = [s.original for s in db_session.query(spec).filter(and_(spec.original!='None', spec.original!=None))]
 
-        unreduced_spectra = db_session.query(speclcoraw).join(
-                targets, speclcoraw.targetid==targets.id
-        ).join(
-                targetnames, speclcoraw.targetid==targetnames.targetid
-        ).join(
-                classifications, targets.classificationid==classifications.id, isouter=True
-        ).filter(
-            and_(
-                not_(speclcoraw.filename.in_(original_filenames)), 
-                speclcoraw.propid.in_(proposals),
-                speclcoraw.filename.contains('e00.fits'),
-                or_(
-                    classifications.name != 'Standard', 
-                    classifications.name == None
-                ), 
-                or_(
-                    and_(
-                        speclcoraw.type != 'LAMPFLAT', 
-                        speclcoraw.type != 'ARC'
-                    ), 
-                speclcoraw.type == None
-            ), 
-            not_(speclcoraw.filepath.contains('bad')), 
-            not_(targetnames.name.contains('test_'))
-            )
-        )
-        targetids = [s.targetid for s in unreduced_spectra]
-        propids = [s.propid for s in unreduced_spectra]
-        dateobs = [s.dateobs for s in unreduced_spectra]
-        paths = [s.filepath for s in unreduced_spectra]
-        filenames = [s.filename for s in unreduced_spectra]
-        imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in unreduced_spectra]
+#         unreduced_spectra = db_session.query(speclcoraw).join(
+#                 targets, speclcoraw.targetid==targets.id
+#         ).join(
+#                 targetnames, speclcoraw.targetid==targetnames.targetid
+#         ).join(
+#                 classifications, targets.classificationid==classifications.id, isouter=True
+#         ).filter(
+#             and_(
+#                 not_(speclcoraw.filename.in_(original_filenames)), 
+#                 speclcoraw.propid.in_(proposals),
+#                 speclcoraw.filename.contains('e00.fits'),
+#                 or_(
+#                     classifications.name != 'Standard', 
+#                     classifications.name == None
+#                 ), 
+#                 or_(
+#                     and_(
+#                         speclcoraw.type != 'LAMPFLAT', 
+#                         speclcoraw.type != 'ARC'
+#                     ), 
+#                 speclcoraw.type == None
+#             ), 
+#             not_(speclcoraw.filepath.contains('bad')), 
+#             not_(targetnames.name.contains('test_'))
+#             )
+#         )
+#         targetids = [s.targetid for s in unreduced_spectra]
+#         propids = [s.propid for s in unreduced_spectra]
+#         dateobs = [s.dateobs for s in unreduced_spectra]
+#         paths = [s.filepath for s in unreduced_spectra]
+#         filenames = [s.filename for s in unreduced_spectra]
+#         imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in unreduced_spectra]
 
-    return targetids, propids, dateobs, paths, filenames, imgpaths
+#     return targetids, propids, dateobs, paths, filenames, imgpaths
 
 
 def get_metadata(authtoken={}, limit=None, **kwargs):
@@ -366,88 +373,87 @@ def get_metadata(authtoken={}, limit=None, **kwargs):
         frames += response['results']
     return frames[:limit]
 
+
 def get_banzai_spectra(allspec=True):
     '''
     Hook to find banzai-reduced spectra for FLOYDS inbox
     '''
     token = os.environ['LCO_APIKEY']
-    # banzai-floyds.lco.earth
-    response = requests.get('https://observe.lco.global/api/proposals?active=True&limit=50/',
-                             headers={'Authorization': 'Token ' + token}).json()
+
     authtoken = {'Authorization': 'Token ' + token}
-    proposals = [prop['id'] for prop in response['results']]
-    # Query archive for data with reduction level 'banzai'
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        # 
+    # Query archive for data with reduction level 'banzai' - e91
+    #with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+    banzai_frames = []
+    raw_frames = []
+    
 
-        # ### GET it from the archive
-        # token = settings.FACILITIES['LCO']['api_key']
-        # url = settings.FACILITIES['LCO']['archive_url']
-        # if 'e91-1d' in filename: # only ingest the banzai floyds directly into spec
-        #     table_reduced = 'spec' # this table will track version control of spectra that get re-reduced
-        # results = requests.get(url, 
-        #                     headers={'Authorization': f'Token {token}'}, 
-        #                     params={'reduction': 'reduction_level=91'}).json()["results"]
-        # # can I query for just data with reduction level banzai using params? https://archive.lco.global/?reduction_level=91
-        # spectra_url = results[0]["url"]
+    # REMOVE TEST SECTION - only for small db
+    logger.info(f"targets in database:{Target.objects.all()}")
+    for target in Target.objects.all():
+        logger.info(f"Target name in get_banzai_spectra:{target.name}")
+        banzai_frames += get_metadata(authtoken, limit = 10, OBSTYPE = "SPECTRUM", basename = 'e91-1d', public=False, include_related_frames = False, target_name = target.name, start="2026-01-01", end="2026-03-22")        # all FTN spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
+
+        raw_frames += get_metadata(authtoken, limit = 10, OBSTYPE = "SPECTRUM", basename = 'e00', public=False, include_thumbnails = True, include_related_frames = False, target_name = target.name, start="2026-01-01", end="2026-03-22")        # all FTN spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
+    # END TEST SECTION
+
+    #import ingest_spectrum_from_frame
+
+    # Need logic: if file is in speccolraw, but same reduced file not in spec need to ingest the spectrum on a cron job. Do spectra automatically get put in spec when reduced by banzai? How to deal with all previous spectrum with no field 'approval'?
+    # What is the extension of IRAF reduced spec? 
+    
+    # Need to then ingest all unreduced spectra -- different script, see ingest_banzai_spec.py
+
+    # Flag: Approval: True, False, None
+    # inbox should show all approval = 'None' objects
+    # Approval = False should do the same thing as 'markbad'
+    
+
+    # banzai_objects = ReducedDatumExtra.objects.filter(key='approval', 
+    #                                                     value=json.dumps({'approval': 'None'}),
+    #                                                     data_type='spectroscopy')
+    # # Get 2D thumbnail from archive
+    # for spec in banzai_objects:
+    #     value = json.loads(spec.value)
+    #     basename = value["basename_exact"].replace('e91-1d', 'e00')
+    #     raw_frames += get_metadata(authtoken, OBSTYPE = "SPECTRUM", basename_exact = basename, public=False, include_thumbnails = True, include_related_frames = False)        
+
+
+    # logger.info(f"length of banzai_frames: {len(banzai_frames)}")
+    # if len(banzai_frames) != 0:
+    #     logger.info(f"banzai frames print: {banzai_frames}")
+
+    # logger.info(f"length of raw_frames: {len(raw_frames)}")
+    # if len(raw_frames) != 0:
+    #     logger.info(f"raw frames print: {raw_frames}")
+
+    
+    
+    thumb_urls = [s['thumbnails'][0]['url'] for s in raw_frames]
+
+    # targetnames = []
+    # propids = []
+    # dateobs = []
+    # paths = []
+    # specids = []
+    # for s in banzai_objects:
+    #     value = json.loads(s.value)
+    #     targetnames.append(value["target_name"])
+    #     propids.append(value["proposal_id"])
+    #     dateobs.append(value["DATE_OBS"])
+    #     paths.append(os.path.join('/snex2/data/floyds', value["filename"].replace('e91-1d', 'e00')))
+    #     specids.append(value["snex_id"])
+    
+    # TEST only
+    targetnames = [s["target_name"] for s in banzai_frames]
+    propids = [s["proposal_id"] for s in banzai_frames]
+    dateobs = [s["DATE_OBS"] for s in banzai_frames]
+    #filenames = [s["filename"] for s in banzai_frames]
+    paths = [os.path.join('/snex2/data/floyds', s["filename"].replace('e91-1d', 'e00')) for s in banzai_frames]
+    
+    logger.info(f'targetnames in get_banzai_spectra:{targetnames}')
         
-        # spectra_imagename = results[0]["Image Name"]
-        # spectra_obs_date = results[0]["Time"]
-        # spectra_object = results[0]["Object"]
-        # spectra_proposal = results[0]["Proposal"]
 
-        speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
-        targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-        classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
-        spec = _load_table('spec', db_address=settings.SNEX1_DB_URL)
-
-        # banzai_original_filenames = [s.original for s in db_session.query(spec).filter(and_(spec.original!='None', spec.original!=None))]
-
-        frames = get_metadata(authtoken, INSTRUME='en06', basename = 'e91-1d', public=False)        # all FTN spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
-        frames += get_metadata(authtoken, INSTRUME='en05',  basename = 'e91-1d', public=False)        # all FTS spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
-        frames += get_metadata(authtoken, INSTRUME='en12',  basename = 'e91-1d', public=False)        # all FTS spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
-        # frames are just response["results"] from response.get
-
-        # banzai_spectra = db_session.query(spec).join(
-        #         targets, spec.targetid==targets.id
-        # ).join(
-        #         targetnames, spec.targetid==targetnames.targetid
-        # ).join(
-        #         classifications, targets.classificationid==classifications.id, isouter=True
-        # ).filter(
-        #     and_(
-        #         not_(spec.filename.in_(banzai_original_filenames)), 
-        #         spec.propid.in_(proposals),
-        #         spec.filename.contains('e91-1d'),
-        #         or_(
-        #             classifications.name != 'Standard', 
-        #             classifications.name == None
-        #         ), 
-        #         or_(
-        #             and_(
-        #                 spec.type != 'LAMPFLAT', 
-        #                 spec.type != 'ARC'
-        #             ), 
-        #         spec.type == None
-        #     ), 
-        #     not_(spec.filepath.contains('bad')), 
-        #     not_(targetnames.name.contains('test_'))
-        #     )
-        # )
-        # targetids = [s.targetid for s in banzai_spectra]
-        # propids = [s.propid for s in banzai_spectra]
-        # dateobs = [s.dateobs for s in banzai_spectra]
-        # paths = [s.filepath for s in banzai_spectra]
-        # filenames = [s.filename for s in banzai_spectra]
-        targetids = [s.targetid for s in frames]
-        propids = [s.propid for s in frames]
-        dateobs = [s.dateobs for s in frames]
-        paths = [s.filepath for s in frames]
-        filenames = [s.filename for s in frames]
-        #imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in banzai_spectra]
-
-    return targetids, propids, dateobs, paths, filenames, frames#, imgpaths
+    return [targetnames, propids, dateobs, paths, specids, thumb_urls]
 
 
 
