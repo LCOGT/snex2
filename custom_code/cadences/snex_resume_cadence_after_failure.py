@@ -85,6 +85,5 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
 
     def run(self):
         new_observations = super().run()
-        logger.info(f'Syncing permissions to group')
         self.sync_permissions_to_records(new_observations)
         return new_observations
