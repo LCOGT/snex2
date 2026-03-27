@@ -11,6 +11,10 @@ from astropy import units
 from specutils import Spectrum1D
 from datetime import datetime
 import numpy as np
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 class SpecProcessor(SpectroscopyProcessor):
 
@@ -55,14 +59,16 @@ class SpecProcessor(SpectroscopyProcessor):
 
         data_aws = default_storage.open(data_product.data.name, 'rb') # data product for spectrum
                 
-        flux, header = fits.getdata(data_aws.open(), header=True)
-
-        #match banzai header info
-        if 'SPECTRUM' in hlist:
-            hdu = hlist['PRIMARY']
+        hlist = fits.open(data_aws.open())
+        banzai_reduc = 'SPECTRUM' in hlist
+        if banzai_reduc:
+                header = hlist['PRIMARY'].header
+                spec_table = hlist['SPECTRUM'].data
+                flux = spec_table['flux']
+                wav = spec_table['wavelength']
         else:
-            hdu = hlist[0]
-            hdu.verify('fix')  # Fix any header entries that don't conform to fits standards
+            flux, header = fits.getdata(data_aws.open(), header=True)
+
 
         for facility_class in get_service_classes():
             facility = get_service_class(facility_class)()
@@ -99,9 +105,21 @@ class SpecProcessor(SpectroscopyProcessor):
             flux = flux[0, :]
         flux = flux * flux_constant
         header['CUNIT1'] = 'Angstrom'
-        wcs = WCS(header=header, naxis=1)
 
-        spectrum = Spectrum1D(flux=flux, wcs=wcs)
+
+        if not banzai_reduc:
+            wcs = WCS(header=header, naxis=1)
+            spectrum = Spectrum1D(flux=flux, wcs=wcs)
+        else:
+            logger.info(f"Checking for nans in flux: {np.isnan(flux).sum()}")
+
+            # Convert flux and wavelength to arrays and skip NaNs
+            flux_values = np.array(flux, dtype=float)
+            wav_values = np.array(wav, dtype=float)
+            valid_mask = ~np.isnan(flux_values)  # keep only non-NaN flux points
+            logger.info(f"Checking again for nans in flux: {np.isnan(flux).sum()}")
+            spectrum = Spectrum1D(flux=flux_values[valid_mask] * flux_constant, spectral_axis=wav_values[valid_mask] * u.Angstrom)
+            #spectrum = Spectrum1D(flux=flux, spectral_axis=np.array(wav) * units.Angstrom)
         rd_extras.pop('date_obs')
 
         return spectrum, date_obs, rd_extras

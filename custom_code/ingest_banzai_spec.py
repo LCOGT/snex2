@@ -12,9 +12,10 @@ from specutils import Spectrum1D
 import logging
 
 from tom_dataproducts.processors.data_serializers import SpectrumSerializer
-from tom_dataproducts.models import ReducedDatum
-from tom_targets.models import Target
-from custom_code.models import ReducedDatumExtra  # snex2-specific
+from tom_dataproducts.models import ReducedDatum, DataProduct, ObservationRecord
+from tom_targets.models import Target, TargetName
+from custom_code.models import ReducedDatumExtra 
+from custom_code.processors.data_processor import run_custom_data_processor
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,9 @@ def ingest_spectrum_from_frame(frame, target, authtoken={}):
     # Download
     fits_buffer = download_frame(frame, authtoken=authtoken)
 
+
+    
+
     # Parse to Spectrum1D
     spectrum = spectrum1d_from_floyds_fits(fits_buffer)
 
@@ -111,12 +115,22 @@ def ingest_spectrum_from_frame(frame, target, authtoken={}):
     existing = ReducedDatum.objects.filter(
         target=target,
         data_type='spectroscopy',
-        source_name='LCO',
-        source_location=frame['basename']
+        source_name='',
+        source_location=''
     ).first()
     if existing:
         print(f"Already ingested {frame['basename']}, skipping.")
         return existing
+
+
+    # making dataproduct (filename for reduced spectrum, make product id be frame id, and extra_data have basename),
+    # make reduceddatum - leave source_name and source_location blank
+    #  get obs id, query ObservationRecord.objects.get(observation_id = requestID) - check which id you need to match to cadence strategy. Dataproduct takes observationrecord as parameter, frameid, filename. - if stop and restart w/ same parameters (delay start=0). pull obs record, get cadence info, call modify_sequence from scheduling.py. data comes from schedulingPhot form - use obs.parameters as data, make sure delay-start =0
+
+    # download file, make dp, run spec processor: run_custom_data_processor, how to check for new spec??
+
+
+
 
     # Create the ReducedDatum
     rd = ReducedDatum.objects.create(
@@ -125,8 +139,8 @@ def ingest_spectrum_from_frame(frame, target, authtoken={}):
         data_type='spectroscopy',
         timestamp=obs_date,
         value=serialized,
-        source_name='LCO'
-        source_location=frame['basename'],  # archive basename for traceability
+        source_name=''
+        source_location='',  # archive basename for traceability
     )
 
     # Create the snex2-specific ReducedDatumExtra for display metadata
@@ -144,14 +158,6 @@ def ingest_spectrum_from_frame(frame, target, authtoken={}):
         })
     )
 
-    ReducedDatumExtra.objects.create(
-        reduced_datum=rd,
-        data_type='spectroscopy',
-        key='snex_id',
-        value=json.dumps({
-            'snex2_id':       rd.id # How do I create a snex2_id?, snex_id is row._id
-        })
-    )
     # adding extra flag for approval in inbox view -- can this go in spec_extras?
     ReducedDatumExtra.objects.create(
         reduced_datum=rd,
@@ -179,10 +185,51 @@ def ingest_spectra_for_target(target_name, proposal_id, authtoken={}):
         RLEVEL=2,           # reduction level 2 = fully reduced FLOYDS product
         limit=None
     )
-    target = frames['target_name']
-    print(f"Found {len(frames)} spectra for {target_name}")
+
+    
 
     for frame in frames:
+
+        #request_id = frame['request_id']
+
+        targetquery = Target.objects.filter(name=frame['target_name'])
+        logger.info(f"ingest_banzai_spec targetquery, targetname: {targetquery} , {frame['target_name']}")
+        if not targetquery:
+            targetquery = TargetName.objects.filter(name=frame['target_name'])
+            logger.info(f"targetquery in if statement: {targetquery}")
+            targetid = targetquery.first().target_id
+            logger.info(f"in if statement: Targetid: {targetid}")
+        else:
+            logger.info(f"targetquery in else statement: {targetquery}")
+            targetid = targetquery.first().id
+            logger.info(f"in else statement Targetid: {targetid}")
+
+
+        target = Target.objects.get(id=targetid)
+
+        observation_id = frame['observation_id']
+        obs_record = ObservationRecord.objects.get(observation_id = observation_id)
+        
+        dp = DataProduct(
+                    target=target,
+                    observation_record=obs_record,
+                    product_id=frame['id'],
+                    data_product_type='spectroscopy',
+                    extra_data = frame['basename']
+                )
+        dp.save()
+        extras = {} # only needed for photometry
+        
+        rdextra_value = {
+            'telescope':  frame.get('TELID', ''),
+            'instrument': frame.get('INSTRUME', ''),
+            'site':       frame.get('SITEID', ''),
+            'exptime':    frame.get('EXPTIME', ''),
+            'reducer':    'Banzai-Floyds',       # fill in if known -- how to change if reduced manually??
+            'airmass':    frame.get('AIRMASS', '')
+        }
+
+        reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value) # uses spectroscopy_processor to make ReducedDatum objects
         try:
             ingest_spectrum_from_frame(frame, target, authtoken=authtoken)
         except Exception as e:

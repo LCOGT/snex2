@@ -16,7 +16,7 @@ from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
 from custom_code.scheduling import save_comments
-import ingest_banzai_spec
+#import custom_code.ingest_banzai_spec
 
 from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
