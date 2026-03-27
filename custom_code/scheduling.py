@@ -186,26 +186,28 @@ def _modify_sequence(obs_group, user, data):
         return result
     
     new_params = obs.parameters.copy()
+    
     new_params['comment'] = ''
     new_params['ipp_value'] = data['ipp_value']
     new_params['max_airmass'] = data['max_airmass']
     new_params['cadence_frequency_days'] = data['cadence_frequency_days']
     new_params['cadence_frequency'] = data['cadence_frequency_days'] * 24
-
+    new_params['start_user'] = user.username
+    
     delay = data.get('delay_start', 0.0)
     now = datetime.utcnow()
     
     new_params['reminder'] = data['reminder']
     new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
-    new_params['start_user'] = user.username
     new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
     new_params['end'] = (now + timedelta(days=delay + data['cadence_frequency_days'])).strftime('%Y-%m-%dT%H:%M:%S')
-
-    filters = ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
+    
+    # Update filters
+    filters = ['U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
     for f in filters:
         if f in data and data[f]:
             new_params[f] = data[f]
-
+    
     try:
         facility = get_service_class(obs.facility)()
         form_class = facility.get_form(data['observation_type'])
@@ -214,7 +216,7 @@ def _modify_sequence(obs_group, user, data):
         if not form.is_valid():
             logger.error(f"Form validation failed: {form.errors}")
             raise Exception(f"New parameters invalid for {obs.facility}: {form.errors}")
-
+        
         observation_ids = facility.submit_observation(form.observation_payload())
         
         if not observation_ids:
@@ -223,37 +225,32 @@ def _modify_sequence(obs_group, user, data):
     except Exception as e:
         logger.error(f'Failed to submit new observation: {e}', exc_info=True)
         raise
-
+    
     new_obs_group = ObservationGroup.objects.create(name=data['name'])
     
     for lco_id in observation_ids:
         new_record = ObservationRecord.objects.create(
             target=obs.target,
             facility=obs.facility,
-            parameters=form.serialize_parameters(),
+            parameters=new_params,
             observation_id=lco_id
         )
-        new_record.parameters.update({
-            'start_user': user.username,
-            'reminder': new_params['reminder'],
-            'reminder_date': new_params['reminder_date']
-        })
-        new_record.save()
-        logger.info(f'New observation {new_record.id} created with LCO ID: {lco_id}')
         new_obs_group.observation_records.add(new_record)
-
+        logger.info(f'New observation {new_record.id} created with LCO ID: {lco_id}')
+        
         try:
             facility.update_observation_status(new_record.observation_id)
             new_record.refresh_from_db()
             logger.info(f'Status updated for observation {new_record.id}: {new_record.status}')
         except Exception as e:
             logger.error(f'Failed to update status for new observation {new_record.id}: {e}', exc_info=True)
-
+    
     DynamicCadence.objects.create(
         observation_group=new_obs_group,
         cadence_strategy=new_params.get('cadence_strategy', 'SnexResumeCadenceAfterFailureStrategy'),
         cadence_parameters={
             'cadence_frequency': new_params['cadence_frequency'],
+            'cadence_frequency_days': new_params['cadence_frequency_days'],
             'reminder_date': new_params['reminder_date']
         },
         active=True
@@ -261,7 +258,7 @@ def _modify_sequence(obs_group, user, data):
     
     _sync_permissions(obs_group, new_obs_group)
     logger.info(f'Permissions synced from old group {obs_group.id} to new group {new_obs_group.id}')
-
+    
     return {'success': 'Modified'}
 
 def _sync_permissions(old_group, new_group):
