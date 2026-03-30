@@ -1299,7 +1299,6 @@ def scheduling_list_with_form(context, observation):
     start_val = first_obs.parameters.get('start', 'Unknown')
     start = str(start_val).replace('T', ' ')
     username = first_obs.parameters.get('start_user', 'snex_secure')
-    logger.info(f'username for scheduling form: {username}, observationid: {observation.id}')
     user = User.objects.filter(username = username).first()
     requested_str = f"{user.first_name} {user.last_name}".strip() or username
     return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
