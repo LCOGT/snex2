@@ -96,13 +96,16 @@ def cancel_observation(obs_group):
         logger.error(f'Failed to get facility service for {first_obs.facility}: {e}', exc_info=True)
         return False
     
-    for record in obs_group.observation_records.all():
+    non_terminal_statuses = ['PENDING', '']
+    records_to_update = obs_group.observation_records.filter(status__in=non_terminal_statuses)
+    
+    for record in records_to_update:
         try:
             facility.update_observation_status(record.observation_id)
             record.refresh_from_db()
         except Exception as e:
             logger.error(f'Failed to update status for observation {record.id}: {e}', exc_info=True)
-    
+
     pending_observations = obs_group.observation_records.filter(status='PENDING')
     logger.info(f'Found {pending_observations.count()} PENDING observation(s) in group {obs_group.id}')
     
