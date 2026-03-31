@@ -314,6 +314,8 @@ def update_spec(action):
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
                 spec_groupid = spec_row.groupidcode
+                if not spec_groupid:
+                    spec_groupid = 1703768065789
     
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
                     standard_classification_row = db_session.query(Classifications).filter(Classifications.name=='Standard').first()
