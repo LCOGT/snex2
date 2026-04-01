@@ -1,3 +1,6 @@
+from dateutil.parser import parse
+from datetime import timedelta
+
 from tom_observations.models import ObservationRecord
 from tom_observations.cadences.retry_failed_observations import RetryFailedObservationsStrategy
 from tom_observations.facility import get_service_class
@@ -49,7 +52,6 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
             logger.error(f"Form validation failed: {form.errors}")
             return
 
-
         observation_ids = facility.submit_observation(form.observation_payload())
         new_observations = []
     
@@ -70,3 +72,15 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
 
         self.sync_permissions_to_records(new_observations)
         return new_observations
+
+    def advance_window(self, observation_payload, start_keyword='start', end_keyword='end'):
+        cadence_frequency = self.dynamic_cadence.cadence_parameters.get('cadence_frequency')
+        if not cadence_frequency:
+            raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
+        advance_window_hours = 24 if cadence_frequency > 24 else cadence_frequency
+        new_start = parse(observation_payload[start_keyword]) + timedelta(hours=advance_window_hours)
+        new_end = parse(observation_payload[end_keyword]) + timedelta(hours=advance_window_hours)
+        observation_payload[start_keyword] = new_start.isoformat()
+        observation_payload[end_keyword] = new_end.isoformat()
+
+        return observation_payload
