@@ -59,11 +59,11 @@ from tom_targets.templatetags.targets_extras import target_groups
 from tom_targets.views import TargetCreateView
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
-from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unreduced_spectra
+from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_banzai_spectra
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
-from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments, _modify_sequence
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
 import logging
@@ -1733,114 +1733,68 @@ class FloydsInboxView(TemplateView):
 
     template_name = 'custom_code/floyds_inbox.html'
 
-    # def get_context_data(self, **kwargs):
-
-    #     context = super().get_context_data(**kwargs)
-
-    #     targetids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
-
-    #     inbox_rows = []
-    #     for i in range(len(targetids)):
-    #         current_dict = {}
-    #         t = Target.objects.get(id=targetids[i])
-    #         current_dict['targetid'] = targetids[i]
-    #         current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
-    #         current_dict['propid'] = propids[i]
-    #         current_dict['dateobs'] = dateobs[i]
-    #         current_dict['path'] = paths[i]
-    #         current_dict['filename'] = filenames[i]
-            
-    #         with open(imgpaths[i], 'rb') as imagefile:
-    #             b64_image = base64.b64encode(imagefile.read())
-    #             thumb = b64_image.decode('utf-8')
-    #         current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
-            
-    #         inbox_rows.append(current_dict)
-
-    #     context['inbox_rows'] = inbox_rows
-
-    #     return context
-
     def update_spec_approval(self, request):
         # get the target_id and path and approval status from the button
         target_id = request.GET.get('target_id')
         specid    = request.GET.get('specid')
-        path      = request.GET.get('path')
+        path      = request.GET.get('path') # this goes to the raw spectrum on supernova machine
         approval  = request.GET.get('approval')
 
         if not all([target_id, path, approval]):
             return JsonResponse({'error': 'Missing required parameters.'}, status=400)
 
-        approved = (approval == 'True') # string to boolean
+        approved = (approval == '1') # string to boolean
 
-        basename   = path.split('/')[-1].replace('.fits', '')
-        parts      = basename.split('-')
-        # basename format: site-instrument-dateobs-id-rlevel
-        # e.g.             ogg2m001-en06-20241015-0012-e91_1d
-        instrument = parts[1] if len(parts) > 1 else ''
-        dateobs    = parts[2] if len(parts) > 2 else ''
-
-
-        try:
-            target = Target.objects.get(id=target_id)
-        except Target.DoesNotExist:
-            raise Http404
-
+        raw_basename   = path.split('/')[-1].replace('.fits', '')
+ 
+        target = Target.objects.get(id=target_id)
+       
         if specid:
-            # Clean path: look up the ReducedDatum directly by its PK
+            # Clean path: look up the ReducedDatum directly by its pk
             try:
                 rd = ReducedDatum.objects.get(id=specid, target=target)
             except ReducedDatum.DoesNotExist:
                 return JsonResponse({'error': f'No ReducedDatum found for specid {specid}'}, status=404)
-        else:
-            # Fallback: match by archive basename stored in source_location
-            rd = ReducedDatum.objects.filter(
-                target=target,
-                data_type='spectroscopy',
-                source_location=basename,
-            ).first()
-            if rd is None:
-                return JsonResponse(
-                    {'error': f'No ReducedDatum found for basename {basename}'},
-                    status=404
-                )
             
-        approval_value = json.dumps({'approval': str(approved)})
+        if approval == '1':
+            dp = rd.data_product
+            #obs_record = dp.observation_record
+            #obs_group = obs_record.observationgroup_set.first() # Check this!
+            # update RDE with approval = '1'
+            rde, created = ReducedDatumExtra.objects.update_or_create(
+                reduced_datum=rd,
+                data_type='spectroscopy',
+                key='spec_extras',
+                defaults={'approval': approval}
+            )
 
-        rde, created = ReducedDatumExtra.objects.update_or_create(
-            reduced_datum=rd,
-            data_type='spectroscopy',
-            key='approval',
-            defaults={'value': approval_value}
-        )
+            logger.info(
+                f"{'Created' if created else 'Updated'} approval={approved} "
+                f"for ReducedDatum id={rd.id} (target={target.name})"
+            )
+            # Need to add logic to let approval ==1 or 0 to appear on target pages -- this will be on other scripts
 
-        logger.info(
-            f"{'Created' if created else 'Updated'} approval={approved} "
-            f"for ReducedDatum id={rd.id} (target={target.name})"
-        )
-        # Need to add logic to let approval ==True and 'None' to appear on target pages
-        if not approved:
-            raw_basename = basename.replace('e91_1d', 'e00')
-            raw_filename = raw_basename + '.fits'
+        # for rejections:
+        #  get obs id, query ObservationRecord.objects.get(observation_id = requestID) - check which id you need to match to cadence strategy. Dataproduct takes observationrecord as parameter, frameid, filename. - if stop and restart w/ same parameters (delay start=0). pull obs record, get cadence info, call modify_sequence from scheduling.py. data comes from schedulingPhot form - use obs.parameters as data, make sure delay-start =0
+        if approval == '-1':
+            dp = rd.data_product
+            obs_record = dp.observation_record
+            obs_group = obs_record.observationgroup_set.first() # Check this!
+            #dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
 
-            with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-                speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
-                
-                raw_spectrum = db_session.query(speclcoraw).filter(
-                    speclcoraw.targetid == target_id,
-                    speclcoraw.filename == raw_filename
-                ).first()
+            obs_record.parameters['delay_start'] = 0.0
+            user = User.objects.filter(username=obs_record.parameters.get('start_user')).first()
 
-                if raw_spectrum:
-                    db_session.query(speclcoraw).filter(
-                        speclcoraw.targetid == target_id,
-                        speclcoraw.filename == raw_filename
-                    ).update({'markedasbad': 1})
-                    db_session.commit()
-                    logger.info(f"Marked {raw_filename} as bad for target id={target_id}")
-                else:
-                    logger.warning(f"Could not find {raw_filename} for target id={target_id} in speclcoraw")
-                    
+            # Calling modify sequence will re-enter the sequence with delay_start = 0 --> mimics markbad behaviour
+            _modify_sequence(obs_group, user=user, data=obs_record.parameters)
+            
+            rde, created = ReducedDatumExtra.objects.update_or_create(
+                reduced_datum=rd,
+                data_type='spectroscopy',
+                key='spec_extras',
+                defaults={'approval': approval}
+            )
+
 
         return JsonResponse({
                     'status':    'ok',
