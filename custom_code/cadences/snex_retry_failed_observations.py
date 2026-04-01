@@ -79,9 +79,9 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         cadence_frequency = self.dynamic_cadence.cadence_parameters.get('cadence_frequency')
         if not cadence_frequency:
             raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
-        advance_window_hours = 24 if cadence_frequency > 24 else cadence_frequency
-        new_start = parse(observation_payload[start_keyword]) + timedelta(hours=advance_window_hours)
-        new_end = parse(observation_payload[end_keyword]) + timedelta(hours=advance_window_hours)
+        window = 24 if cadence_frequency > 24 else cadence_frequency
+        new_start = parse(observation_payload[start_keyword]) + timedelta(hours=window)
+        new_end = parse(observation_payload[end_keyword]) + timedelta(hours=window)
         observation_payload[start_keyword] = new_start.isoformat()
         observation_payload[end_keyword] = new_end.isoformat()
 
