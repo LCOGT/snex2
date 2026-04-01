@@ -159,7 +159,11 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
         if not cadence_frequency:
             raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
         advance_window_hours = cadence_frequency
-        window_length = 24 if cadence_frequency > 24 else cadence_frequency
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window_length = min_window if cadence_frequency > min_window else cadence_frequency
 
         new_start = parse(observation_payload['scheduled_end']) + timedelta(hours=advance_window_hours)
         if new_start < datetime.now():  # Ensure that the new window isn't in the past
