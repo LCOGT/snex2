@@ -5,8 +5,8 @@ from crispy_forms.bootstrap import PrependedText, AppendedText
 from astropy import units as u
 import datetime
 import copy
+from dateutil.parser import parse
 
-from tom_observations.facilities.ocs import make_request
 from tom_observations.facilities.lco import LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOFacility, LCOSettings
 from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
@@ -148,12 +148,18 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         existing_reminder = self.data.get('reminder_date')
         now = datetime.datetime.utcnow()
         delay = 0
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window_length = min_window if cleaned_data['cadence_frequency'] > min_window else cleaned_data['cadence_frequency']
+
         if cleaned_data.get('delay_amount') is None:
             cleaned_data['delay_amount'] = 0
         if cleaned_data.get('delay_start') and cleaned_data['delay_amount'] > 0:
             delay = cleaned_data['delay_amount']
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days = delay), '%Y-%m-%dT%H:%M:%S')
-            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = cleaned_data['cadence_frequency'] + delay*24), '%Y-%m-%dT%H:%M:%S')
+            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = window_length + delay*24), '%Y-%m-%dT%H:%M:%S')
             cleaned_data['delay_start'] = False
             cleaned_data['delay_amount'] = 0
         if existing_reminder:
@@ -162,8 +168,9 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             reminder = cleaned_data.get('reminder')
             calculated_date = now + datetime.timedelta(days=reminder + delay)
             cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
-            
-        cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v) for k, v in cleaned_data.items()}
+            start = cleaned_data.get('start')
+            cleaned_data['end'] = datetime.datetime.strftime(parse(start) + datetime.timedelta(hours=window_length), '%Y-%m-%dT%H:%M:%S')
+        cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v) for k, v in cleaned_data.items()}        
         return cleaned_data
 
     def layout(self):
@@ -394,13 +401,19 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         self.cleaned_data['instrument_type'] = '2M0-FLOYDS-SCICAM'  # SNEx only submits spectra to FLOYDS
         existing_reminder = self.data.get('reminder_date')
         now = datetime.datetime.utcnow()
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window_length = min_window if cleaned_data['cadence_frequency'] > min_window else cleaned_data['cadence_frequency']
+
         delay = 0
         if cleaned_data.get('delay_amount') is None:
             cleaned_data['delay_amount'] = 0
         if cleaned_data.get('delay_start') and cleaned_data['delay_amount'] > 0:
             delay = cleaned_data['delay_amount']
             cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days = delay), '%Y-%m-%dT%H:%M:%S')
-            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = cleaned_data['cadence_frequency'] + delay*24), '%Y-%m-%dT%H:%M:%S')
+            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = window_length + delay*24), '%Y-%m-%dT%H:%M:%S')
             cleaned_data['delay_start'] = False
             cleaned_data['delay_amount'] = 0
         if existing_reminder:
@@ -409,7 +422,9 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             reminder = cleaned_data.get('reminder')
             calculated_date = now + datetime.timedelta(days=reminder + delay)
             cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
-            
+
+            start = cleaned_data.get('start')
+            cleaned_data['end'] = datetime.datetime.strftime(parse(start) + datetime.timedelta(hours=window_length), '%Y-%m-%dT%H:%M:%S')
         return cleaned_data
 
     

@@ -29,6 +29,8 @@ FITS_DIR = os.path.join(DATA_DIR,'fits')
 LSC_DIR = os.path.join(SN_DIR,'data','lsc')
 FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
+OBS_WINDOW_MINIMUM = 24 # Minimum observation window in hours
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.1/howto/deployment/checklist/
 

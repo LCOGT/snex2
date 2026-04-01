@@ -1,3 +1,7 @@
+from dateutil.parser import parse
+from datetime import timedelta
+from django.conf import settings
+
 from tom_observations.models import ObservationRecord
 from tom_observations.cadences.retry_failed_observations import RetryFailedObservationsStrategy
 from tom_observations.facility import get_service_class
@@ -27,6 +31,7 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
             self.dynamic_cadence.active = False
             self.dynamic_cadence.save()
             logger.info(f'Observation {last_obs} complete, turned off dynamic cadence')
+            # Add ability to email user that submitted the request?
             return
 
         if not last_obs.failed:
@@ -49,7 +54,6 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
             logger.error(f"Form validation failed: {form.errors}")
             return
 
-
         observation_ids = facility.submit_observation(form.observation_payload())
         new_observations = []
     
@@ -67,6 +71,23 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
 
         for obsr in new_observations:
             facility.update_observation_status(obsr.observation_id)
+            obsr.refresh_from_db()
 
         self.sync_permissions_to_records(new_observations)
         return new_observations
+
+    def advance_window(self, observation_payload, start_keyword='start', end_keyword='end'):
+        cadence_frequency = self.dynamic_cadence.cadence_parameters.get('cadence_frequency')
+        if not cadence_frequency:
+            raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window = min_window if cadence_frequency > min_window else cadence_frequency
+        new_start = parse(observation_payload[start_keyword]) + timedelta(hours=window)
+        new_end = parse(observation_payload[end_keyword]) + timedelta(hours=window)
+        observation_payload[start_keyword] = new_start.isoformat()
+        observation_payload[end_keyword] = new_end.isoformat()
+
+        return observation_payload
