@@ -5,6 +5,12 @@ from tom_observations.models import ObservationRecord
 from tom_observations.cadences.retry_failed_observations import RetryFailedObservationsStrategy
 from tom_observations.facility import get_service_class
 from custom_code.cadences.snex_resume_cadence_after_failure import SnexCadencePermissionMixin
+
+from django.conf import settings
+from django.contrib.auth.models import User
+from django.contrib.sites.models import Site
+from django.core.mail import send_mail
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,8 +35,22 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         elif last_obs.status == 'COMPLETED':
             self.dynamic_cadence.active = False
             self.dynamic_cadence.save()
-            logger.info(f'Observation {last_obs} complete, turned off dynamic cadence')
-            # Add ability to email user that submitted the request?
+
+            # Send email to notify submitting user that observation was obtained
+            current_domain = Site.objects.get_current().domain
+            link_to_target = f'https://{current_domain}/targets/{last_obs.target.id}'
+            username = last_obs.parameters.get('start_user', 'snex_secure')
+            user = User.objects.get(username = username)
+
+            send_mail(
+                subject=f'Your observation of {last_obs.target.name} has been acquired!',
+                message='',  # leave this blank in favor of html_message
+                from_email=settings.SERVER_EMAIL,
+                recipient_list=[user.email],
+                html_message= f'Your observation request for {last_obs.target.name} been acquired. You can view the data on the target page <a href="{link_to_target}">here</a> and resubmit a one time observation or switch to a repeating cadence.',
+                fail_silently=False)
+            
+            logger.info(f'Observation {last_obs} complete, emailed user and turned off dynamic cadence')
             return
 
         if not last_obs.failed:
