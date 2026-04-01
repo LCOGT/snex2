@@ -30,6 +30,7 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
             self.dynamic_cadence.active = False
             self.dynamic_cadence.save()
             logger.info(f'Observation {last_obs} complete, turned off dynamic cadence')
+            # Add ability to email user that submitted the request?
             return
 
         if not last_obs.failed:
@@ -69,6 +70,7 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
 
         for obsr in new_observations:
             facility.update_observation_status(obsr.observation_id)
+            obsr.refresh_from_db()
 
         self.sync_permissions_to_records(new_observations)
         return new_observations
