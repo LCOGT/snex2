@@ -1728,36 +1728,188 @@ class SNEx2SpectroscopyTNSSharePassthrough(RedirectView):
         return reverse('tns:report-tns', kwargs={'pk': target_id, 'datum_pk': datum_id})
 
 
+
 class FloydsInboxView(TemplateView):
 
     template_name = 'custom_code/floyds_inbox.html'
 
+    # def get_context_data(self, **kwargs):
+
+    #     context = super().get_context_data(**kwargs)
+
+    #     targetids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
+
+    #     inbox_rows = []
+    #     for i in range(len(targetids)):
+    #         current_dict = {}
+    #         t = Target.objects.get(id=targetids[i])
+    #         current_dict['targetid'] = targetids[i]
+    #         current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
+    #         current_dict['propid'] = propids[i]
+    #         current_dict['dateobs'] = dateobs[i]
+    #         current_dict['path'] = paths[i]
+    #         current_dict['filename'] = filenames[i]
+            
+    #         with open(imgpaths[i], 'rb') as imagefile:
+    #             b64_image = base64.b64encode(imagefile.read())
+    #             thumb = b64_image.decode('utf-8')
+    #         current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
+            
+    #         inbox_rows.append(current_dict)
+
+    #     context['inbox_rows'] = inbox_rows
+
+    #     return context
+
+    def update_spec_approval(self, request):
+        # get the target_id and path and approval status from the button
+        target_id = request.GET.get('target_id')
+        specid    = request.GET.get('specid')
+        path      = request.GET.get('path')
+        approval  = request.GET.get('approval')
+
+        if not all([target_id, path, approval]):
+            return JsonResponse({'error': 'Missing required parameters.'}, status=400)
+
+        approved = (approval == 'True') # string to boolean
+
+        basename   = path.split('/')[-1].replace('.fits', '')
+        parts      = basename.split('-')
+        # basename format: site-instrument-dateobs-id-rlevel
+        # e.g.             ogg2m001-en06-20241015-0012-e91_1d
+        instrument = parts[1] if len(parts) > 1 else ''
+        dateobs    = parts[2] if len(parts) > 2 else ''
+
+
+        try:
+            target = Target.objects.get(id=target_id)
+        except Target.DoesNotExist:
+            raise Http404
+
+        if specid:
+            # Clean path: look up the ReducedDatum directly by its PK
+            try:
+                rd = ReducedDatum.objects.get(id=specid, target=target)
+            except ReducedDatum.DoesNotExist:
+                return JsonResponse({'error': f'No ReducedDatum found for specid {specid}'}, status=404)
+        else:
+            # Fallback: match by archive basename stored in source_location
+            rd = ReducedDatum.objects.filter(
+                target=target,
+                data_type='spectroscopy',
+                source_location=basename,
+            ).first()
+            if rd is None:
+                return JsonResponse(
+                    {'error': f'No ReducedDatum found for basename {basename}'},
+                    status=404
+                )
+            
+        approval_value = json.dumps({'approval': str(approved)})
+
+        rde, created = ReducedDatumExtra.objects.update_or_create(
+            reduced_datum=rd,
+            data_type='spectroscopy',
+            key='approval',
+            defaults={'value': approval_value}
+        )
+
+        logger.info(
+            f"{'Created' if created else 'Updated'} approval={approved} "
+            f"for ReducedDatum id={rd.id} (target={target.name})"
+        )
+        # Need to add logic to let approval ==True and 'None' to appear on target pages
+        if not approved:
+            raw_basename = basename.replace('e91_1d', 'e00')
+            raw_filename = raw_basename + '.fits'
+
+            with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
+                speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
+                
+                raw_spectrum = db_session.query(speclcoraw).filter(
+                    speclcoraw.targetid == target_id,
+                    speclcoraw.filename == raw_filename
+                ).first()
+
+                if raw_spectrum:
+                    db_session.query(speclcoraw).filter(
+                        speclcoraw.targetid == target_id,
+                        speclcoraw.filename == raw_filename
+                    ).update({'markedasbad': 1})
+                    db_session.commit()
+                    logger.info(f"Marked {raw_filename} as bad for target id={target_id}")
+                else:
+                    logger.warning(f"Could not find {raw_filename} for target id={target_id} in speclcoraw")
+                    
+
+        return JsonResponse({
+                    'status':    'ok',
+                    'specid':    rd.id,
+                    'target_id': target.id,
+                    'approval':  approved,
+                })
+
+        
+        
     def get_context_data(self, **kwargs):
 
         context = super().get_context_data(**kwargs)
 
-        pipeline_ids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
-
-        inbox_rows = []
-        for i in range(len(pipeline_ids)):
+        [targetnames, propids, dateobs, paths, specids, thumb_urls] = get_banzai_spectra()
+        
+        targetids = []
+        banzai_inbox_rows = []
+        logger.info(f"targetnames: {targetnames}")
+        for i in range(len(targetnames)):
             current_dict = {}
-            t = Target.objects.get(pipeline_id=pipeline_ids[i])
-            current_dict['targetid'] = t.id
-            current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
+            
+            current_dict['targetnames'] = targetnames[i]
+            logger.info(f"targetnames: {targetnames}")
+            # Add the SNEx2 targetid of the target to request
+
+                
+            targetquery = Target.objects.filter(name=targetnames[i])
+            logger.info(f"get_context_data targetquery, targetname: {targetquery} , {targetnames[i]}")
+            if not targetquery:
+                targetquery = TargetName.objects.filter(name=targetnames[i])
+                logger.info(f"targetquery in if statement: {targetquery}")
+                targetid = targetquery.first().target_id
+                logger.info(f"in if statement: Targetid: {targetid}")
+                targetids.append(targetid)
+            else:
+                logger.info(f"targetquery in else statement: {targetquery}")
+                targetid = targetquery.first().id
+                logger.info(f"in else statement Targetid: {targetid}")
+                targetids.append(targetid)
+
+            t = Target.objects.get(id=targetids[i])
+
+            current_dict['targetid'] = targetids[i]
             current_dict['propid'] = propids[i]
-            current_dict['dateobs'] = dateobs[i]
+            current_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
+            #current_dict['dateobs'] = dateobs[i].split('T')[0]
             current_dict['path'] = paths[i]
-            current_dict['filename'] = filenames[i]
             
-            with open(imgpaths[i], 'rb') as imagefile:
-                b64_image = base64.b64encode(imagefile.read())
-                thumb = b64_image.decode('utf-8')
-            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
+            dash_context = {
+                'spectrum_id': specids[i],
+                'target_id': targetids[i],
+            }
+            current_dict['dash_context'] = dash_context
+            image_data = requests.get(thumb_urls[i])
+            thumb = base64.b64encode(image_data.content).decode('utf-8')
+            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb)
+
+
+            banzai_inbox_rows.append(current_dict)
             
-            inbox_rows.append(current_dict)
+            #load_single_spectrum_view --> !!!
+            # need to pass in spec_id to banzai_inbox_rows this is the reduced datum id
 
-        context['inbox_rows'] = inbox_rows
+        for row in banzai_inbox_rows:
+            logger.info(f"printing row and target: {row['targetid']}, {row['targetnames']}")
 
+        context['banzai_inbox_rows'] = banzai_inbox_rows
+        
         return context
 
 
