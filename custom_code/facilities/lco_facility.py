@@ -5,8 +5,9 @@ from crispy_forms.bootstrap import PrependedText, AppendedText
 from astropy import units as u
 import datetime
 import copy
+from dateutil.parser import parse
+from datetime import datetime, timedelta
 
-from tom_observations.facilities.ocs import make_request
 from tom_observations.facilities.lco import LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOFacility, LCOSettings
 from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
@@ -167,8 +168,19 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             reminder = cleaned_data.get('reminder')
             calculated_date = now + datetime.timedelta(days=reminder + delay)
             cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
-            
+
         cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v) for k, v in cleaned_data.items()}
+        
+        start = cleaned_data.get('start')
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window_length = min_window if cleaned_data['cadence_frequency'] > min_window else cleaned_data['cadence_frequency']
+
+        cleaned_data['end'] = datetime.strftime(parse(start) + timedelta(hours=window_length),
+                                                '%Y-%m-%dT%H:%M:%S')
+
         return cleaned_data
 
     def layout(self):
@@ -415,7 +427,17 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             reminder = cleaned_data.get('reminder')
             calculated_date = now + datetime.timedelta(days=reminder + delay)
             cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
-            
+        
+        start = cleaned_data.get('start')
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window_length = min_window if cleaned_data['cadence_frequency'] > min_window else cleaned_data['cadence_frequency']
+
+        cleaned_data['end'] = datetime.strftime(parse(start) + timedelta(hours=window_length),
+                                                '%Y-%m-%dT%H:%M:%S')
+        
         return cleaned_data
 
     
