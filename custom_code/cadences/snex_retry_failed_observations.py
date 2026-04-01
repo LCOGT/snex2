@@ -1,5 +1,6 @@
 from dateutil.parser import parse
 from datetime import timedelta
+from smtplib import SMTPException
 
 from tom_observations.models import ObservationRecord
 from tom_observations.cadences.retry_failed_observations import RetryFailedObservationsStrategy
@@ -14,6 +15,25 @@ from django.core.mail import send_mail
 import logging
 
 logger = logging.getLogger(__name__)
+
+def email_obs_update(obs):
+    try:
+        # Send email to notify submitting user that observation was obtained
+        current_domain = Site.objects.get_current().domain
+        link_to_target = f'https://{current_domain}/targets/{obs.target.id}'
+        username = obs.parameters.get('start_user', 'snex_secure')
+        user = User.objects.get(username = username)
+
+        send_mail(
+            subject=f'Your observation of {obs.target.name} has been acquired!',
+            message='',  # leave this blank in favor of html_message
+            from_email=settings.SERVER_EMAIL,
+            recipient_list=[user.email],
+            html_message= f'Your observation request for {obs.target.name} been acquired. You can view the data on the target page <a href="{link_to_target}">here</a> and resubmit a one time observation or switch to a repeating cadence.',
+            fail_silently=False)
+    except (SMTPException, ConnectionRefusedError) as error:
+        logger.error(f'Unable to send email: {error}')
+
 
 class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFailedObservationsStrategy):
     cadence_fields = {'cadence_frequency', 'reminder_date'}
@@ -35,20 +55,7 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         elif last_obs.status == 'COMPLETED':
             self.dynamic_cadence.active = False
             self.dynamic_cadence.save()
-
-            # Send email to notify submitting user that observation was obtained
-            current_domain = Site.objects.get_current().domain
-            link_to_target = f'https://{current_domain}/targets/{last_obs.target.id}'
-            username = last_obs.parameters.get('start_user', 'snex_secure')
-            user = User.objects.get(username = username)
-
-            send_mail(
-                subject=f'Your observation of {last_obs.target.name} has been acquired!',
-                message='',  # leave this blank in favor of html_message
-                from_email=settings.SERVER_EMAIL,
-                recipient_list=[user.email],
-                html_message= f'Your observation request for {last_obs.target.name} been acquired. You can view the data on the target page <a href="{link_to_target}">here</a> and resubmit a one time observation or switch to a repeating cadence.',
-                fail_silently=False)
+            email_obs_update(last_obs)
             
             logger.info(f'Observation {last_obs} complete, emailed user and turned off dynamic cadence')
             return
