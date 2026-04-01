@@ -2114,21 +2114,21 @@ class TargetFilteringView(FormView):
         if cd.get('apply_class_filter'):
             cls = cd.get('class_name','').strip()
             if cls:
-                filters &= Q(snextarget__classification__icontains=cls)
+                filters &= Q(classification__icontains=cls)
 
         # Classification doesn't contain
         if cd.get('apply_class_exclude_filter'):
             excl = cd.get('class_exclude_name','').strip()
             if excl:
-                filters &= ~Q(snextarget__classification__icontains=excl)
+                filters &= ~Q(classification__icontains=excl)
 
         # Redshift range
         if cd.get('apply_redshift_filter'):
             min_z = cd.get('min_red'); max_z = cd.get('max_red')
             if min_z is not None:
-                filters &= Q(snextarget__redshift__gte=min_z)
+                filters &= Q(redshift__gte=min_z)
             if max_z is not None:
-                filters &= Q(snextarget__redshift__lte=max_z)
+                filters &= Q(redshift__lte=max_z)
 
         # Photometry count threshold
         if cd.get('apply_photometry_count_filter'):
