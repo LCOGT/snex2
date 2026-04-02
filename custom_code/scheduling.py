@@ -161,7 +161,7 @@ def _continue_sequence(obs_group, data):
         except Exception as e:
             logger.error((f'Unable to run cadence_group: {cg}; strategy {strategy};'
                             f' with id {cg.id} due to error: {e}'))
-            return {'failure': 'There is an error with this sequence: {e}'}
+            return {'failure': f'There is an error with this sequence: {e}'}
         
     
     logger.info(f'Continuing Sequence group {obs_group.id} as-is')
