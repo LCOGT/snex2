@@ -87,7 +87,7 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         window = min_window if cadence_frequency > min_window else cadence_frequency
         
         new_start = datetime.now().isoformat()
-        new_end = parse(observation_payload[end_keyword]) + timedelta(hours=window)
+        new_end = parse(new_start) + timedelta(hours=window)
         observation_payload[start_keyword] = new_start.isoformat()
         observation_payload[end_keyword] = new_end.isoformat()
 
