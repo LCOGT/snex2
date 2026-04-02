@@ -74,7 +74,6 @@ urlpatterns = [
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),
     path('get-frame-ids/', get_frame_ids_view, name='get-frame-ids'),
-    path('download-zip/', download_zip_view, name='download-zip'),
     path('interesting-targets/', InterestingTargetsView.as_view(), name='interesting-targets'),
     path('load-spectra-page/', async_spectra_page_view, name='load-spectra-page'),
     path('load-upcoming-reminders/', async_scheduling_page_view, name='load-upcoming-reminders'),

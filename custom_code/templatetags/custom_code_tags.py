@@ -1704,7 +1704,9 @@ def image_slideshow(context, target):
             'telescope': teles[0],
             'instrument': instr[0],
             'filter': filters[0],
-            'exptime': exptimes[0]}
+            'exptime': exptimes[0],
+            'archive_root': settings.FACILITIES['LCO']['archive_url'],
+            'archive_token': settings.FACILITIES['LCO']['api_key']}
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
