@@ -142,7 +142,7 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
         if form.is_valid():
             observation_ids = facility.submit_observation(form.observation_payload())
         else:
-            logger.error(msg=f'Unable to submit next cadenced observation: {form.errors}')
+            logger.error(msg=f'Unable to submit next cadenced observation: {form.errors} for ObservationRecord.id: {last_obs.id}')
             raise Exception(f'Unable to submit next cadenced observation: {form.errors}')
 
         # Creation of corresponding ObservationRecord objects for the observations

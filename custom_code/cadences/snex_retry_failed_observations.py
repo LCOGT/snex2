@@ -52,8 +52,8 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         form = facility.get_form(obs_type)(observation_payload)
         
         if not form.is_valid():
-            logger.error(f"Form validation failed: {form.errors}")
-            return
+            logger.error(msg=f'Unable to submit next observation: {form.errors} for ObservationRecord.id: {last_obs.id}')
+            raise Exception(f'Unable to submit next observation: {form.errors}')
 
         observation_ids = facility.submit_observation(form.observation_payload())
         new_observations = []
