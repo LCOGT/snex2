@@ -468,7 +468,9 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
     def observation_payload(self):
 
         payload = super().observation_payload()
-        
+        logger.info(f"lco_facility: full payload location: {payload['requests'][0]['location']}")
+        logger.info(f"lco_facility: full payload target: {payload['requests'][0]['configurations'][0]['target']}")
+    
         request_group = payload['requests'][0]
         science_config = request_group['configurations'][0]
         
