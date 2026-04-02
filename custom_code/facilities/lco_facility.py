@@ -426,7 +426,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
 
             start = cleaned_data.get('start')
             cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
-        logger.info(f'start window: {cleaned_data.get("start")}, end: {cleaned_data["end"]} with window length: {window_length}')
         return cleaned_data
 
     def _build_location(self):
@@ -468,9 +467,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
     def observation_payload(self):
 
         payload = super().observation_payload()
-        logger.info(f"lco_facility: full payload location: {payload['requests'][0]['location']}")
-        logger.info(f"lco_facility: full payload target: {payload['requests'][0]['configurations'][0]['target']}")
-    
         request_group = payload['requests'][0]
         for config in request_group.get('configurations', []):
             target = config.get('target', {})
@@ -504,10 +500,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         configurations = [science_config, arc_config, flat_config]
         
         request_group['configurations'] = configurations
-        logger.info(f"lco_facility: full payload target after fix: {configurations[0].get('target')}")
-        logger.info(f"lco_facility: full configurations: {configurations}")
-        import json
-        logger.info(f"lco_facility: full raw payload: {json.dumps(payload, indent=2)}")
         return payload
 
 class SnexLCOFacility(LCOFacility):
