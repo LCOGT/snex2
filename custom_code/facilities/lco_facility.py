@@ -428,6 +428,12 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
         return cleaned_data
 
+    def _build_location(self):
+        location = super()._build_location()
+        site = self.cleaned_data.get('site', 'any') or 'any'
+        if site != 'any':
+            location['site'] = site
+        return location
     
     def layout(self):
         if settings.TARGET_PERMISSIONS_ONLY:
