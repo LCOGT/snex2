@@ -3,12 +3,14 @@ from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm
 from django.contrib.auth.models import Group
 from django.conf import settings
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from django_comments.models import Comment
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.facility import get_service_class
+from tom_observations.cadence import get_cadence_strategy
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -151,7 +153,16 @@ def cancel_observation(obs_group):
 def _continue_sequence(obs_group, data):
     obs = obs_group.observation_records.filter(status='PENDING').first()
     if not obs:
-        return {'failure': 'No observations found in group'}
+        cg = obs_group.dynamiccadence_set.first()
+        strategy = get_cadence_strategy(cg.cadence_strategy)(cg)
+        try:
+            new_observations = strategy.run()
+            obs = new_observations[0]
+        except Exception as e:
+            logger.error((f'Unable to run cadence_group: {cg}; strategy {strategy};'
+                            f' with id {cg.id} due to error: {e}'))
+            return {'failure': 'There is an error with this sequence: {e}'}
+        
     
     logger.info(f'Continuing Sequence group {obs_group.id} as-is')
     
