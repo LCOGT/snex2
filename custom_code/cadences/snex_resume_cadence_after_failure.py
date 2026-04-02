@@ -6,7 +6,7 @@ from django.contrib.auth.models import Group
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm
 from tom_observations.facility import get_service_class
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.utils import timezone
 from dateutil.parser import parse
 from tom_observations.models import ObservationRecord
@@ -124,8 +124,10 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
             if not cadence_frequency:
                 raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
             window_length = 24 if cadence_frequency > 24 else cadence_frequency
-            observation_payload[start_keyword] = datetime.now().isoformat()
-            observation_payload[end_keyword] = (parse(observation_payload[start_keyword]) + timedelta(hours=window_length)).isoformat()
+            now = timezone.now()
+            observation_payload[start_keyword] = now.isoformat()
+            observation_payload[end_keyword] = (now + timedelta(hours=window_length)).isoformat()
+        
         else:  # If the observation succeeded
             # Advance window normally according to cadence parameters
             observation_payload = self.advance_window(

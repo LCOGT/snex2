@@ -143,7 +143,7 @@ def cancel_observation(obs_group):
     
     first_obs = obs_group.observation_records.order_by('created').first()
     if first_obs:
-        first_obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+        first_obs.parameters['sequence_end'] = timezone.now().isoformat()
         first_obs.save()
 
     return True
@@ -161,8 +161,8 @@ def _continue_sequence(obs_group, data):
                 return {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
 
     obs.parameters['reminder'] = data['reminder']
-    now = datetime.utcnow()
-    reminder_date = (now + timedelta(days=data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
+    now = timezone.now()
+    reminder_date = (now + timedelta(days=data['reminder'])).isoformat()
     obs.parameters['reminder_date'] = reminder_date
     obs.save()
 
@@ -198,12 +198,12 @@ def _modify_sequence(obs_group, user, data):
     new_params['start_user'] = user.username
     
     delay = data.get('delay_start', 0.0)
-    now = datetime.utcnow()
+    now = timezone.now()
     
     new_params['reminder'] = data['reminder']
-    new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
-    new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
-    new_params['end'] = (now + timedelta(days=delay + data['cadence_frequency_days'])).strftime('%Y-%m-%dT%H:%M:%S')
+    new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).isoformat()
+    new_params['start'] = (now + timedelta(days=delay)).isoformat()
+    new_params['end'] = (now + timedelta(days=delay + data['cadence_frequency_days'])).isoformat()
     
     # Update filters
     filters = ['U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
