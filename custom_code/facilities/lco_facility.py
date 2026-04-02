@@ -426,6 +426,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
 
             start = cleaned_data.get('start')
             cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
+        logger.info(f'start window: {cleaned_data.get("start")}, end: {cleaned_data["end"]} with window length: {window_length}')
         return cleaned_data
 
     def _build_location(self):
