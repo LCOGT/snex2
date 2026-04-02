@@ -154,36 +154,41 @@
     const statusDiv = document.getElementById("download-status");
     const targetId = document.getElementById("target-id").value;
     const downloadButton = document.querySelector("button[onclick='downloadAll(event)']");
-    
     statusDiv.innerHTML = "Fetching images...";
     downloadButton.disabled = true;
 
     const response = await fetch(`{% url 'get-frame-ids' %}?target_id=${targetId}`);
     const data = await response.json();
 
-    statusDiv.innerHTML = `Found ${data.count} images.`;
+    const numZips = Math.ceil(data.frame_ids.length / 500);
+    statusDiv.innerHTML = `Found ${data.count} images${numZips > 1 ? ` — downloading as ${numZips} zip files` : ''}.`;
 
     const archiveRoot = document.getElementById("archive-root").value;
     const archiveToken = document.getElementById("archive-token").value;
-
-    downloadZip(data.frame_ids, false, archiveRoot, archiveToken);
-
-    statusDiv.innerHTML = "Download starting in new tab. Enable pop-ups and check your browser downloads.";
+    await downloadZip(data.frame_ids, false, archiveRoot, archiveToken);
+    statusDiv.innerHTML = `${numZips > 1 ? `${numZips} zip files opening` : 'Download starting'} in new tab(s). Enable pop-ups and check your browser downloads.`;
     downloadButton.disabled = false;
   }
-  function downloadZip(frameIds, uncompress, archiveRoot, archiveToken) {
-    const form = $('<form>', {
-      method: 'POST',
-      action: `${archiveRoot}zip/`,
-      target: '_blank'
-    });
-    frameIds.forEach(function(value, i) {
-      form.append($('<input>', { type: 'hidden', name: `frame_ids[${i}]`, value: value }));
-    });
-    form.append($('<input>', { type: 'hidden', name: 'auth_token', value: archiveToken }));
-    form.append($('<input>', { type: 'hidden', name: 'uncompress', value: uncompress }));
-    $('body').append(form);
-    form.submit();
-    form.remove();
+  async function downloadZip(frameIds, uncompress, archiveRoot, archiveToken) {
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < frameIds.length; i += CHUNK_SIZE) {
+      const chunk = frameIds.slice(i, i + CHUNK_SIZE);
+      const form = $('<form>', {
+        method: 'POST',
+        action: `${archiveRoot}zip/`,
+        target: '_blank'
+      });
+      chunk.forEach(function(value, j) {
+        form.append($('<input>', { type: 'hidden', name: `frame_ids[${j}]`, value: value }));
+      });
+      form.append($('<input>', { type: 'hidden', name: 'auth_token', value: archiveToken }));
+      form.append($('<input>', { type: 'hidden', name: 'uncompress', value: uncompress }));
+      $('body').append(form);
+      form.submit();
+      form.remove();
+      if (i + CHUNK_SIZE < frameIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
   }
 </script>
