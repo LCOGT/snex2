@@ -162,14 +162,14 @@
     const response = await fetch(`{% url 'get-frame-ids' %}?target_id=${targetId}`);
     const data = await response.json();
 
-    statusDiv.innerHTML = `Downloading ${data.count} frames...`;
+    statusDiv.innerHTML = `Found ${data.count} frames...`;
 
     const archiveRoot = document.getElementById("archive-root").value;
     const archiveToken = document.getElementById("archive-token").value;
 
     downloadZip(data.frame_ids, false, archiveRoot, archiveToken);
 
-    statusDiv.innerHTML = "Download started";
+    statusDiv.innerHTML = "Download starting momentarily. Check your browser downloads.";
     downloadButton.disabled = false;
   }
   function downloadZip(frameIds, uncompress, archiveRoot, archiveToken) {
