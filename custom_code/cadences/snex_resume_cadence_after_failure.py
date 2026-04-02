@@ -109,7 +109,7 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
             scheduled_end = parse(scheduled_end)
 
         if timezone.is_naive(scheduled_end):
-            scheduled_end = timezone.make_aware(scheduled_end, timezone.utc)
+            scheduled_end = timezone.make_aware(scheduled_end)
 
         observation_payload['scheduled_end'] = scheduled_end
         logger.info(f'Scheduled observation end: {scheduled_end}')
