@@ -104,7 +104,7 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
 
         if not last_obs.scheduled_end:
             logger.info(f'No observation end scheduled yet, falling back to end: {observation_payload[end_keyword]}')
-            observation_payload['scheduled_end'] = observation_payload[end_keyword]
+            observation_payload['scheduled_end'] = parse(observation_payload[end_keyword])
 
         # Cadence logic
         # If the observation hasn't finished, do nothing
