@@ -170,7 +170,7 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
             min_window = 24
         window_length = min_window if cadence_frequency > min_window else cadence_frequency
 
-        new_start = parse(observation_payload['scheduled_end']) + timedelta(hours=advance_window_hours)
+        new_start = observation_payload['scheduled_end'] + timedelta(hours=advance_window_hours)
         if new_start < datetime.now():  # Ensure that the new window isn't in the past
             new_start = datetime.now()
         new_end = new_start + timedelta(hours=window_length)
