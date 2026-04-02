@@ -472,6 +472,15 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         logger.info(f"lco_facility: full payload target: {payload['requests'][0]['configurations'][0]['target']}")
     
         request_group = payload['requests'][0]
+        for config in request_group.get('configurations', []):
+            target = config.get('target', {})
+            if target.get('epoch') is None:
+                target['epoch'] = 2000
+            if target.get('proper_motion_ra') is None:
+                target.pop('proper_motion_ra', None)
+            if target.get('proper_motion_dec') is None:
+                target.pop('proper_motion_dec', None)
+
         science_config = request_group['configurations'][0]
         
         science_config['type'] = 'SPECTRUM'
@@ -495,7 +504,8 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         configurations = [science_config, arc_config, flat_config]
         
         request_group['configurations'] = configurations
-        
+        logger.info(f"lco_facility: full payload target after fix: {configurations[0].get('target')}")
+        logger.info(f"lco_facility: full configurations: {configurations}")
         return payload
 
 class SnexLCOFacility(LCOFacility):
