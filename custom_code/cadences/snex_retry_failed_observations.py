@@ -1,6 +1,7 @@
 from dateutil.parser import parse
-from datetime import timedelta, datetime
+from datetime import timedelta
 from django.conf import settings
+from django.utils import timezone
 
 from tom_observations.models import ObservationRecord
 from tom_observations.cadences.retry_failed_observations import RetryFailedObservationsStrategy
@@ -86,8 +87,8 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
             min_window = 24
         window = min_window if cadence_frequency > min_window else cadence_frequency
         
-        new_start = datetime.now().isoformat()
-        new_end = parse(new_start) + timedelta(hours=window)
+        new_start = timezone.now()
+        new_end = new_start + timedelta(hours=window)
         observation_payload[start_keyword] = new_start.isoformat()
         observation_payload[end_keyword] = new_end.isoformat()
 
