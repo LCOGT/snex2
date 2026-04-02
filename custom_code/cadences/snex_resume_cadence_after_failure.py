@@ -100,12 +100,19 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
 
         # Boilerplate to get necessary properties for future calls
         observation_payload = last_obs.parameters
-        observation_payload['scheduled_end'] = last_obs.scheduled_end
-        logger.info(f'Scheduled observation end: {last_obs.scheduled_end}')
-
-        if not last_obs.scheduled_end:
+        scheduled_end = last_obs.scheduled_end
+        if not scheduled_end:
             logger.info(f'No observation end scheduled yet, falling back to end: {observation_payload[end_keyword]}')
-            observation_payload['scheduled_end'] = parse(observation_payload[end_keyword])
+            scheduled_end = parse(observation_payload[end_keyword])
+
+        if isinstance(scheduled_end, str):
+            scheduled_end = parse(scheduled_end)
+
+        if timezone.is_naive(scheduled_end):
+            scheduled_end = timezone.make_aware(scheduled_end, timezone.utc)
+
+        observation_payload['scheduled_end'] = scheduled_end
+        logger.info(f'Scheduled observation end: {scheduled_end}')
 
         # Cadence logic
         # If the observation hasn't finished, do nothing
