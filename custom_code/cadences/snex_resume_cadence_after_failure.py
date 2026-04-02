@@ -111,7 +111,7 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
         if timezone.is_naive(scheduled_end):
             scheduled_end = timezone.make_aware(scheduled_end)
 
-        observation_payload['scheduled_end'] = scheduled_end
+        observation_payload['scheduled_end'] = scheduled_end.isoformat()
         logger.info(f'Scheduled observation end: {scheduled_end}')
 
         # Cadence logic
@@ -180,7 +180,15 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
             min_window = 24
         window_length = min_window if cadence_frequency > min_window else cadence_frequency
 
-        new_start = observation_payload['scheduled_end'] + timedelta(hours=advance_window_hours)
+        scheduled_end = observation_payload['scheduled_end']
+
+        if isinstance(scheduled_end, str):
+            scheduled_end = parse(scheduled_end)
+
+        if timezone.is_naive(scheduled_end):
+            scheduled_end = timezone.make_aware(scheduled_end)
+
+        new_start = scheduled_end + timedelta(hours=advance_window_hours)
         if new_start < timezone.now():  # Ensure that the new window isn't in the past
             new_start = timezone.now()
         new_end = new_start + timedelta(hours=window_length)
