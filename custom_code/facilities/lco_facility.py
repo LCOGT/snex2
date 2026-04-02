@@ -506,6 +506,8 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         request_group['configurations'] = configurations
         logger.info(f"lco_facility: full payload target after fix: {configurations[0].get('target')}")
         logger.info(f"lco_facility: full configurations: {configurations}")
+        import json
+        logger.info(f"lco_facility: full raw payload: {json.dumps(payload, indent=2)}")
         return payload
 
 class SnexLCOFacility(LCOFacility):
