@@ -7,6 +7,7 @@ from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm
 from tom_observations.facility import get_service_class
 from datetime import datetime, timedelta
+from django.utils import timezone
 from dateutil.parser import parse
 from tom_observations.models import ObservationRecord
 
@@ -171,8 +172,8 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
         window_length = min_window if cadence_frequency > min_window else cadence_frequency
 
         new_start = observation_payload['scheduled_end'] + timedelta(hours=advance_window_hours)
-        if new_start < datetime.now():  # Ensure that the new window isn't in the past
-            new_start = datetime.now()
+        if new_start < timezone.now():  # Ensure that the new window isn't in the past
+            new_start = timezone.now()
         new_end = new_start + timedelta(hours=window_length)
         observation_payload[start_keyword] = new_start.isoformat()
         observation_payload[end_keyword] = new_end.isoformat()
