@@ -2,7 +2,8 @@ from plotly import offline
 import plotly.graph_objs as go
 from django import template, forms
 from django.conf import settings
-from django.db.models.functions import Lower, Max
+from django.db.models.functions import Lower
+from django.db.models import Max
 from django.shortcuts import reverse
 from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
