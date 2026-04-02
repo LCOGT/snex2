@@ -44,7 +44,6 @@
     </form>
   </div>
 </div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.fileDownload/1.4.2/jquery.fileDownload.min.js"></script>
 <script>
   var zoom = document.getElementById("id_zoom");
   zoom.addEventListener("keydown", function (e) {
@@ -156,34 +155,35 @@
     const targetId = document.getElementById("target-id").value;
     const downloadButton = document.querySelector("button[onclick='downloadAll(event)']");
     
-    statusDiv.innerHTML = "Fetching frame IDs...";
+    statusDiv.innerHTML = "Fetching images...";
     downloadButton.disabled = true;
 
     const response = await fetch(`{% url 'get-frame-ids' %}?target_id=${targetId}`);
     const data = await response.json();
 
-    statusDiv.innerHTML = `Found ${data.count} frames...`;
+    statusDiv.innerHTML = `Found ${data.count} images.`;
 
     const archiveRoot = document.getElementById("archive-root").value;
     const archiveToken = document.getElementById("archive-token").value;
 
     downloadZip(data.frame_ids, false, archiveRoot, archiveToken);
 
-    statusDiv.innerHTML = "Download starting momentarily. Check your browser downloads.";
+    statusDiv.innerHTML = "Download starting in new tab. Enable pop-ups and check your browser downloads.";
     downloadButton.disabled = false;
   }
   function downloadZip(frameIds, uncompress, archiveRoot, archiveToken) {
-    let postData = {};
-
+    const form = $('<form>', {
+      method: 'POST',
+      action: `${archiveRoot}zip/`,
+      target: '_blank'
+    });
     frameIds.forEach(function(value, i) {
-      postData[`frame_ids[${i}]`] = value;
+      form.append($('<input>', { type: 'hidden', name: `frame_ids[${i}]`, value: value }));
     });
-    postData['auth_token'] = archiveToken;
-    postData['uncompress'] = uncompress;
-
-    $.fileDownload(`${archiveRoot}zip/`, {
-      httpMethod: 'POST',
-      data: postData
-    });
+    form.append($('<input>', { type: 'hidden', name: 'auth_token', value: archiveToken }));
+    form.append($('<input>', { type: 'hidden', name: 'uncompress', value: uncompress }));
+    $('body').append(form);
+    form.submit();
+    form.remove();
   }
 </script>
