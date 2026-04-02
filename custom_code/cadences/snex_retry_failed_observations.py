@@ -1,5 +1,5 @@
 from dateutil.parser import parse
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.conf import settings
 
 from tom_observations.models import ObservationRecord
@@ -85,7 +85,8 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         else:
             min_window = 24
         window = min_window if cadence_frequency > min_window else cadence_frequency
-        new_start = parse(observation_payload[start_keyword]) + timedelta(hours=window)
+        
+        new_start = datetime.now().isoformat()
         new_end = parse(observation_payload[end_keyword]) + timedelta(hours=window)
         observation_payload[start_keyword] = new_start.isoformat()
         observation_payload[end_keyword] = new_end.isoformat()

@@ -112,7 +112,7 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
                 raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
             window_length = 24 if cadence_frequency > 24 else cadence_frequency
             observation_payload[start_keyword] = datetime.now().isoformat()
-            observation_payload[end_keyword] = (parse(observation_payload[start_keyword]) + window_length).isoformat()
+            observation_payload[end_keyword] = (parse(observation_payload[start_keyword]) + timedelta(hours=window_length)).isoformat()
         else:  # If the observation succeeded
             # Advance window normally according to cadence parameters
             observation_payload = self.advance_window(
