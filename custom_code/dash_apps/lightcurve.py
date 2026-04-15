@@ -335,7 +335,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                                                    value__has_key='filter')))
     else:
         for de in datumextras:
-            de_value = json.loads(de.value)
+            de_value = de.value
 
             ### Test that this dataproduct meets the chosen criteria:
             if all([de_value.get('instrument', '') in selected_telescope,

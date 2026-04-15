@@ -3,6 +3,7 @@ import plotly.graph_objs as go
 from django import template, forms
 from django.conf import settings
 from django.db.models.functions import Lower
+from django.db.models import Max
 from django.shortcuts import reverse
 from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
@@ -20,6 +21,7 @@ from tom_common.hooks import run_hook
 
 from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
 import datetime
+from django.utils import timezone
 import json
 from astropy.time import Time
 from astropy import units as u
@@ -700,7 +702,7 @@ def dash_lightcurve(context, target, width, height):
     for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
                                    klass=ReducedDatumExtra.objects.filter(
                                        target=target,key='upload_extras',data_type='photometry')):
-        de_value = json.loads(de.value)
+        de_value = de.value
         inst = de_value.get('instrument', '')
         used_in = de_value.get('used_in', '')
         group = de_value.get('reducer_group', '')
@@ -720,14 +722,14 @@ def dash_lightcurve(context, target, width, height):
    
         if de_value.get('final_reduction', '')==True:
             final_reduction = True
-            final_reduction_datumid = de_value.get('data_product_id', '')
+            final_reduction_dp = de.data_product
 
             datum = get_objects_for_user(user,
                                 'tom_dataproducts.view_reduceddatum',
                                 klass=ReducedDatum.objects.filter(
                                     target=target,
                                     data_type='photometry',
-                                    data_product_id=final_reduction_datumid))
+                                    data_product_id=final_reduction_dp))
             datum_value = datum.first().value
             if isinstance(datum_value, str):
                 datum_value = json.loads(datum_value)
@@ -963,7 +965,6 @@ def format_lco_summary(obs, group, is_active):
             summary.append(f"ending on {str(endtime).split('T')[0]}")
 
     start_user = params.get('start_user')
-    logger.info(f'start_user: {start_user} and observation.id: {obs.id}')
     if start_user:
         first_name = User.objects.get(username=start_user).first_name
         if first_name:
@@ -1035,18 +1036,18 @@ def observation_summary(context, target = None, is_active = False):
     else:
         obs_records = ObservationRecord.objects.all()
 
-    obs_groups = ObservationGroup.objects.filter(observation_records__in = obs_records, dynamiccadence__active=is_active).distinct().prefetch_related('observation_records', 'dynamiccadence_set')
+    obs_groups = ObservationGroup.objects.filter(observation_records__in=obs_records, dynamiccadence__active=is_active).distinct().order_by('-modified')
 
     parameters_summary = []
+    obs_records_active = []
     content_type_obs_group = ContentType.objects.get_for_model(ObservationGroup)
 
     for group in obs_groups:
-        all_obs = group.observation_records.all()
-        obs = all_obs.filter(status = 'PENDING').first() or all_obs.order_by('-id').first()
-        
+        obs = group.observation_records.order_by('-id').first()
         if not obs:
             continue
-
+        obs_records_active.append(obs)
+    
         summary_dict = call_facility_formats(obs, group, is_active)
         
         comments = Comment.objects.filter(object_pk = group.id, content_type = content_type_obs_group)
@@ -1055,7 +1056,7 @@ def observation_summary(context, target = None, is_active = False):
         parameters_summary.append(summary_dict)
 
     return {
-        'observations': obs_records,
+        'observations': obs_records_active,
         'parameters': parameters_summary,
         'is_active': is_active
     }
@@ -1300,32 +1301,27 @@ def scheduling_list_with_form(context, observation):
     start_val = first_obs.parameters.get('start', 'Unknown')
     start = str(start_val).replace('T', ' ')
     username = first_obs.parameters.get('start_user', 'snex_secure')
-    logger.info(f'username for scheduling form: {username}, observationid: {observation.id}')
     user = User.objects.filter(username = username).first()
     requested_str = f"{user.first_name} {user.last_name}".strip() or username
     return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
 
 @register.filter
-def filter_current_reminders(queryset, pagenumber):
-    now = datetime.datetime.now()
-    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-    queryset = queryset.order_by('parameters__reminder_date')
-
-    paginator = Paginator(queryset, 25)
-    page_number = pagenumber.strip('page=')
-    page_obj = paginator.get_page(page_number)
-    return page_obj
+def filter_current_reminders(_, pagenumber):
+    now = timezone.now()
+    queryset = ObservationRecord.objects.filter(
+        id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
+        latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
+        parameters__reminder_date__lte=now.isoformat()).order_by('parameters__reminder_date')
+    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
 
 @register.filter
-def filter_upcoming_reminders(queryset, pagenumber):
-    now = datetime.datetime.now()
-    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-    queryset = queryset.order_by('parameters__reminder_date')
-
-    paginator = Paginator(queryset, 25)
-    page_number = pagenumber.strip('page=')
-    page_obj = paginator.get_page(page_number)
-    return page_obj
+def filter_upcoming_reminders(_, pagenumber):
+    now = timezone.now()
+    queryset = ObservationRecord.objects.filter(
+        id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
+        latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
+        parameters__reminder_date__gte=now.isoformat()).order_by('parameters__reminder_date')
+    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
 def dash_spectra_page(context, target):
@@ -1388,51 +1384,22 @@ def dash_spectra_page(context, target):
 
         # Query ReducedDatumExtra directly - no object-level permissions needed
         # (user already has target access if they can view this page)
-        snex_id_row = ReducedDatumExtra.objects.filter(
-            data_type='spectroscopy', target=target, 
-            key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
-        ).first()
+        spec_extras_row = ReducedDatumExtra.objects.filter(
+            data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
         spec_extras = {}
-        if snex_id_row:
-            snex1_id = json.loads(snex_id_row.value)['snex_id']
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='spec_extras', 
-                value__icontains='"snex_id": {}'.format(snex1_id)
-            ).first()
-            if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
+        if spec_extras_row:
+            spec_extras = spec_extras_row.value
+            if spec_extras.get('instrument', '') == 'en06':
+                spec_extras['site'] = '(OGG 2m)'
+                spec_extras['instrument'] += ' (FLOYDS)'
+            elif spec_extras.get('instrument', '') == 'en12':
+                spec_extras['site'] = '(COJ 2m)'
+                spec_extras['instrument'] += ' (FLOYDS)'
 
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comment_list
-            
-            else:
-                spec_extras = {}
-        elif spectrum.data_product_id:
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='upload_extras',
-                value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
-            ).first()
-            if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comment_list
+            content_type_id = ContentType.objects.get(model='reduceddatum').id
+            comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+            spec_extras['comments'] = comment_list
         else:
             spec_extras = {}
 
@@ -1689,7 +1656,7 @@ def image_slideshow(context, target):
     if not settings.DEBUG:
         #NOTE: Production
         
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username, allimages=True)
         if not filepaths:
             logger.info(f'No images found for target {target}')
             return {'target': target,
@@ -1737,7 +1704,9 @@ def image_slideshow(context, target):
             'telescope': teles[0],
             'instrument': instr[0],
             'filter': filters[0],
-            'exptime': exptimes[0]}
+            'exptime': exptimes[0],
+            'archive_root': settings.FACILITIES['LCO']['archive_url'],
+            'archive_token': settings.FACILITIES['LCO']['api_key']}
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
@@ -1959,7 +1928,7 @@ def display_thumbnails(context, target):
     
     if not settings.DEBUG:
         #NOTE: Production
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username)
         if not filepaths:
             logger.info(f'No images found for target {target}')
             return {'top_images': [],

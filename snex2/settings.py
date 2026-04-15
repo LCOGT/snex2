@@ -29,6 +29,8 @@ FITS_DIR = os.path.join(DATA_DIR,'fits')
 LSC_DIR = os.path.join(SN_DIR,'data','lsc')
 FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
+OBS_WINDOW_MINIMUM = 24 # Minimum observation window in hours
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.1/howto/deployment/checklist/
 
@@ -348,13 +350,8 @@ TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
 EXTRA_FIELDS = [
     {'name': 'redshift', 'type': 'number'},
     {'name': 'classification', 'type': 'string'},
-    {'name': 'tweet', 'type': 'boolean'},
-    {'name': 'reference', 'type': 'string', 'hidden': True},
-    {'name': 'observing_run_priority', 'type': 'number', 'hidden': True},
     {'name': 'last_nondetection', 'type': 'string', 'hidden': True},
     {'name': 'first_detection', 'type': 'string', 'hidden': True},
-    {'name': 'maximum', 'type': 'string', 'hidden': True},
-    {'name': 'target_description', 'type': 'string', 'hidden': True}
 ]
 
 # Authentication strategy can either be LOCKED (required login for all views)
@@ -372,24 +369,23 @@ OPEN_URLS = [
     '/accounts/password_reset/done/',
     '/accounts/reset/done/',
     '/accounts/reset/*/',
+    '/api/*/',
+    '/api/',
     '/accounts/register/',
     '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
 ]
 if DEBUG:
     HOOKS = {
-        'target_post_save': '',
         'cancel_gw_obs': '',
         'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
         'download_test_image_from_archive': 'custom_code.hooks.download_test_image_from_archive',
     }
 else:
     HOOKS = {
-        'target_post_save': 'custom_code.hooks.target_post_save',
         'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
         'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
     }
-
 
 BROKERS = {
     'TNS': {'api_key': os.getenv('TNS_APIKEY', '')}
@@ -442,11 +438,6 @@ DATA_PROCESSORS = {
     'fits_file': 'custom_code.processors.spectroscopy_processor.SpecProcessor',
 }
 
-#TOM_LATEX_PROCESSORS = {
-#    'ObservationGroup': 'tom_publications.processors.observation_group_latex_processor.ObservationGroupLatexProcessor',
-#    'TargetList': 'tom_publications.processors.target_list_latex_processor.TargetListLatexProcessor'
-#}
-
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
     ],
@@ -486,10 +477,6 @@ TOM_REGISTRATION = {
     'APPROVAL_SUBJECT': f'Your {TOM_NAME} registration has been approved!',  # Optional subject line of approval email, (Default Shown)
     'APPROVAL_MESSAGE': f'Your {TOM_NAME} registration has been approved. You can log in <a href="mytom.com/login">here</a>.'  # Optional html-enabled body for approval email, (Default Shown)
 }
-
-MANAGERS = [
-    ('SNEx Secure', 'sne@lco.global')
-]
 
 MANAGERS = [("SNe", "sne@lco.global")]
 EMAIL_SUBJECT_PREFIX = f'[{TOM_NAME}]'

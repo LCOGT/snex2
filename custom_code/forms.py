@@ -96,7 +96,7 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
             self.fields['groups'].queryset = Group.objects.all()
             self.fields['groups'].label = "Visible to"
         self.fields.pop('gwfollowupgalaxy_id', None)
-
+        self.fields.pop('pipeline_id', None)
 
     def save(self, commit=True):
         instance = super().save(commit=commit)
@@ -424,15 +424,19 @@ class PhotSchedulingForm(forms.Form):
                     initial_list = val
                 if f == 'muscat_filter':
                     label = 'gp, rp, ip, zs'
-                    initial_list = initial_list[:2]
+                    
+                    if len(initial_list) < 3:
+                        initial_list = list(initial_list) + [1]
+                    
+                    initial_list[2] = 1
+                    
                     self.fields[f] = FilterField(
                         label=label, 
                         initial=initial_list, 
                         required=False
                     )
-                    self.fields[f].widget.widgets = self.fields[f].widget.widgets[:2]
-                    self.fields[f].fields = self.fields[f].fields[:2]
-
+                    
+                    self.fields[f].widget.widgets[2] = forms.HiddenInput()
                 else:
                     label = f
                     self.fields[f] = FilterField(

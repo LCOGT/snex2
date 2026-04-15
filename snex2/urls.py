@@ -18,7 +18,7 @@ from django.conf import settings
 
 from django.urls import include
 from custom_code.views import *
-from custom_code.api_views import CustomDataProductViewSet, CustomObservationRecordViewSet
+from custom_code.api_views import CustomDataProductViewSet, CustomObservationRecordViewSet, SNExTargetViewSet
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
@@ -28,12 +28,14 @@ from custom_code.forms import SafeAuthenticationForm
 custom_router = DefaultRouter()
 custom_router.register(r'photometry-upload', CustomDataProductViewSet, 'photometry-upload')
 custom_router.register(r'submit-observation', CustomObservationRecordViewSet, 'submit-observation')
-
-
+api_router = DefaultRouter()
+api_router.register(r'targets', SNExTargetViewSet, basename='targets')
 urlpatterns = [
     path('accounts/register/', SNEx2ApprovalRegistrationView.as_view(), name='register'),
     path('accounts/login/', auth_views.LoginView.as_view(authentication_form=SafeAuthenticationForm), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
+    path('api/', include(api_router.urls)),
+    path('pipeline-upload/', include(custom_router.urls)),
     path('', include('tom_common.urls')),
     path('view_object/', view_object_view, name='view-object'),
     path('targets/', TargetListView.as_view(), name='list'),
@@ -43,8 +45,6 @@ urlpatterns = [
     path('targetlist_collapse/', targetlist_collapse_view, name='targetlist_collapse'),
     path('create-target/', CustomTargetCreateView.as_view(), name='create-target'),
     path('custom-data-upload/', CustomDataProductUploadView.as_view(), name='custom-data-upload'),
-    path('custom-upload-delete/<int:pk>/', CustomDataProductDeleteView.as_view(), name='custom-upload-delete'),
-    path('pipeline-upload/', include(custom_router.urls)),
     path('save_dataproduct_groups/', save_dataproduct_groups_view, name='save_dataproduct_groups'),
     path('change-target-known-to/', change_target_known_to_view, name='change-target-known-to'),
     path('change-interest/', change_interest_view, name='change-interest'),
@@ -75,7 +75,6 @@ urlpatterns = [
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),
     path('get-frame-ids/', get_frame_ids_view, name='get-frame-ids'),
-    path('download-zip/', download_zip_view, name='download-zip'),
     path('interesting-targets/', InterestingTargetsView.as_view(), name='interesting-targets'),
     path('load-spectra-page/', async_spectra_page_view, name='load-spectra-page'),
     path('load-upcoming-reminders/', async_scheduling_page_view, name='load-upcoming-reminders'),
