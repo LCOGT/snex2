@@ -56,10 +56,10 @@ class SpecProcessor(SpectroscopyProcessor):
         hlist = fits.open(data_aws.open())
         banzai_reduc = 'SPECTRUM' in hlist
         if banzai_reduc:
-                header = hlist['PRIMARY'].header
-                spec_table = hlist['SPECTRUM'].data
-                flux = spec_table['flux']
-                wav = spec_table['wavelength']
+            header = hlist['PRIMARY'].header
+            spec_table = hlist['SPECTRUM'].data
+            flux = spec_table['flux']
+            wav = spec_table['wavelength']
         else:
             flux, header = fits.getdata(data_aws.open(), header=True)
 
@@ -104,20 +104,19 @@ class SpecProcessor(SpectroscopyProcessor):
                     rd_extras[keyword] = value
                     break
 
-        dim = len(flux.shape)
-        if dim == 3:
-            flux = flux[0, 0, :]
-        elif flux.shape[0] == 2:
-            flux = flux[0, :]
-        flux = flux * flux_constant
-        header['CUNIT1'] = 'Angstrom'
-
-
         if not banzai_reduc:
+            dim = len(flux.shape)
+            if dim == 3:
+                flux = flux[0, 0, :]
+            elif flux.shape[0] == 2:
+                flux = flux[0, :]
+            flux = flux * flux_constant
+            header['CUNIT1'] = 'Angstrom'
             wcs = WCS(header=header, naxis=1)
             spectrum = Spectrum1D(flux=flux, wcs=wcs)
         else:
             # Convert flux and wavelength to arrays and skip NaNs
+            flux_constant = self.DEFAULT_FLUX_CONSTANT
             flux_values = np.array(flux, dtype=float)
             wav_values = np.array(wav, dtype=float)
             valid_mask = ~np.isnan(flux_values)  # keep only non-NaN flux points
