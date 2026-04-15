@@ -37,6 +37,7 @@ urlpatterns = [
     path('api/', include(api_router.urls)),
     path('pipeline-upload/', include(custom_router.urls)),
     path('', include('tom_common.urls')),
+    path('view_object/', view_object_view, name='view-object'),
     path('targets/', TargetListView.as_view(), name='list'),
     path('redirect/', target_redirect_view, name='redirect'),
     path('add_tag/', add_tag_view, name='add_tag'),
