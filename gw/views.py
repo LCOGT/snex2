@@ -228,11 +228,9 @@ def submit_galaxy_observations_view(request):
                     newtarget.gwfollowupgalaxy_id = galaxy.id
                     newtarget.save()
                     gw = Group.objects.get(name='GWO4')
-                    assign_perm('tom_targets.view_target', gw, newtarget)
-                    assign_perm('tom_targets.change_target', gw, newtarget)
-                    assign_perm('tom_targets.delete_target', gw, newtarget)
-
-                run_hook('target_post_save', target=newtarget, created=created, group_names=['GWO4'], wrapped_session=db_session)
+                    assign_perm('custom_code.view_target', gw, newtarget)
+                    assign_perm('custom_code.change_target', gw, newtarget)
+                    assign_perm('custom_code.delete_target', gw, newtarget)
 
                 ### Create and submit the observation requests
                 form_data = {'name': newtarget.name,
@@ -309,7 +307,7 @@ def submit_galaxy_observations_view(request):
                     observation_id='template'
                 )
                 # Add the request user
-                record.parameters['start_user'] = request.user.first_name
+                record.parameters['start_user'] = request.user.username
                 record.save()
                 new_observations.append(record)
         

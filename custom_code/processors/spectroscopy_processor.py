@@ -17,7 +17,21 @@ class SpecProcessor(SpectroscopyProcessor):
     FITS_MIMETYPES = ['image/fits', 'application/fits']
     PLAINTEXT_MIMETYPES = ['text/plain', 'text/csv', 'text/ascii']
     DEFAULT_FLUX_CONSTANT = (1 * units.erg) / units.cm ** 2 / units.second / units.angstrom
- 
+    field_keywords = {
+        "objname": ["object", "objname", "target"],
+        "date_obs": ["mjd", "mjd-obs", "mjd_obs", "mjdobs", "obsmjd",
+                     "jd", "jd-obs", "jd_obs", "jdobs", "obsjd",
+                     "date-obs", "dateobs", "obs-date", "obsdate",
+                     "utshut", "utc-obs", "utc"],        
+        "telescope": ["telescope", "telescop", "observat"],
+        "instrument": ["instrument", "instrume"],
+        "slit": ["APERWID", "slit", "aperture", "slitname"],
+        "exptime": ["exptime", "exposure", "itot"],
+        "airmass": ["airmass", "am", "tcs_am"],
+        "grism": ["grism"],
+        "observer": ["observer"],
+        "reducer": ["reducer", "reducedby"],
+    }
 
     def process_data(self, data_product, extras, rd_extras):
         mimetype = mimetypes.guess_type(data_product.data.name)[0]
@@ -39,38 +53,78 @@ class SpecProcessor(SpectroscopyProcessor):
 
         data_aws = default_storage.open(data_product.data.name, 'rb')
                 
-        flux, header = fits.getdata(data_aws.open(), header=True)
-        
+        hlist = fits.open(data_aws.open())
+        banzai_reduc = 'SPECTRUM' in hlist
+        if banzai_reduc:
+            header = hlist['PRIMARY'].header
+            spec_table = hlist['SPECTRUM'].data
+            flux = spec_table['flux']
+            wav = spec_table['wavelength']
+        else:
+            flux, header = fits.getdata(data_aws.open(), header=True)
+
+
         for facility_class in get_service_classes():
             facility = get_service_class(facility_class)()
             if facility.is_fits_facility(header):
                 flux_constant = facility.get_flux_constant()
-                date_obs = facility.get_date_obs_from_fits_header(header)
+                if rd_extras.get('date_obs'):
+                    date_obs = datetime.fromisoformat(str(rd_extras['date_obs']).replace(' ', 'T'))
+                else:
+                    date_obs = facility.get_date_obs_from_fits_header(header)
                 break
         else:
             flux_constant = self.DEFAULT_FLUX_CONSTANT
-            if 'date_obs' in rd_extras.keys() and rd_extras.get('date_obs', '') != '':
-                date_obs = rd_extras['date_obs']
+            if rd_extras.get('date_obs'):
+                date_obs = datetime.fromisoformat(str(rd_extras['date_obs']).replace(' ', 'T'))
             else:
-                date_obs = datetime.now()
+                date_obs = Time(datetime.now()).to_datetime
+        
+        for keyword, possibles in self.field_keywords.items():
 
-        for keyword in rd_extras.keys():
-            if not rd_extras.get(keyword):
-                rd_extras[keyword] = header.get(keyword.upper().replace('_', '-'), '')
-        dim = len(flux.shape)
-        if dim == 3:
-            flux = flux[0, 0, :]
-        elif flux.shape[0] == 2:
-            flux = flux[0, :]
-        flux = flux * flux_constant
+            # Check if the keyword or any possible is already in rd_extras with a non-empty value; if so, skip this keyword
+            if (keyword in rd_extras and rd_extras.get(keyword, '')) or any(possible in rd_extras and rd_extras.get(possible, '') for possible in possibles):
+                continue
 
-        header['CUNIT1'] = 'Angstrom'
-        wcs = WCS(header=header, naxis=1)
+            # If none are in rd_extras, check the header for each possible
+            for possible in possibles:
+            
+                if possible in header:
+        
+                    value = header[possible]
+                    if keyword == "date_obs" and not rd_extras.get('date_obs'):
+                        k_lower = possible.lower()
+                        if "mjd" in k_lower:
+                            value = Time(float(value), format="mjd").to_datetime()
+                        elif "jd" in k_lower:
+                            value = Time(float(value), format="jd").to_datetime()
+                        else:
+                            value = datetime.fromisoformat(str(value).replace(' ', 'T'))
+                        date_obs = value
+                    rd_extras[keyword] = value
+                    break
 
-        spectrum = Spectrum1D(flux=flux, wcs=wcs)
+        if not banzai_reduc:
+            dim = len(flux.shape)
+            if dim == 3:
+                flux = flux[0, 0, :]
+            elif flux.shape[0] == 2:
+                flux = flux[0, :]
+            flux = flux * flux_constant
+            header['CUNIT1'] = 'Angstrom'
+            wcs = WCS(header=header, naxis=1)
+            spectrum = Spectrum1D(flux=flux, wcs=wcs)
+        else:
+            # Convert flux and wavelength to arrays and skip NaNs
+            flux_constant = self.DEFAULT_FLUX_CONSTANT
+            flux_values = np.array(flux, dtype=float)
+            wav_values = np.array(wav, dtype=float)
+            valid_mask = ~np.isnan(flux_values)  # keep only non-NaN flux points
+            spectrum = Spectrum1D(flux=flux_values[valid_mask] * flux_constant, spectral_axis=wav_values[valid_mask] * units.Angstrom)
+            
         rd_extras.pop('date_obs')
 
-        return spectrum, Time(date_obs).to_datetime(), rd_extras
+        return spectrum, date_obs, rd_extras
 
 
     def _process_spectrum_from_plaintext(self, data_product, rd_extras):
@@ -93,7 +147,21 @@ class SpecProcessor(SpectroscopyProcessor):
         :rtype: AstroPy.Time
         """
 
-        data = ascii.read(data_product.data.path, names=['wavelength', 'flux'])
+        data = ascii.read(data_product.data.path)
+
+        if 'flux' in data.colnames and 'wavelength' in data.colnames:
+            pass
+        elif 'wavelength' in data.colnames and 'flux' not in data.colnames:
+            data.rename_column(data.colnames[1], 'flux')
+        elif data.colnames == ['col1', 'col2']:
+            data.rename_column('col1', 'wavelength')
+            data.rename_column('col2', 'flux')
+        elif data.colnames == ['col2', 'col1'] or (len(data.colnames) == 2 and 'col' in data.colnames[0]):
+            data.rename_column(data.colnames[0], 'wavelength')
+            data.rename_column(data.colnames[1], 'flux')
+        else:
+            raise InvalidFileFormatException('Could not determine wavelength/flux columns')
+        
         if len(data) < 1:
             raise InvalidFileFormatException('Empty table or invalid file type')
         facility_name = None
@@ -107,18 +175,23 @@ class SpecProcessor(SpectroscopyProcessor):
                 delim = '='
             else:
                 delim = ':'
+            parts = comment.split(delim)
+            if len(parts) < 2:
+                continue
 
+            keyword = parts[0].strip().lower()
+            value = parts[1].strip()
             if not date_obs and 'date-obs' in comment.lower():
-                date_obs = comment.split(delim)[1].split('/')[0].strip()
+                date_obs = value.split('/')[0].strip()
             else:
                 date_obs = datetime.now()
 
             if 'facility' in comment.lower():
-                facility_name = comment.split(delim)[1].strip()
+                facility_name = value
 
             keyword = comment.split(delim)[0].lower()
             if keyword in rd_extras.keys() and not rd_extras.get(keyword, ''):
-                rd_extras[keyword] = comment.split(delim)[1].strip()
+                rd_extras[keyword] = value
 
         facility = get_service_class(facility_name)() if facility_name else None
         wavelength_units = facility.get_wavelength_units() if facility else self.DEFAULT_WAVELENGTH_UNITS

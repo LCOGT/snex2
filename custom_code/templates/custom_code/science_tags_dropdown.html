@@ -1,98 +1,176 @@
 {% load custom_code_tags %}
 <dl class="row" style="display: block;">
   <h5>Science Interests:</h5>
+  <div id="tag-display-container">
   {% with target|get_target_tags as targets_tags %}
     {% for tag in sciencetags %}
       {% with cuttag=tag|cut:" " %}
-      {% if tag in targets_tags %}
-        <div id="display-{{ cuttag|cut:"/" }}" class="displayed" style="display: block;">{{ tag }}</div>
-      {% else %}
-        <div id="display-{{ cuttag|cut:"/" }}" class="displayed" style="display: none;">{{ tag }}</div>
-      {% endif %}
+        <div id="display-{{ cuttag|cut:"/" }}" class="displayed" style="display: {% if tag in targets_tags %}block{% else %}none{% endif %};">{{ tag }}</div>
       {% endwith %}
     {% endfor %}
   {% endwith %}
-  <!--div id="display-SNIa" class="displayed" style="display: none;">A Sample of SNe Ia</div>
-  <div id="display-SNII" class="displayed" style="display: none;">A Sample of SNe II</div-->
+  </div>
 </dl>
-<dl class="row">
-  <div id="tag-list" class="dropdown-check-list">
-    <button onclick="display_tags()" class="dropbtn" style="background-color: white; color: black; font-size: 16px; border: none;">Select Science Tags</button>
-    <div id="tag-dropdown" class="dropdown-content" style="background-color: white; color: black; font-size: 14px; height: 200px; overflow-y: scroll; width: 200px;">
-      {% for tag in sciencetags %}
-        {% with cuttag=tag|cut:" " %}
-        <span><input type="checkbox" class="check" id="select-{{ cuttag|cut:"/" }}" value="{{ tag }}" data-target="display-{{ cuttag|cut:"/" }}"/>{{ tag }}</span><br>
-	{% endwith %}
-      {% endfor %}
-      <form style="display: inline; font-size: 12px;" name="form_science_tag">
-	<input type="text" name="newtag" id="newtag" placeholder="Add a new tag">
-      </form>
-      <button onclick="submit_tags()" class="btn" style="background-color: #174460; color: white; border: none;">Apply</button>
+<dl class="row" style="display: block;">
+  <button type="button" class="btn" style="background-color: white; color: #174460; border-color: #174460;" data-toggle="modal" data-target="#scienceTagsModal"> Select Science Tags </button>
+  <div class="modal fade" id="scienceTagsModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Select Science Tags</h5>
+          <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+        </div>
+        <div class="modal-body">
+          <input type="text" id="newtag" class="form-control" placeholder="Start typing to search or add a new tag..." style="margin-bottom: 8px;">
+          <div style="border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 6px;">
+            <input type="checkbox" id="select-all-tags">
+            <label for="select-all-tags" style="font-weight: bold; margin-left: 5px;"> Select All </label>
+          </div>
+          <div id="tag-checkbox-list" style="max-height: 300px; overflow-y: scroll;">
+            {% with target|get_target_tags as targets_tags %}
+              {% for tag in sciencetags %}
+                {% with cuttag=tag|cut:" " %}
+                  <div class="tag-item" style="margin-bottom: 4px;">
+                    <input type="checkbox" class="check" id="select-{{ cuttag|cut:"/" }}" value="{{ tag }}" data-target="display-{{ cuttag|cut:"/" }}" {% if tag in targets_tags %}checked{% endif %} />
+                    <label for="select-{{ cuttag|cut:"/" }}" style="font-weight: normal; margin-left: 5px;"> {{ tag }} </label>
+                  </div>
+                {% endwith %}
+              {% endfor %}
+            {% endwith %}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="submit_tags()">Apply</button>
+        </div>
+      </div>
     </div>
   </div>
-  <script>
-  window.onload = onPageLoad();
-  function onPageLoad() {
-    {% with target|get_target_tags as targets_tags %}
-      {% for tag in sciencetags %}
-	{% with cuttag=tag|cut:" " %}
-	{% if tag in targets_tags %}
-	  document.getElementById("select-{{ cuttag|cut:"/" }}").checked = true;
-	{% endif %}
-	{% endwith %}
-      {% endfor %}
-    {% endwith %}
-  }
-
-  function display_tags() {
-    document.getElementById("tag-dropdown").classList.toggle("show");
-  }
-
+<script>
+  $(document).ready(function () {
+    document.getElementById("newtag").addEventListener("input", function () {
+      var search = this.value.toLowerCase();
+      document.querySelectorAll(".tag-item").forEach(function (item) {
+        var label = item.querySelector("label").innerText.toLowerCase();
+        item.style.display = label.includes(search) ? "block" : "none";
+      });
+    });
+    document.getElementById("select-all-tags").addEventListener("change", function () {
+      var checked = this.checked;
+      document.querySelectorAll(".check").forEach(function (checkbox) {
+        var item = checkbox.closest(".tag-item");
+        if (item.style.display !== "none") {
+          checkbox.checked = checked;
+          var displayDiv = document.getElementById(checkbox.dataset.target);
+          if (displayDiv) displayDiv.style.display = checked ? "block" : "none";
+        }
+      });
+    });
+    $('.check').change(function () {
+      $('#' + this.dataset.target).toggle(this.checked);
+      var allChecked = [...document.querySelectorAll('.check')].every(c => c.checked);
+      var noneChecked = [...document.querySelectorAll('.check')].every(c => !c.checked);
+      var selectAll = document.getElementById("select-all-tags");
+      selectAll.checked = allChecked;
+      selectAll.indeterminate = !allChecked && !noneChecked;
+    });
+  });
   function submit_tags() {
     var checkboxes = document.getElementsByClassName("check");
     var checkboxesChecked = [];
-    for (var i=0; i<checkboxes.length; i++) {
+    for (var i = 0; i < checkboxes.length; i++) {
       if (checkboxes[i].checked) {
-	checkboxesChecked.push(checkboxes[i].value);
+        checkboxesChecked.push(checkboxes[i].value);
       }
     }
-
-    // Get any new tag that was entered
-    if (document.getElementById("newtag").value !== "") {
-      var newEnteredTag = document.getElementById("newtag").value;
-      checkboxesChecked.push(newEnteredTag);
+    var newTagValue = document.getElementById("newtag").value.trim();
+    var existingValues = [...document.querySelectorAll('.check')].map(c => c.value.toLowerCase());
+    var isNewTag = newTagValue !== "" && !existingValues.includes(newTagValue.toLowerCase());
+    function saveTags() {
+      $.ajax({
+        url: '{% url "save_target_tag" %}',
+        type: 'POST',
+        data: {
+          'tags': JSON.stringify(checkboxesChecked),
+          'targetid': '{{ target.id }}',
+          'csrfmiddlewaretoken': '{{ csrf_token }}'
+        },
+        dataType: 'json',
+        success: function (response) {
+          checkboxesChecked.forEach(function (tagValue) {
+            var cleanId = tagValue.replace(/ /g, '').replace(/\//g, '');
+            var displayDiv = document.getElementById('display-' + cleanId);
+            if (displayDiv) {
+              displayDiv.style.display = 'block';
+            } else {
+              var newDiv = document.createElement('div');
+              newDiv.id = 'display-' + cleanId;
+              newDiv.className = 'displayed';
+              newDiv.style.display = 'block';
+              newDiv.innerText = tagValue;
+              document.getElementById('tag-display-container').appendChild(newDiv);
+            }
+          });
+          var allCheckboxes = document.getElementsByClassName("check");
+          for (var i = 0; i < allCheckboxes.length; i++) {
+            if (!allCheckboxes[i].checked) {
+              var displayDiv = document.getElementById(allCheckboxes[i].dataset.target);
+              if (displayDiv) displayDiv.style.display = 'none';
+            }
+          }
+          if (isNewTag) {
+            var cleanId = newTagValue.replace(/ /g, '').replace(/\//g, '');
+            var newItem = document.createElement('div');
+            newItem.className = 'tag-item';
+            newItem.style.marginBottom = '4px';
+            var newCheckbox = document.createElement('input');
+            newCheckbox.type = 'checkbox';
+            newCheckbox.className = 'check';
+            newCheckbox.id = 'select-' + cleanId;
+            newCheckbox.value = newTagValue;
+            newCheckbox.checked = true;
+            newCheckbox.dataset.target = 'display-' + cleanId;
+            newCheckbox.addEventListener('change', function () {
+              var targetDiv = document.getElementById(this.dataset.target);
+              if (targetDiv) targetDiv.style.display = this.checked ? 'block' : 'none';
+            });
+            var newLabel = document.createElement('label');
+            newLabel.htmlFor = 'select-' + cleanId;
+            newLabel.style.cssText = 'font-weight: normal; margin-left: 5px;';
+            newLabel.innerText = newTagValue;
+            newItem.appendChild(newCheckbox);
+            newItem.appendChild(newLabel);
+            document.getElementById('tag-checkbox-list').appendChild(newItem);
+          }
+          document.getElementById("newtag").value = "";
+          document.querySelectorAll(".tag-item").forEach(function (item) {
+            item.style.display = "block";
+          });
+          document.querySelector('#scienceTagsModal [data-dismiss="modal"]').click();
+        },
+        error: function () {
+          alert("Error saving tags. Please try again.");
+        }
+      });
+    }
+    if (isNewTag) {
+      checkboxesChecked.push(newTagValue);
       $.ajax({
         url: '{% url "add_tag" %}',
-	data: {
-          'new_tag': newEnteredTag
-	},
-	dataType: 'json'
-      })
+        type: 'POST',
+        data: {
+          'new_tag': newTagValue,
+          'csrfmiddlewaretoken': '{{ csrf_token }}'
+        },
+        dataType: 'json',
+        success: saveTags,
+        error: function () {
+          alert("Error adding new tag. Please try again.");
+        }
+      });
+    } else {
+      saveTags();
     }
-
-    console.log(checkboxesChecked);
-
-    // Save the tag to this target
-    $.ajax({
-      url: '{% url "save_target_tag" %}',
-      data: { 
-	'tags': JSON.stringify(checkboxesChecked),
-        'targetid': {{ target.id }}
-      },
-      dataType: 'json'
-    })
-
   }
-
-  /* When the user clicks on the button,
-  toggle between hiding and showing the dropdown content */
-  $('.check').change(function () {
-    $('#' + this.dataset.target).toggle(this.checked);
-    });
-
-  $('.dropdown-content').click(function(e) {
-    e.stopPropagation();
-  });
-  </script>
+</script>
 </dl>
-

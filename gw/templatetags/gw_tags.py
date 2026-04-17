@@ -174,7 +174,7 @@ def has_images(galaxy,username):
     if not targ:
         return False
     try:
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', targ.id, username)
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', targ.pipeline_id, username)
     except:
         return False
 

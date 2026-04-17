@@ -3,6 +3,7 @@ import plotly.graph_objs as go
 from django import template, forms
 from django.conf import settings
 from django.db.models.functions import Lower
+from django.db.models import Max
 from django.shortcuts import reverse
 from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
@@ -20,6 +21,7 @@ from tom_common.hooks import run_hook
 
 from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
 import datetime
+from django.utils import timezone
 import json
 from astropy.time import Time
 from astropy import units as u
@@ -594,24 +596,30 @@ def target_data_with_user(context, target):
 def classifications_dropdown(target):
     classifications = [i for i in settings.TARGET_CLASSIFICATIONS]
     target_classification = target.classification
-    # if target_classification is None:
-    #     target_class = None
-    # else:
-    #     target_class = target_classification
+
     return {'target': target,
             'classifications': classifications,
             'target_class': target_classification}
 
 @register.inclusion_tag('custom_code/science_tags_dropdown.html')
 def science_tags_dropdown(target):
-    # Cache science tags for 1 hour since they rarely change
-    tags = cache.get('all_science_tags')
-    if tags is None:
-        tag_query = ScienceTags.objects.all().order_by(Lower('tag'))
-        tags = [i.tag for i in tag_query]
-        cache.set('all_science_tags', tags, 3600)
-    return{'target': target,
-           'sciencetags': tags}
+    all_tags = cache.get('all_science_tags')
+    if all_tags is None:
+        all_tags = list(ScienceTags.objects.order_by(Lower('tag')).values_list('tag', flat=True))
+        cache.set('all_science_tags', all_tags, 3600)
+    selected_tags_query = TargetTags.objects.filter(target=target).select_related('tag')
+    selected_tags = [i.tag.tag for i in selected_tags_query]
+    return {
+        'target': target,
+        'sciencetags': all_tags,
+        'selected_tags': selected_tags,
+    }
+
+@register.filter
+def get_target_tags(target):
+    target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
+    tags = [i.tag.tag for i in target_tag_query]
+    return tags
 
 @register.filter
 def registration_who_you_are(user):
@@ -620,21 +628,6 @@ def registration_who_you_are(user):
         return user.registration_info.who_you_are or ''
     except (AttributeError, UserRegistrationInfo.DoesNotExist):
         return ''
-
-
-@register.filter
-def get_target_tags(target):
-    #try:
-    # Optimize query with select_related to avoid N+1 queries
-    target_tag_query = TargetTags.objects.filter(target_id=target.id).select_related('tag')
-    tags = ''
-    for i in target_tag_query:
-        tag_name = i.tag.tag
-        tags+=(str(tag_name) + ',')
-    return json.dumps(tags)
-    #except:
-    #    return json.dumps(None)
-
 
 @register.inclusion_tag('custom_code/custom_upload_dataproduct.html', takes_context=True)
 def custom_upload_dataproduct(context, obj):
@@ -650,12 +643,8 @@ def custom_upload_dataproduct(context, obj):
         initial['observation_record'] = obj
         initial['referrer'] = reverse('tom_observations:detail', args=(obj.id,))
         
-    form = CustomDataProductUploadForm(initial=initial)
-    if not settings.TARGET_PERMISSIONS_ONLY:
-        if user.is_superuser:
-            form.fields['groups'].queryset = Group.objects.all()
-        else:
-            form.fields['groups'].queryset = user.groups.all()
+    form = CustomDataProductUploadForm(initial = initial)
+
     return {'data_product_form': form}
 
 
@@ -713,7 +702,7 @@ def dash_lightcurve(context, target, width, height):
     for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
                                    klass=ReducedDatumExtra.objects.filter(
                                        target=target,key='upload_extras',data_type='photometry')):
-        de_value = json.loads(de.value)
+        de_value = de.value
         inst = de_value.get('instrument', '')
         used_in = de_value.get('used_in', '')
         group = de_value.get('reducer_group', '')
@@ -733,14 +722,14 @@ def dash_lightcurve(context, target, width, height):
    
         if de_value.get('final_reduction', '')==True:
             final_reduction = True
-            final_reduction_datumid = de_value.get('data_product_id', '')
+            final_reduction_dp = de.data_product
 
             datum = get_objects_for_user(user,
                                 'tom_dataproducts.view_reduceddatum',
                                 klass=ReducedDatum.objects.filter(
                                     target=target,
                                     data_type='photometry',
-                                    data_product_id=final_reduction_datumid))
+                                    data_product_id=final_reduction_dp))
             datum_value = datum.first().value
             if isinstance(datum_value, str):
                 datum_value = json.loads(datum_value)
@@ -913,11 +902,7 @@ def format_lco_summary(obs, group, is_active):
     elif 'LCO2022A' in proposal:
         summary_dict['title'] += ' [DLT40 Proprietary]'
 
-    sequence_start = params.get('start') #or params.get('sequence_start')
-    # if not sequence_start:
-    #     first_obs = group.observation_records.order_by('id').first()
-    #     if first_obs:
-    #         sequence_start = first_obs.parameters.get('start')
+    sequence_start = params.get('start')
 
     start_date = str(sequence_start).split('T')[0] if sequence_start else ''
 
@@ -980,11 +965,12 @@ def format_lco_summary(obs, group, is_active):
             summary.append(f"ending on {str(endtime).split('T')[0]}")
 
     start_user = params.get('start_user')
-    first_name = User.objects.get(username=start_user).first_name
-    if first_name:
-        summary.append(f"requested by {first_name}")
-    elif start_user:
-        summary.append(f"requested by {start_user}")
+    if start_user:
+        first_name = User.objects.get(username=start_user).first_name
+        if first_name:
+            summary.append(f"requested by {first_name}")
+        elif start_user:
+            summary.append(f"requested by {start_user}")
     
     summary.append(f"on {proposal}")
     
@@ -1050,18 +1036,18 @@ def observation_summary(context, target = None, is_active = False):
     else:
         obs_records = ObservationRecord.objects.all()
 
-    obs_groups = ObservationGroup.objects.filter(observation_records__in = obs_records, dynamiccadence__active=is_active).distinct().prefetch_related('observation_records', 'dynamiccadence_set')
+    obs_groups = ObservationGroup.objects.filter(observation_records__in=obs_records, dynamiccadence__active=is_active).distinct().order_by('-modified')
 
     parameters_summary = []
+    obs_records_active = []
     content_type_obs_group = ContentType.objects.get_for_model(ObservationGroup)
 
     for group in obs_groups:
-        all_obs = group.observation_records.all()
-        obs = all_obs.filter(status = 'PENDING').first() or all_obs.order_by('-id').first()
-        
+        obs = group.observation_records.order_by('-id').first()
         if not obs:
             continue
-
+        obs_records_active.append(obs)
+    
         summary_dict = call_facility_formats(obs, group, is_active)
         
         comments = Comment.objects.filter(object_pk = group.id, content_type = content_type_obs_group)
@@ -1070,25 +1056,24 @@ def observation_summary(context, target = None, is_active = False):
         parameters_summary.append(summary_dict)
 
     return {
-        'observations': obs_records,
+        'observations': obs_records_active,
         'parameters': parameters_summary,
         'is_active': is_active
     }
 
 @register.inclusion_tag('custom_code/papers_list.html')
 def papers_list(target):
-
     paper_query = Papers.objects.filter(target=target)
     papers = []
-    for i in range(len(paper_query)):
-        papers.append(paper_query[i])
-
-    paper_form = PapersForm(initial={'target': target})
-    
-    return {'object': target,
-            'papers': papers,
-            'form': paper_form}
-
+    for paper in paper_query:
+        papers.append({
+            'paper': paper,
+            'edit_form': PapersForm(instance=paper)
+        })
+    return {
+        'object': target,
+        'papers': papers,
+    }
 
 @register.inclusion_tag('custom_code/papers_form.html')
 def papers_form(target):
@@ -1162,7 +1147,6 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
         cadence_frequency = cadence_frequency_days * 24
 
-        #start = str(obsset.first().parameters['start']).replace('T', ' ')
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
@@ -1204,8 +1188,8 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'max_airmass': parameter.get('max_airmass', ''),
                    'reminder': reminder
             }
-        
-        filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
+
+        filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']
         for f in filters:
             if parameter.get(f, '') and parameter.get(f, '')[0] != 0.0:
                 initial[f] = parameter.get(f, '')
@@ -1240,7 +1224,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
             cadence_strat = '(Repeating)'
         else:
             cadence_strat = '(Onetime)'
-        #start = str(obsset.first().parameters['start']).replace('T', ' ')
+
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')
         if not end:
             end = str(observation.modified).split('.')[0]
@@ -1313,71 +1297,31 @@ def scheduling_list_with_form(context, observation):
          
     obsgroup = observation.observationgroup_set.first()
     first_obs = obsgroup.observation_records.order_by('created').first()
-    logger.info(f'scheduling list with form obsgroup: {obsgroup}')
-    logger.info(f'scheduling list with form first_obs: {first_obs}')
-    
+
     start_val = first_obs.parameters.get('start', 'Unknown')
     start = str(start_val).replace('T', ' ')
-    username = first_obs.parameters.get('start_user', 'snex2')
+    username = first_obs.parameters.get('start_user', 'snex_secure')
     user = User.objects.filter(username = username).first()
     requested_str = f"{user.first_name} {user.last_name}".strip() or username
     return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
 
 @register.filter
-def filter_current_reminders(queryset, pagenumber):
-    now = datetime.datetime.now()
-    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-    queryset = queryset.order_by('parameters__reminder_date')
-
-    paginator = Paginator(queryset, 25)
-    page_number = pagenumber.strip('page=')
-    page_obj = paginator.get_page(page_number)
-    return page_obj
+def filter_current_reminders(_, pagenumber):
+    now = timezone.now()
+    queryset = ObservationRecord.objects.filter(
+        id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
+        latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
+        parameters__reminder_date__lte=now.isoformat()).order_by('parameters__reminder_date')
+    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
 
 @register.filter
-def filter_upcoming_reminders(queryset, pagenumber):
-    now = datetime.datetime.now()
-    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-    queryset = queryset.order_by('parameters__reminder_date')
-
-    paginator = Paginator(queryset, 25)
-    page_number = pagenumber.strip('page=')
-    page_obj = paginator.get_page(page_number)
-    return page_obj
-    
-
-# @register.filter
-# def order_by_reminder_expired(queryset, pagenumber):
-#     queryset = queryset.exclude(status='CANCELED')
-#     from django.core.paginator import Paginator
-#     now = datetime.datetime.now()
-   
-#     queryset = queryset.filter(parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-#     queryset = queryset.order_by('parameters__reminder')
-
-#     paginator = Paginator(queryset, 25)
-#     page_number = pagenumber.strip('page=')
-#     page_obj = paginator.get_page(page_number)
-#     return page_obj
-#     #return queryset
-
-
-# @register.filter
-# def order_by_reminder_upcoming(queryset, pagenumber):
-#     logger.info(f'queryset input to order_by_reminder_upcoming: {queryset}')
-#     queryset = queryset.exclude(status='CANCELED')
-#     from django.core.paginator import Paginator
-#     now = datetime.datetime.now()
-   
-#     queryset = queryset.filter(parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S')) 
-#     queryset = queryset.order_by('parameters__reminder')
-
-#     paginator = Paginator(queryset, 25)
-#     page_number = pagenumber.strip('page=')
-#     page_obj = paginator.get_page(page_number)
-#     return page_obj
-#     #return queryset
-
+def filter_upcoming_reminders(_, pagenumber):
+    now = timezone.now()
+    queryset = ObservationRecord.objects.filter(
+        id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
+        latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
+        parameters__reminder_date__gte=now.isoformat()).order_by('parameters__reminder_date')
+    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
 def dash_spectra_page(context, target):
@@ -1440,51 +1384,22 @@ def dash_spectra_page(context, target):
 
         # Query ReducedDatumExtra directly - no object-level permissions needed
         # (user already has target access if they can view this page)
-        snex_id_row = ReducedDatumExtra.objects.filter(
-            data_type='spectroscopy', target=target, 
-            key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
-        ).first()
+        spec_extras_row = ReducedDatumExtra.objects.filter(
+            data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
         spec_extras = {}
-        if snex_id_row:
-            snex1_id = json.loads(snex_id_row.value)['snex_id']
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='spec_extras', 
-                value__icontains='"snex_id": {}'.format(snex1_id)
-            ).first()
-            if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
+        if spec_extras_row:
+            spec_extras = spec_extras_row.value
+            if spec_extras.get('instrument', '') == 'en06':
+                spec_extras['site'] = '(OGG 2m)'
+                spec_extras['instrument'] += ' (FLOYDS)'
+            elif spec_extras.get('instrument', '') == 'en12':
+                spec_extras['site'] = '(COJ 2m)'
+                spec_extras['instrument'] += ' (FLOYDS)'
 
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comment_list
-            
-            else:
-                spec_extras = {}
-        elif spectrum.data_product_id:
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', key='upload_extras',
-                value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
-            ).first()
-            if spec_extras_row:
-                spec_extras = json.loads(spec_extras_row.value)
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comment_list
+            content_type_id = ContentType.objects.get(model='reduceddatum').id
+            comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+            spec_extras['comments'] = comment_list
         else:
             spec_extras = {}
 
@@ -1510,25 +1425,29 @@ def strip_trailing_zeros(value):
         return str(float(value))
     except:
         return value
+    
+def find_name(namelist, n):
+    for name in namelist:
+        if n in name[:2].upper() and 'LAS' not in name[:5].upper():
+            return name[:2].upper() + ' ' + name[2:].replace(' ', '')
+    return False
 
 @register.filter
 def get_best_name(target):
-
-    def find_name(namelist, n):
-        for name in namelist:
-            if n in name[:2].upper() and 'LAS' not in name[:5].upper():
-                return name[:2].upper() + ' ' + name[2:]
-        return False
-
     namelist = [target.name] + [alias.name for alias in target.aliases.all()]
     bestname = find_name(namelist, 'SN')
     if not bestname:
         bestname = find_name(namelist, 'AT')
-    if not bestname:
-        bestname = namelist[0]
     
-    return bestname
+    if bestname:
+        normalizedname = bestname.replace(' ', '')
+        if target.name != normalizedname:
+            target.name = normalizedname
+            target.save()
+    else:
+        bestname = target.name
 
+    return bestname
 
 @register.inclusion_tag('custom_code/display_group_list.html')
 def display_group_list(target):
@@ -1736,10 +1655,10 @@ def image_slideshow(context, target):
     ### Get a list of all the image filenames for this target
     if not settings.DEBUG:
         #NOTE: Production
-        try:
-            filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username, allimages=True)
-        except Exception as e:
-            logger.exception(f'Finding images in snex1 failed {e}')
+        
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username, allimages=True)
+        if not filepaths:
+            logger.info(f'No images found for target {target}')
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
     else: 
@@ -1760,7 +1679,7 @@ def image_slideshow(context, target):
                 }),
                 '{} ({} {})'.format(dates[i], filters[i], exptimes[i])) for i in range(len(filenames))]
 
-    initial = {'filenames': filenames[0],
+    initial = {'filenames': thumbdict[0][0],
                'zoom': 1.0,
                'sigma': 4.0
             }
@@ -1785,7 +1704,9 @@ def image_slideshow(context, target):
             'telescope': teles[0],
             'instrument': instr[0],
             'filter': filters[0],
-            'exptime': exptimes[0]}
+            'exptime': exptimes[0],
+            'archive_root': settings.FACILITIES['LCO']['archive_url'],
+            'archive_token': settings.FACILITIES['LCO']['api_key']}
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
@@ -1998,7 +1919,7 @@ def lightcurve_with_extras(target, user):
 
 
 @register.inclusion_tag('custom_code/thumbnail.html', takes_context=True)
-def test_display_thumbnail(context, target):
+def display_thumbnails(context, target):
     
     from os import listdir
     from os.path import isfile, join
@@ -2007,17 +1928,17 @@ def test_display_thumbnail(context, target):
     
     if not settings.DEBUG:
         #NOTE: Production
-        try:
-            filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.id, username)
-        except Exception as e:
-            logger.info(f'Finding images in snex1 failed {e}')
+        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username)
+        if not filepaths:
+            logger.info(f'No images found for target {target}')
             return {'top_images': [],
-                    'bottom_images': []}
+                    'bottom_images': [], 'no_images': True}
 
     else:
         return {
-                "top_images": [],
-                "bottom_images": [],
+                'top_images': [],
+                'bottom_images': [],
+                'no_images': True
             }
     
     thumbs = [f for f in listdir(settings.THUMB_DIR) if isfile(join(settings.THUMB_DIR, f))]
@@ -2068,7 +1989,8 @@ def test_display_thumbnail(context, target):
                                       })
 
     return {'top_images': top_images,
-            'bottom_images': bottom_images}
+            'bottom_images': bottom_images,
+            'no_images': False}
 
 
 @register.filter

@@ -35,23 +35,7 @@
     color: #174460 !important;
   }
 </style>
-<script>
-// This script maintains the selected tab upon reload
-//$(document).ready(function(){
-//  // This is required due to the apparent redefinition of $ in another library: https://api.jquery.com/jquery.noconflict/
-//  // Based on trial and error, the offending script appears to be JS9, which is used in dataproduct_list_for_target
-//  $.noConflict();
-//  $('a[data-toggle="tab"]').on('shown.bs.tab', function(e) {
-//    localStorage.setItem('activeTab', $(e.target).attr('href'));
-//  });
-//
-//  var activeTab = localStorage.getItem('activeTab');
-//  if(activeTab){
-//    $('#tabs a[href="' + activeTab + '"]').tab('show');
-//  }
-//});
-</script>
-<table class="header-table" cellpadding="0" cellspacing="0" style="background: #174460; font-family: 'Open Sans', sans-serif; color: white; width: 104.45%; margin-left: -39px; margin-top: -100px;">
+<table class="header-table" cellpadding="0" cellspacing="0" style="background: #174460; font-family: 'Open Sans', sans-serif; color: white; width: 100vw; margin-left: calc(-1 * (100vw - 100%) / 2); margin-top: 0;">
   <tr height="89">
     <td align="left">
       <span style="display: inline-block; font-size: 35px; margin-left: 30px;">{{ target|get_best_name }}</span>
@@ -376,7 +360,7 @@ function loadStandardTable() {
   standardDiv.innerHTML = 'Loading ... this may take a while ...';
   $.ajax({
     url: '{% url "custom_code:get-target-standards" %}',
-    data: {'target_id': {{ target.id }}},
+    data: {'pipeline_id': {{ target.pipeline_id }}},
     dataType: 'json',
     success: function(response) {
       standardDiv.style.cursor = 'default';
@@ -657,6 +641,11 @@ function setupDashErrorMonitoring() {
   function monitorIframe($iframe) {
     var iframeSrc = $iframe.attr('src');
     if (!iframeSrc || !iframeSrc.includes('/django_plotly_dash/')) {
+      return;
+    }
+    // Skip monitoring for iframes inside the observations tab
+    if ($iframe.closest('#observations').length > 0) {
+      console.log('Skipping Dash monitoring for observations tab iframe');
       return;
     }
     

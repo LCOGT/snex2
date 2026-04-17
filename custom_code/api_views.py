@@ -8,7 +8,9 @@ from rest_framework.response import Response
 from rest_framework.mixins import CreateModelMixin
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_targets.models import Target, TargetName
+from tom_targets.api_views import TargetViewSet
 from custom_code.models import ReducedDatumExtra, Papers
+from custom_code.serializers import SNExTargetSerializer
 from .processors.data_processor import run_custom_data_processor
 import json
 
@@ -29,6 +31,9 @@ from rest_framework.authentication import SessionAuthentication, BasicAuthentica
 
 import logging
 logger = logging.getLogger(__name__)
+
+class SNExTargetViewSet(TargetViewSet):
+    serializer_class = SNExTargetSerializer
 
 class CustomDataProductViewSet(DataProductViewSet):
 
@@ -92,7 +97,7 @@ class CustomDataProductViewSet(DataProductViewSet):
         if response.status_code == status.HTTP_201_CREATED:
             dp = DataProduct.objects.get(pk=response.data['id'])
             try:
-                reduced_data = run_custom_data_processor(dp, extras)
+                reduced_data, extras = run_custom_data_processor(dp, extras)
                 if not settings.TARGET_PERMISSIONS_ONLY:
                     for group_name in settings.DEFAULT_GROUPS:#response.data['group']:
                         group = Group.objects.get(name=group_name)
@@ -103,9 +108,10 @@ class CustomDataProductViewSet(DataProductViewSet):
                 upload_extras['data_product_id'] = dp.id
                 reduced_datum_extra = ReducedDatumExtra(
                     target_id = targetid,
+                    data_product = dp,
                     data_type = dp_type,
                     key = 'upload_extras',
-                    value = json.dumps(upload_extras)
+                    value = upload_extras
                 )
                 reduced_datum_extra.save()
             except Exception:
@@ -128,7 +134,6 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
         Endpoint for submitting a new observation with syncing with SNEx1.
         """
         with transaction.atomic():
-            # db_session = _return_session()
             # Initialize the observation form, validate the form data, and submit to the observatory
             observation_ids = []
             try:
@@ -147,11 +152,7 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
             )
             observation_form = observation_form_class(observing_parameters)
             if observation_form.is_valid():
-                logger.info(
-                    f'Submitting observation to {facility} with parameters {observation_form.observation_payload}'
-                )
                 observation_ids = facility.submit_observation(observation_form.observation_payload())
-                logger.info(f'Successfully submitted to {facility}, received observation ids {observation_ids}')
             else:
                 logger.warning(f'Unable to submit observation due to errors: {observation_form.errors}')
                 raise ValidationError(observation_form.errors)
@@ -169,7 +170,6 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 assign_perm('tom_observations.view_observationgroup', self.request.user, observation_group)
                 assign_perm('tom_observations.change_observationgroup', self.request.user, observation_group)
                 assign_perm('tom_observations.delete_observationgroup', self.request.user, observation_group)
-                logger.info(f'Created ObservationGroup {observation_group}.')
 
                 cadence_parameters = json.loads(cadence)
                 if cadence_parameters is not None:
@@ -188,14 +188,12 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                                 cadence_parameters=cadence_parameters,
                                 active=True
                             )
-                            logger.info(f'Created DynamicCadence {dynamic_cadence}.')
                         else:
                             observation_group.delete()
                             raise ValidationError(cadence_form.errors)
 
             # Create the serializer data used to create the observation records
             serializer_data = []
-            logger.info(f'in api_views, observation ids?: {observation_ids}')
 
             for obsr_id in observation_ids:
                 obsr_data = {  # TODO: at present, submitted fields have to be added to this dict manually, maybe fix?

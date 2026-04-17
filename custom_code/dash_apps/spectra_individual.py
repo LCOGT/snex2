@@ -514,7 +514,7 @@ def display_output(selected_rows,
     
     # If the page just loaded, plot all the spectra
     if not graph_data['data']:
-        logger.info('Plotting dash spectrum for dataproduct %s', spectrum_id)
+        logger.info('Plotting dash spectrum for reduceddatum %s', spectrum_id)
         spectrum = ReducedDatum.objects.get(id=spectrum_id)
  
         if not spectrum:
