@@ -258,6 +258,44 @@ def get_metadata(authtoken={}, limit=None, **kwargs):
         frames += response['results']
     return frames[:limit]
 
+def get_unreduced_spectra():
+    # Get list of e00 frames that don't have reduced spectra associated with them (from ingest_banzai_reductions)
+    # import custom_code.ingest_banzai_reductions
+    # e00_rows = handle()
+    token = os.environ['LCO_APIKEY']
+    authtoken = {'Authorization': 'Token ' + token}
+    if len(e00_rows) > 0:
+        raw_frames = [row[0] for row in e00_rows]
+        time_since_exp = [row[1] for row in e00_rows]
+        # for basename in basenames:
+        #     raw_frames = get_metadata(
+        #         authtoken=authtoken,
+        #         OBSTYPE='SPECTRUM',
+        #         basename_exact = basename,
+        #         RLEVEL = '0',        
+        #         include_related_frames = False,
+        #         include_thumbnails = True,
+        #         public = False
+        #     ) 
+    
+
+    targetnames = []
+    propids = []
+    dateobs = []
+    paths = []
+    filenames = []
+ 
+    for frame in raw_frames:
+        targetnames.append(frame["target_name"])
+        propids.append(frame["proposal_id"])
+        dateobs.append(frame["DATE_OBS"])
+        filenames.append(frame['basename'])
+        paths.append(os.path.join('/snex2/data/floyds', frame["basename"].replace('e91-1d', 'e00'))) # Change this to be accurate
+    
+    thumb_urls = [s['thumbnails'][0]['url'] for s in raw_frames]
+    return [targetnames, propids, dateobs, paths, filenames, thumb_urls, time_since_exp]
+
+
 
 def get_banzai_spectra():
     '''
@@ -268,7 +306,7 @@ def get_banzai_spectra():
     authtoken = {'Authorization': 'Token ' + token}
 
     #banzai_frames = []
-    raw_frames = []
+    # raw_frames = []
     
     # # REMOVE TEST SECTION - only for small db
     # logger.info(f"targets in database:{Target.objects.all()}")
@@ -293,33 +331,37 @@ def get_banzai_spectra():
     
     # How to deal with all previous spectrum with no field 'approval'? Is there an extention for IRAF reduced spec that we can filter out? - ie if there is a manual reduction, don't show on the inbox
     
+    # Will only have a ReducedDatum object if there is a reduction from Banzai
     banzai_objects = ReducedDatumExtra.objects.filter(key='spec_extras', 
                                                         value=json.dumps({'approval': '0'}),
                                                         data_type='spectroscopy')
     # Get 2D thumbnail from archive
-    for spec in banzai_objects:
-        value = spec.value
-        basename = value["basename_exact"].replace('e91-1d', 'e00')
-        raw_frames += get_metadata(authtoken, OBSTYPE = "SPECTRUM", basename_exact = basename, public=False, include_thumbnails = True, include_related_frames = False)        
+    # for spec in banzai_objects:
+    #     # thumbnails = banzai_objects.data_product.thumbnail
+    #     value = spec.value
+    #     basename = value["basename_exact"].replace('e91-1d', 'e00')
+    #     raw_frames += get_metadata(authtoken, OBSTYPE = "SPECTRUM", basename_exact = basename, public=False, include_thumbnails = True, include_related_frames = False)        
 
+    thumbnails = []
     targetnames = []
     propids = []
     dateobs = []
     paths = []
     specids = []
     for s in banzai_objects:
+        thumbnails.append(s.data_product.thumbnail)
         value = s.value
         targetnames.append(value["target_name"])
         propids.append(value["proposal_id"])
         dateobs.append(value["DATE_OBS"])
-        paths.append(os.path.join('/snex2/data/floyds', value["filename"].replace('e91-1d', 'e00')))
+        paths.append(os.path.join('/snex2/data/floyds', value["filename"].replace('e91-1d', 'e00'))) # Change this to be accurate
         specids.append(s.pk)
 
-    thumb_urls = [s['thumbnails'][0]['url'] for s in raw_frames]
+    # thumb_urls = [s['thumbnails'][0]['url'] for s in raw_frames]
     
     logger.info(f'targetnames in get_banzai_spectra:{targetnames}')
         
-    return [targetnames, propids, dateobs, paths, specids, thumb_urls]
+    return [targetnames, propids, dateobs, paths, specids, thumbnails]
 
 
 

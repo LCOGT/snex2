@@ -1779,11 +1779,11 @@ class FloydsInboxView(TemplateView):
         if approval == '-1':
             dp = rd.data_product
             obs_record = dp.observation_record
-            obs_group = obs_record.observationgroup_set.first() # Check this!
+            obs_group = obs_record.observationgroup_set.first() # wrap in try-except
             #dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
 
             obs_record.parameters['delay_start'] = 0.0
-            user = User.objects.filter(username=obs_record.parameters.get('start_user')).first()
+            user = User.objects.get(username=obs_record.parameters.get('start_user', 'supernova_secure')) # check in settings.py adminusername
 
             # Calling modify sequence will re-enter the sequence with delay_start = 0 --> mimics markbad behaviour
             _modify_sequence(obs_group, user=user, data=obs_record.parameters)
@@ -1813,6 +1813,7 @@ class FloydsInboxView(TemplateView):
         
         targetids = []
         banzai_inbox_rows = []
+        unreduced_spectra = [] # list of e00 frames that have no banzai reductions
         logger.info(f"targetnames: {targetnames}")
         for i in range(len(targetnames)):
             current_dict = {}
@@ -1863,6 +1864,57 @@ class FloydsInboxView(TemplateView):
             logger.info(f"printing row and target: {row['targetid']}, {row['targetnames']}")
 
         context['banzai_inbox_rows'] = banzai_inbox_rows
+
+        [targetnames, propids, dateobs, paths, filenames, thumb_urls, times_since_exp] = get_unreduced_spectra()
+        
+        targetids = []
+        unreduced_spectra = [] # list of e00 frames that have no banzai reductions
+        logger.info(f"Targetnames with observations with no reductions yet: {targetnames}")
+        for i in range(len(targetnames)):
+            current_dict = {}
+            
+            current_dict['targetnames'] = targetnames[i]
+            logger.info(f"targetnames: {targetnames}")
+            # Add the SNEx2 targetid of the target to request
+
+                
+            targetquery = Target.objects.filter(name=targetnames[i])
+            logger.info(f"get_context_data targetquery, targetname: {targetquery} , {targetnames[i]}")
+            if not targetquery:
+                targetquery = TargetName.objects.filter(name=targetnames[i])
+                logger.info(f"targetquery in if statement: {targetquery}")
+                targetid = targetquery.first().target_id
+                logger.info(f"in if statement: Targetid: {targetid}")
+                targetids.append(targetid)
+            else:
+                logger.info(f"targetquery in else statement: {targetquery}")
+                targetid = targetquery.first().id
+                logger.info(f"in else statement Targetid: {targetid}")
+                targetids.append(targetid)
+
+            t = Target.objects.get(id=targetids[i])
+
+            current_dict['time_since_exp'] = times_since_exp[i]
+            current_dict['filename'] = filenames[i]
+            current_dict['targetid'] = targetids[i]
+            current_dict['propid'] = propids[i]
+            current_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
+            current_dict['path'] = paths[i]
+
+            image_data = requests.get(thumb_urls[i])
+            thumb = base64.b64encode(image_data.content).decode('utf-8')
+            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb)
+
+
+            unreduced_spectra.append(current_dict)
+            
+
+        for row in unreduced_spectra:
+            logger.info(f"printing row and target: {row['targetid']}, {row['targetnames']}")
+
+        context['unreduced_spectra'] = unreduced_spectra
+
+
         
         return context
 
