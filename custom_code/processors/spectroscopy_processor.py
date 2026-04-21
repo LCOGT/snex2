@@ -198,20 +198,21 @@ def process_fits_file(file, rd_extras):
                 logger.info(f"keyword:value : {keyword}:{value}")
                 break
 
-    dim = len(flux.shape)
-    if dim == 3:
-        flux = flux[0, 0, :]
-    elif flux.shape[0] == 2:
-        flux = flux[0, :]
-    flux = flux * flux_constant
-    header['CUNIT1'] = 'Angstrom'
-
     if not banzai_reduc:
+        dim = len(flux.shape)
+        if dim == 3:
+            flux = flux[0, 0, :]
+        elif flux.shape[0] == 2:
+            flux = flux[0, :]
+        flux = flux * flux_constant
+        header['CUNIT1'] = 'Angstrom'
+
+    
         wcs = WCS(header=header, naxis=1)
         spectrum = Spectrum1D(flux=flux, wcs=wcs)
     else:
         logger.info(f"Checking for nans in flux: {np.isnan(flux).sum()}")
-
+        flux_constant = SpecProcessor.DEFAULT_FLUX_CONSTANT
         # Convert flux and wavelength to arrays and skip NaNs
         flux_values = np.array(flux, dtype=float)
         wav_values = np.array(wav, dtype=float)
