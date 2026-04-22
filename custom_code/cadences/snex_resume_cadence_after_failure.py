@@ -6,7 +6,8 @@ from django.contrib.auth.models import Group
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm
 from tom_observations.facility import get_service_class
-from datetime import datetime, timedelta
+from datetime import timedelta
+from django.utils import timezone
 from dateutil.parser import parse
 from tom_observations.models import ObservationRecord
 
@@ -99,7 +100,19 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
 
         # Boilerplate to get necessary properties for future calls
         observation_payload = last_obs.parameters
-        observation_payload['scheduled_end'] = last_obs.scheduled_end
+        scheduled_end = last_obs.scheduled_end
+        if not scheduled_end:
+            logger.info(f'No observation end scheduled yet, falling back to end: {observation_payload[end_keyword]}')
+            scheduled_end = parse(observation_payload[end_keyword])
+
+        if isinstance(scheduled_end, str):
+            scheduled_end = parse(scheduled_end)
+
+        if timezone.is_naive(scheduled_end):
+            scheduled_end = timezone.make_aware(scheduled_end)
+
+        observation_payload['scheduled_end'] = scheduled_end.isoformat()
+        logger.info(f'Scheduled observation end: {scheduled_end}')
 
         # Cadence logic
         # If the observation hasn't finished, do nothing
@@ -111,8 +124,10 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
             if not cadence_frequency:
                 raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
             window_length = 24 if cadence_frequency > 24 else cadence_frequency
-            observation_payload[start_keyword] = datetime.now().isoformat()
-            observation_payload[end_keyword] = (parse(observation_payload[start_keyword]) + window_length).isoformat()
+            now = timezone.now()
+            observation_payload[start_keyword] = now.isoformat()
+            observation_payload[end_keyword] = (now + timedelta(hours=window_length)).isoformat()
+        
         else:  # If the observation succeeded
             # Advance window normally according to cadence parameters
             observation_payload = self.advance_window(
@@ -127,7 +142,7 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
         if form.is_valid():
             observation_ids = facility.submit_observation(form.observation_payload())
         else:
-            logger.error(msg=f'Unable to submit next cadenced observation: {form.errors}')
+            logger.error(msg=f'Unable to submit next cadenced observation: {form.errors} for ObservationRecord.id: {last_obs.id}')
             raise Exception(f'Unable to submit next cadenced observation: {form.errors}')
 
         # Creation of corresponding ObservationRecord objects for the observations
@@ -159,12 +174,24 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
         if not cadence_frequency:
             raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
         advance_window_hours = cadence_frequency
-        window_length = 24 if cadence_frequency > 24 else cadence_frequency
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window_length = min_window if cadence_frequency > min_window else cadence_frequency
 
-        new_start = parse(observation_payload['scheduled_end']) + timedelta(hours=advance_window_hours)
-        if new_start < datetime.now():  # Ensure that the new window isn't in the past
-            new_start = datetime.now()
-        new_end = new_start + window_length
+        scheduled_end = observation_payload['scheduled_end']
+
+        if isinstance(scheduled_end, str):
+            scheduled_end = parse(scheduled_end)
+
+        if timezone.is_naive(scheduled_end):
+            scheduled_end = timezone.make_aware(scheduled_end)
+
+        new_start = scheduled_end + timedelta(hours=advance_window_hours)
+        if new_start < timezone.now():  # Ensure that the new window isn't in the past
+            new_start = timezone.now()
+        new_end = new_start + timedelta(hours=window_length)
         observation_payload[start_keyword] = new_start.isoformat()
         observation_payload[end_keyword] = new_end.isoformat()
 

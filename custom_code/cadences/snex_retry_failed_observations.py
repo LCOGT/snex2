@@ -1,6 +1,8 @@
 from dateutil.parser import parse
 from datetime import timedelta
 from smtplib import SMTPException
+from django.conf import settings
+from django.utils import timezone
 
 from tom_observations.models import ObservationRecord
 from tom_observations.cadences.retry_failed_observations import RetryFailedObservationsStrategy
@@ -77,8 +79,8 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         form = facility.get_form(obs_type)(observation_payload)
         
         if not form.is_valid():
-            logger.error(f"Form validation failed: {form.errors}")
-            return
+            logger.error(msg=f'Unable to submit next observation: {form.errors} for ObservationRecord.id: {last_obs.id}')
+            raise Exception(f'Unable to submit next observation: {form.errors}')
 
         observation_ids = facility.submit_observation(form.observation_payload())
         new_observations = []
@@ -106,9 +108,14 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         cadence_frequency = self.dynamic_cadence.cadence_parameters.get('cadence_frequency')
         if not cadence_frequency:
             raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
-        window = 24 if cadence_frequency > 24 else cadence_frequency
-        new_start = parse(observation_payload[start_keyword]) + timedelta(hours=window)
-        new_end = parse(observation_payload[end_keyword]) + timedelta(hours=window)
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window = min_window if cadence_frequency > min_window else cadence_frequency
+        
+        new_start = timezone.now()
+        new_end = new_start + timedelta(hours=window)
         observation_payload[start_keyword] = new_start.isoformat()
         observation_payload[end_keyword] = new_end.isoformat()
 

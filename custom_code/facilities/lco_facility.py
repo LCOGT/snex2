@@ -3,10 +3,11 @@ from django import forms
 from crispy_forms.layout import Layout, Div, HTML, Column, Row
 from crispy_forms.bootstrap import PrependedText, AppendedText
 from astropy import units as u
-import datetime
+from datetime import timedelta
+from django.utils import timezone
 import copy
+from dateutil.parser import parse
 
-from tom_observations.facilities.ocs import make_request
 from tom_observations.facilities.lco import LCOPhotometricSequenceForm, LCOSpectroscopicSequenceForm, LCOFacility, LCOSettings
 from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
@@ -146,25 +147,31 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
 
         cleaned_data = super().clean()
         existing_reminder = self.data.get('reminder_date')
-        now = datetime.datetime.utcnow()
+        now = timezone.now()
         delay = 0
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window_length = min_window if cleaned_data['cadence_frequency'] > min_window else cleaned_data['cadence_frequency']
+
         if cleaned_data.get('delay_amount') is None:
             cleaned_data['delay_amount'] = 0
         if cleaned_data.get('delay_start') and cleaned_data['delay_amount'] > 0:
             delay = cleaned_data['delay_amount']
-            window = 24 if cleaned_data['cadence_frequency'] > 24 else cleaned_data['cadence_frequency']
-            cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days = delay), '%Y-%m-%dT%H:%M:%S')
-            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = window + delay*24), '%Y-%m-%dT%H:%M:%S')
+            cleaned_data['start'] = (now + timedelta(days = delay)).isoformat()
+            cleaned_data['end'] = (now + timedelta(hours = window_length + delay*24)).isoformat()
             cleaned_data['delay_start'] = False
             cleaned_data['delay_amount'] = 0
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
         else:
             reminder = cleaned_data.get('reminder')
-            calculated_date = now + datetime.timedelta(days=reminder + delay)
-            cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
-            
-        cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v) for k, v in cleaned_data.items()}
+            calculated_date = now + timedelta(days=reminder + delay)
+            cleaned_data['reminder_date'] = calculated_date.isoformat()
+            start = cleaned_data.get('start')
+            cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
+        cleaned_data = {k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v) for k, v in cleaned_data.items()}        
         return cleaned_data
 
     def layout(self):
@@ -394,26 +401,39 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         cleaned_data = super().clean()
         self.cleaned_data['instrument_type'] = '2M0-FLOYDS-SCICAM'  # SNEx only submits spectra to FLOYDS
         existing_reminder = self.data.get('reminder_date')
-        now = datetime.datetime.utcnow()
+        now = timezone.now()
+        if settings.OBS_WINDOW_MINIMUM:
+            min_window = settings.OBS_WINDOW_MINIMUM
+        else:
+            min_window = 24
+        window_length = min_window if cleaned_data['cadence_frequency'] > min_window else cleaned_data['cadence_frequency']
+
         delay = 0
         if cleaned_data.get('delay_amount') is None:
             cleaned_data['delay_amount'] = 0
         if cleaned_data.get('delay_start') and cleaned_data['delay_amount'] > 0:
             delay = cleaned_data['delay_amount']
-            window = 24 if cleaned_data['cadence_frequency'] > 24 else cleaned_data['cadence_frequency']
-            cleaned_data['start'] = datetime.datetime.strftime(now + datetime.timedelta(days = delay), '%Y-%m-%dT%H:%M:%S')
-            cleaned_data['end'] = datetime.datetime.strftime(now + datetime.timedelta(hours = window + delay*24), '%Y-%m-%dT%H:%M:%S')
+            cleaned_data['start'] = (now + timedelta(days = delay)).isoformat()
+            cleaned_data['end'] = (now + timedelta(hours = window_length + delay*24)).isoformat()
             cleaned_data['delay_start'] = False
             cleaned_data['delay_amount'] = 0
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
         else:
             reminder = cleaned_data.get('reminder')
-            calculated_date = now + datetime.timedelta(days=reminder + delay)
-            cleaned_data['reminder_date'] = calculated_date.strftime('%Y-%m-%dT%H:%M:%S')
-            
+            calculated_date = now + timedelta(days=reminder + delay)
+            cleaned_data['reminder_date'] = calculated_date.isoformat()
+
+            start = cleaned_data.get('start')
+            cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
         return cleaned_data
 
+    def _build_location(self):
+        location = super()._build_location()
+        site = self.cleaned_data.get('site', 'any') or 'any'
+        if site != 'any':
+            location['site'] = site
+        return location
     
     def layout(self):
         if settings.TARGET_PERMISSIONS_ONLY:
@@ -447,8 +467,16 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
     def observation_payload(self):
 
         payload = super().observation_payload()
-        
         request_group = payload['requests'][0]
+        for config in request_group.get('configurations', []):
+            target = config.get('target', {})
+            if target.get('epoch') is None:
+                target['epoch'] = 2000
+            if target.get('proper_motion_ra') is None:
+                target.pop('proper_motion_ra', None)
+            if target.get('proper_motion_dec') is None:
+                target.pop('proper_motion_dec', None)
+
         science_config = request_group['configurations'][0]
         
         science_config['type'] = 'SPECTRUM'
@@ -472,7 +500,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         configurations = [science_config, arc_config, flat_config]
         
         request_group['configurations'] = configurations
-        
         return payload
 
 class SnexLCOFacility(LCOFacility):
