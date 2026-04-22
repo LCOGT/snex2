@@ -3,7 +3,7 @@
   <h4>Known as: </h4>
 </dl>
 <dl class="row">
-  <ul style="list-style-type: none; margin-left: -30px; margin-bottom: -10px;">
+  <ul id="name-list" style="list-style-type: none; margin-left: -30px; margin-bottom: -10px;">
   {% for target_name in target|smart_name_list %}
     {% if 'AT ' in target_name or 'SN ' in target_name %}
     <li><a href="https://www.wis-tns.org/object/{{ target_name|slice:"3:" }}" style="color: black;" target="_blank">{{ target_name }}</a><br></li>
@@ -22,34 +22,44 @@
   </form>
   <script>
   function add_name() {
-    var targetid = {{ target.id }};
-    var newname = $('#thenewname').val();
-    $.ajax({
-      url: '/api/targets/' + targetid + '/',
-      type: "PATCH",
-      headers: {"X-CSRFToken": '{{ csrf_token }}'},
-      data: JSON.stringify({
-	"aliases": [
-	  {"name": newname}
-	]
-      }),
-      contentType: "application/JSON",
-      dataType: "json",
-      success: function() {
-	$.ajax({
-	  url: '{% url "sync_targetextra" %}',
-	  data: {"newdata": JSON.stringify({
-		  "targetid": targetid,
-		  "key": "name",
-		  "value": newname})
-	  },
-	  dataType: "json"
-	})
-      },
-      error: function(e) {
-        console.log(e);
+  var targetid = {{ target.id }};
+  var newname = $('#thenewname').val().trim();
+  if (newname === "") return;
+  $.ajax({
+    url: '/api/targets/' + targetid + '/',
+    type: "PATCH",
+    headers: {"X-CSRFToken": '{{ csrf_token }}'},
+    data: JSON.stringify({
+      "aliases": [{"name": newname}]
+    }),
+    contentType: "application/JSON",
+    dataType: "json",
+    success: function() {
+      $.ajax({
+        url: '{% url "sync_targetextra" %}',
+        data: {"newdata": JSON.stringify({
+          "targetid": targetid,
+          "key": "name",
+          "value": newname
+        })},
+        dataType: "json"
+      });
+      var newLi = document.createElement('li');
+      if (newname.startsWith('AT ') || newname.startsWith('SN ')) {
+        var slug = newname.slice(3);
+        newLi.innerHTML = '<a href="https://www.wis-tns.org/object/' + slug + '" style="color: black;" target="_blank">' + newname + '</a><br>';
+      } else if (newname.startsWith('ZTF')) {
+        newLi.innerHTML = '<a href="https://alerce.online/object/' + newname + '" style="color: black;" target="_blank">' + newname + '</a><br>';
+      } else {
+        newLi.innerHTML = '<a>' + newname + '</a><br>';
       }
-    })
+      document.getElementById('name-list').appendChild(newLi);
+      $('#thenewname').val('');
+    },
+    error: function(e) {
+      console.log(e);
+    }
+  });
   }
   </script>
 </dl> 

@@ -10,7 +10,7 @@ from tom_dataproducts.models import ReducedDatum
 from django.conf import settings
 from django.contrib.auth.models import User
 from tom_targets.models import Target
-from custom_code.models import ReducedDatumExtra, Papers
+from custom_code.models import DataProductExtra, Papers
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timedelta, timezone
@@ -304,7 +304,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
     target = Target.objects.get(id=target_id)
     user = User.objects.get(id=user_id)
     datumextras = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                       klass=ReducedDatumExtra.objects.filter(
+                                       klass=DataProductExtra.objects.filter(
                                            target=target,key='upload_extras',
                                            data_type='photometry'))
     
@@ -335,7 +335,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                                                    value__has_key='filter')))
     else:
         for de in datumextras:
-            de_value = json.loads(de.value)
+            de_value = de.value
 
             ### Test that this dataproduct meets the chosen criteria:
             if all([de_value.get('instrument', '') in selected_telescope,

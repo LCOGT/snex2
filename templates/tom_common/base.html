@@ -19,8 +19,7 @@
     <title>SNEX 2.0 | {% block title %}{% endblock %}</title>
   </head>
   <body>
-    <!--<nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">-->
-    <nav class="navbar navbar-expand-md fixed-top" style="align-self: center;padding: 10px;">
+    <nav class="navbar navbar-expand-md navbar-dark fixed-top" style="padding: 10px;">
       <a class="navbar-brand" href="/"><img src="{% static 'tom_common/img/logo-color-cropped.png' %}" class="img-fluid">SNEx 2.0</a>
       <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
@@ -29,72 +28,66 @@
       <div class="collapse navbar-collapse" id="navbarsExampleDefault">
         <ul class="navbar-nav mr-auto">
           <li class="nav-item {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
-            <a class="nav-link" href="/" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">Home <span class="sr-only">(current)</span></a>
+            <a class="nav-link" href="/">Home <span class="sr-only">(current)</span></a>
           </li>
           <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle" data-toggle="dropdown" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">Targets</a>
+            <a class="nav-link dropdown-toggle" data-toggle="dropdown">Targets</a>
             <ul class="dropdown-menu">
               <li class="nav-item {% if request.resolver_match.namespace == 'targets' %}active{% endif %}">
-                <a class="nav-link" href="{% url 'targets:list' %}"><font color="black">Targets</font></a>
+                <a class="nav-link" href="{% url 'targets:list' %}">Targets</a>
               </li>
               <li class="nav-item {% if request.resolver_match.namespace == 'targets' %}active{% endif %}">
-                <a class="nav-link" href="{% url 'targets:targetgrouping' %}"><font color="black">Observing Runs</font></a>
-		<a class="nav-link" href="{% url 'interesting-targets' %}"><font color="black">Interesting Targets</font></a>
-      </li>
-        <li class="nav-item {% if request.resolver_match.url_name == 'target_filter' %}active{% endif %}">
-          <a
-            class="nav-link text-dark"
-            href="{% url 'custom_code:target_filter' %}"
-          >
-            Target Filtering
-          </a>
-        </li>
-
+                <a class="nav-link" href="{% url 'targets:targetgrouping' %}">Observing Runs</a>
+		<a class="nav-link" href="{% url 'interesting-targets' %}">Interesting Targets</a>
+              </li>
+              <li class="nav-item {% if request.resolver_match.url_name == 'target_filter' %}active{% endif %}">
+                <a class="nav-link" href="{% url 'custom_code:target_filter' %}">Target Filtering</a>
+              </li>
             </ul>
           </li>
 
 	  <li class="nav-item dropdown">
-	    <a class="nav-link dropdown-toggle" data-toggle="dropdown" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">Alerts</a>
+	    <a class="nav-link dropdown-toggle" data-toggle="dropdown">Alerts</a>
 	    <ul class="dropdown-menu">
               <li class="nav-item {% if request.resolver_match.namespace == 'alerts' %}active{% endif %}">
-		<a class="nav-link" href="{% url 'alerts:list' %}"><Font color="black">Make a Query</font></a>
-		<a class="nav-link" href="{% url 'broker-targets' %}"><font color="black">Automatic Filters</font></a>
+		<a class="nav-link" href="{% url 'alerts:list' %}">Make a Query</a>
+		<a class="nav-link" href="{% url 'broker-targets' %}">Automatic Filters</a>
               </li>
 	    </ul>
 	  </li>
           <li class="nav-item {% if request.resolver_match.namespace == 'observations' %}active{% endif %}">
-              <a class="nav-link" href="{% url 'scheduling' %}" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">Scheduling</a>
+            <a class="nav-link" href="{% url 'scheduling' %}">Scheduling</a>
           </li>
           <li class="nav-item {% if request.resolver_match.namespace == 'dataproducts' %}active{% endif %}">
-              <a class="nav-link" href="{% url 'tom_dataproducts:list' %}" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">Data</a>
+            <a class="nav-link" href="{% url 'tom_dataproducts:list' %}">Data</a>
           </li>
 	  <li class="nav-item {% if request.resolver_match.namespace == 'floyds-inbox' %}active{% endif %}">
-	      <a class="nav-link" href="{% url 'floyds-inbox' %}" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">Floyds</a>
+	    <a class="nav-link" href="{% url 'floyds-inbox' %}">Floyds</a>
 	  </li>
           <li class="nav-item {% if 'user' in request.resolver_match.url_name %}active{% endif %}">
-            <a class="nav-link" href="{% url 'user-list' %}" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">Users</a>
+            <a class="nav-link" href="{% url 'user-list' %}">Users</a>
           </li>
 	  <li class="nav-item {% if request.resolver_match.namespace == 'custom_code' %}active{% endif %}">
-            <a class="nav-link" href="{% url 'custom_code:tns-targets' %}" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw;">TNS</a>
+            <a class="nav-link" href="{% url 'custom_code:tns-targets' %}">TNS</a>
           </li>
 	  {% if user|has_gw_permissions %}
 	  <li class="nav-item {% if request.resolver_match.namespace == 'nonlocalizedevents' %}active{% endif %}">
-	    <a class="nav-link" href="/nonlocalizedevents/" style="font-family: 'Montserrat', sans-serif; font-size:1.25vw; white-space: nowrap">GW Events</a>
+	    <a class="nav-link" href="/nonlocalizedevents/" style="white-space: nowrap;">GW Events</a>
 	  </li>
 	  {% endif %}
-	  <li class="nav-item" style="align-self: center;padding: 0px; width:10vw">
-	    <div class="target-search" style="width:10vw;">
-	      <form action="{% url 'redirect' %}" method="get" style="width:10vw">
-                <input name="name" type="text" placeholder="Search by name or coords" style="width:10vw; font-size:1.25vw">
-              </form>
-	    </div>
-	  </li>
-        </ul>
-        <ul class="navbar-nav mr-auto">
+	  <li class="nav-item">
+        <div class="target-search">
+            <form action="{% url 'redirect' %}" method="get">
+                <input name="name" type="text" placeholder="Search by name or coords">
+            </form>
+        </div>
+    </li>
+        <ul class="navbar-nav ml-auto">
         {% if user.is_authenticated %}
         {% include "tom_common/partials/navbar_timebars.html" %}
         {% endif %}
-        {% include "tom_common/partials/navbar_login.html" %}
+        {% include 'tom_common/partials/navbar_login.html' %}
+        </ul>
       </div>
     </nav>
 
@@ -104,7 +97,6 @@
         {% block content %}
         {% endblock %}
       </div>
-
     </main>
 
   {% block javascript %}
@@ -113,5 +105,3 @@
     {% endblock %}
   </body>
 </html>
-<!--script type="text/javascript">document.body.style.zoom="80%"
-</script-->

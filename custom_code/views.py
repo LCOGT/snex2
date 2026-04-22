@@ -1,10 +1,27 @@
-from django_filters.views import FilterView
-from django.shortcuts import redirect, render
+import base64
+import json
+import os
+from datetime import date, datetime, timedelta
+from io import BytesIO, StringIO
+import requests
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from astropy.time import Time
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import HTML, Column, Div, Layout, Row, Submit
+from django import forms
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.models import Group, User
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
-from django.db import transaction
-from django.db.models import Q, DateTimeField, FloatField, F, ExpressionWrapper, OuterRef, Subquery, Count, Exists, Count, Sum
+from django.core.cache import cache
+from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
+from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse
+from django.shortcuts import redirect, render, get_object_or_404
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.views.decorators.http import require_POST, require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView
@@ -12,64 +29,46 @@ from django.views.generic.detail import DetailView
 from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
 from django.template.context import RequestContext
+from django.template.loader import render_to_string
+from django.urls import reverse, reverse_lazy
+from django.utils import timezone
+from django.views.decorators.http import require_http_methods
+from django.views.generic.base import RedirectView, TemplateView
+from django.views.generic.detail import DetailView
+from django.views.generic.edit import FormView
+from django.views.generic.list import ListView
+from django.views import View
 from django_comments.models import Comment
-
-from tom_targets.models import TargetList, Target, TargetName
-from custom_code.models import TNSTarget, ScienceTags, TargetTags, ReducedDatumExtra, Papers, InterestedPersons, BrokerTarget
-from custom_code.filters import TNSTargetFilter, CustomTargetFilter, BrokerTargetFilter, BrokerTargetForm
-from custom_code.forms import SNEx2UserCreationForm, SNEx2RegistrationApprovalForm
+from django_filters.views import FilterView
+from django.utils.decorators import method_decorator
+from django.contrib.auth.decorators import login_required
 from custom_code.dash_apps import spectra_individual
 from guardian.mixins import PermissionListMixin
-from guardian.shortcuts import get_objects_for_user, assign_perm, remove_perm, get_users_with_perms
-from django.contrib.auth.models import User, Group
-from django.contrib.contenttypes.models import ContentType
-from django.contrib import messages
-from django.conf import settings
-from django.db.models.fields.json import KeyTextTransform
-
-from astropy.coordinates import SkyCoord
-from astropy import units as u
-from astropy.time import Time
-from astropy.io import fits
-from datetime import datetime, date, timedelta
-import json
-from io import StringIO, BytesIO
-import numpy as np
-import matplotlib.pyplot as plt
-import base64
-
-from tom_dataproducts.models import ReducedDatum, DataProduct
-from custom_code.templatetags import custom_code_tags
-from tom_observations.templatetags.observation_extras import observing_buttons
-from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
-from tom_targets.templatetags.targets_extras import target_groups
-from custom_code.hooks import _get_tns_params, _return_session, get_standards_from_snex1, get_banzai_spectra#, get_unreduced_spectra,
-from custom_code.thumbnails import make_thumb
-
-from custom_code.forms import CustomTargetCreateForm, CustomDataProductUploadForm, PapersForm, ReferenceStatusForm, PhotSchedulingForm, SpecSchedulingForm
-from tom_targets.views import TargetCreateView
-from tom_common.hooks import run_hook
-
+from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
+from guardian.models import GroupObjectPermission
 from tom_common.views import UserUpdateView
-from tom_dataproducts.views import DataProductUploadView, DataProductDeleteView
 from tom_dataproducts.exceptions import InvalidFileFormatException
-
-from custom_code.processors.data_processor import run_custom_data_processor
-from guardian.shortcuts import assign_perm
-
-from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
+from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
+from tom_dataproducts.views import DataProductDeleteView, DataProductUploadView
+from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
+from tom_observations.templatetags.observation_extras import observing_buttons
 from tom_observations.views import ObservationCreateView, ObservationListView
-from tom_registration.registration_flows.approval_required.views import UserApprovalView, ApprovalRegistrationView
-import base64
-import requests
-from django import forms
-from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit, Layout, Div, HTML, Row, Column
-from django.utils import timezone
-import os
-from custom_code.scheduling import change_obs_from_scheduling, save_comments, cancel_observation
-
+from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
+from tom_targets.models import Target, TargetList, TargetName
+from tom_targets.templatetags.targets_extras import target_groups
+from tom_targets.views import TargetCreateView
+from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
+from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
+from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_banzai_spectra
+from custom_code.models import BrokerTarget, InterestedPersons, Papers, DataProductExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.management.commands.ingest_ztf_data import get_ztf_data
+from custom_code.processors.data_processor import run_custom_data_processor
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments, _modify_sequence
+from custom_code.templatetags import custom_code_tags
+from custom_code.thumbnails import make_thumb
 import logging
+
 logger = logging.getLogger(__name__)
 
 ## debug
@@ -142,7 +141,7 @@ class TargetListView(PermissionListMixin, FilterView):
     strict = False
     model = Target
     filterset_class = CustomTargetFilter
-    permission_required = 'tom_targets.view_target'
+    permission_required = 'custom_code.view_target'
     ordering = ['-id']
 
     def get_context_data(self, *args, **kwargs):
@@ -223,24 +222,40 @@ def target_redirect_view(request):
             return(redirect('/create-target/?name={name}'.format(name=search_entry)))
 
 
+@require_http_methods(["POST"])
 def add_tag_view(request):
-    new_tag = request.GET.get('new_tag', None)
+    new_tag = request.POST.get('new_tag', '').strip()
+    if not new_tag:
+        return HttpResponse(json.dumps({'success': 0, 'error': 'No tag provided'}),
+                            content_type='application/json', status=400)
     username = request.user.username
-    tag, _ = ScienceTags.objects.get_or_create(tag=new_tag, userid=username)
-    response_data = {'success': 1}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+    tag, created = ScienceTags.objects.get_or_create(tag=new_tag, userid=username)
+    logger.info(f'Tag: {tag}, created: {created}')
 
+    if created:
+        cache.delete('all_science_tags')
 
+    return HttpResponse(json.dumps({'success': 1}), content_type='application/json')
+
+@require_http_methods(["POST"])
 def save_target_tag_view(request):
-    tag_names = json.loads(request.GET.get('tags', None))
-    target_id = request.GET.get('targetid', None)
-    TargetTags.objects.all().filter(target_id=target_id).delete()
-    for i in range(len(tag_names)):
-        tag_id = ScienceTags.objects.filter(tag=tag_names[i]).first().id
-        target_tag, _ = TargetTags.objects.get_or_create(tag_id=tag_id, target_id=target_id)
-    response_data = {'success': 1}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+    tag_names = json.loads(request.POST.get('tags', '[]'))
+    target_id = request.POST.get('targetid', None)
 
+    if not target_id:
+        return HttpResponse(json.dumps({'success': 0, 'error': 'No target id'}),
+                            content_type='application/json', status=400)
+
+    TargetTags.objects.filter(target_id=target_id).delete()
+
+    for tag_name in tag_names:
+        science_tag = ScienceTags.objects.filter(tag=tag_name).first()
+        if science_tag:
+            TargetTags.objects.get_or_create(tag_id=science_tag.id, target_id=target_id)
+        else:
+            logger.warning(f'Tag not found in DB, skipping: {tag_name}')
+
+    return HttpResponse(json.dumps({'success': 1}), content_type='application/json')
 
 def targetlist_collapse_view(request):
 
@@ -283,51 +298,6 @@ class CustomTargetCreateView(TargetCreateView):
         context = super(CustomTargetCreateView, self).get_context_data(**kwargs)
         context['type_choices'] = Target.TARGET_TYPES
         return context
-
-    def post(self, request):
-        super(CustomTargetCreateView, self).post(request)
-        return redirect(self.get_success_url())
-    
-    def form_valid(self, form):
-
-        # First, create the targets in both dbs and nothing else
-        with transaction.atomic():
-            if form.is_valid():
-
-                ### Check that there are no targets with the same name or coordinates
-                target_cone_search = Target.objects.filter(ra__gte=form.cleaned_data['ra']-4.0/3600.0, ra__lte=form.cleaned_data['ra']+4.0/3600.0, dec__gte=form.cleaned_data['dec']-4.0/3600.0, dec__lte=form.cleaned_data['dec']+4.0/3600.0)
-                if target_cone_search.count() > 0.0:
-                    logger.info('There exists another target near the coordinates {} {}'.format(form.cleaned_data['ra'], form.cleaned_data['dec']))
-                    form.errors['ra'] = ['Target found with same or similar coordinates']
-                    form.errors['dec'] = ['Target found with same or similar coordinates']
-                    return super().form_invalid(form)
-
-                name_lookup = form.cleaned_data['name'].replace('SN', '').replace('AT', '').replace(' ', '')
-                target_name_search = Target.objects.filter(Q(name__icontains=name_lookup) | Q(aliases__name__icontains=name_lookup)).distinct()
-
-                if target_name_search.count() > 0.0:
-                    logger.info('Target with name {} already exists'.format(form.cleaned_data['name']))
-                    form.errors['name'] = ['Target found with same name']
-                    return super().form_invalid(form)
-
-
-                groups = [g.name for g in form.cleaned_data['groups']]
-                self.object = form.save(form)
-
-            else:
-                logger.info('Submitting target failed with errors {}'.format(form.errors))
-                return super().form_invalid(form)
-
-
-        return redirect(self.get_success_url())
-
-    def get_initial(self):
-        return {
-            'type': self.get_target_type(),
-            'groups': Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
-            **dict(self.request.GET.items())
-        }
-    
 
 class CustomUserUpdateView(UserUpdateView):
 
@@ -402,7 +372,7 @@ class CustomDataProductUploadView(DataProductUploadView):
             try:
 
                 ### ------------------------------------------------------------------
-                ### Create row in ReducedDatumExtras with the extra info
+                ### Create row in DataProductExtras with the extra info
                 rdextra_value = {'data_product_id': int(dp.id)}
                 if dp_type == 'photometry':
                     extras = {'reduction_type': 'manual'}
@@ -433,13 +403,14 @@ class CustomDataProductUploadView(DataProductUploadView):
                 rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
                 reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value)
 
-                reduced_datum_extra = ReducedDatumExtra(
+                data_product_extra = DataProductExtra(
                     target = target,
+                    data_product = dp,
                     data_type = dp_type,
                     key = 'upload_extras',
-                    value = json.dumps(rdextra_value)
+                    value = rdextra_value
                 )
-                reduced_datum_extra.save()
+                data_product_extra.save()
 
                 ### -------------------------------------------------------------------
                 
@@ -462,9 +433,7 @@ class CustomDataProductUploadView(DataProductUploadView):
                     'File format invalid for file {0} -- error was {1}'.format(str(dp), iffe)
                 )
             except Exception as e:
-                ReducedDatum.objects.filter(data_product=dp).delete()
                 dp.delete()
-                ReducedDatumExtra.objects.filter(target=target, value=json.dumps(rdextra_value)).delete()
                 messages.error(self.request, 'There was a problem processing your file: {0}'.format(str(dp)))
                 print(e)
         if successful_uploads:
@@ -474,20 +443,6 @@ class CustomDataProductUploadView(DataProductUploadView):
             )
 
         return redirect(form.cleaned_data.get('referrer', '/'))
-
-
-class CustomDataProductDeleteView(DataProductDeleteView):
-
-    def form_valid(self, request, *args, **kwargs):
-        # Delete the ReducedDatumExtra row
-        reduced_datum_query = ReducedDatumExtra.objects.filter(key='upload_extras')
-        for row in reduced_datum_query:
-            value = json.loads(row.value) 
-            if value.get('data_product_id', '') == int(self.get_object().id):
-                row.delete()
-                break
-        return self.delete(request, *args, **kwargs)
-
 
 def save_dataproduct_groups_view(request):
     group_names = json.loads(request.GET.get('groups', None))
@@ -533,6 +488,29 @@ class PaperCreateView(FormView):
         
         return HttpResponseRedirect('/targets/{}/'.format(target.id))
 
+@method_decorator(login_required, name='dispatch')
+class PaperUpdateView(FormView):
+    form_class = PapersForm
+    template_name = 'custom_code/papers_form.html'
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        self.paper = get_object_or_404(Papers, pk=self.kwargs['pk'])
+        kwargs['instance'] = self.paper
+        return kwargs
+
+    def form_valid(self, form):
+        form.save()
+        return HttpResponseRedirect('/targets/{}/'.format(self.paper.target.id))
+
+@method_decorator(login_required, name='dispatch')
+class PaperDeleteView(View):
+    def post(self, request, pk):
+        paper = get_object_or_404(Papers, pk=pk)
+        target_id = paper.target.id
+        paper.delete()
+        return HttpResponseRedirect('/targets/{}/'.format(target_id))
+    
 def delete_comment_view(request):
     if request.method == "POST":
         comment_id = request.POST.get("comment_id")
@@ -572,18 +550,14 @@ def observation_sequence_cancel_view(request):
     
     obsr_id = int(float(request.GET['pk']))
     obsr = ObservationRecord.objects.get(id=obsr_id)
-    # obsr is the template observation record, so need to get the most recent one from this sequence to cancel
-    last_obs = obsr.observationgroup_set.first().observation_records.all().order_by('-id').first()
+    obs_group = obsr.observationgroup_set.first()
+    
+    try:
+        canceled = cancel_observation(obs_group)
 
-    if last_obs:
-        canceled = cancel_observation(last_obs)
-        
         if not canceled:
             response_data = {'failure': 'Error'}
             return HttpResponse(json.dumps(response_data), content_type='application/json')
-    
-    try:
-        obs_group = obsr.observationgroup_set.first()
         # Get comments, if any
         comments = json.loads(request.GET['comment'])
         if comments.get('cancel', ''):
@@ -598,7 +572,8 @@ def observation_sequence_cancel_view(request):
 def scheduling_view(request):
     obs_id = request.GET.get('observation_id')
     obs = ObservationRecord.objects.get(id=obs_id)
-    
+    obs_group = obs.observationgroup_set.first()
+
     if obs.parameters.get('observation_type', '') == 'IMAGING':
         form = PhotSchedulingForm(request.GET, initial=obs.parameters)
     else:
@@ -619,7 +594,7 @@ def scheduling_view(request):
             form.cleaned_data['comment'] = cancel_reason
             response_data = change_obs_from_scheduling(
                 action=action,
-                obs_id=form.cleaned_data['observation_id'],
+                obs_group=obs_group,
                 user=request.user,
                 data=form.cleaned_data
             )
@@ -637,24 +612,23 @@ def change_target_known_to_view(request):
     group = Group.objects.get(name=group_name)
     target_name = request.GET.get('target')
     target = Target.objects.get(name=target_name)
-    
-    if target not in get_objects_for_user(request.user, 'tom_targets.change_target'):
+    if target not in get_objects_for_user(request.user, 'custom_code.change_target'):
         response_data = {'failure': 'Error'}
         return HttpResponse(json.dumps(response_data), content_type='application/json')
 
     if action == 'add':
         # Add permissions for this group
-        assign_perm('tom_targets.view_target', group, target)
-        assign_perm('tom_targets.change_target', group, target)
-        assign_perm('tom_targets.delete_target', group, target)
+        assign_perm('custom_code.view_target', group, target)
+        assign_perm('custom_code.change_target', group, target)
+        assign_perm('custom_code.delete_target', group, target)
         response_data = {'success': 'Added'}
         return HttpResponse(json.dumps(response_data), content_type='application/json')
 
     elif action == 'remove':
         # Remove permissions for this group
-        remove_perm('tom_targets.view_target', group, target)
-        remove_perm('tom_targets.change_target', group, target)
-        remove_perm('tom_targets.delete_target', group, target)
+        remove_perm('custom_code.view_target', group, target)
+        remove_perm('custom_code.change_target', group, target)
+        remove_perm('custom_code.delete_target', group, target)
         response_data = {'success': 'Removed'}
         return HttpResponse(json.dumps(response_data), content_type='application/json')
         
@@ -794,7 +768,7 @@ def remove_target_from_group_view(request):
     
     list_type = request.GET.get('list')
 
-    if request.user.has_perm('tom_targets.view_target', target) and target in targetlist.targets.all():
+    if request.user.has_perm('custom_code.view_target', target) and target in targetlist.targets.all():
         targetlist.targets.remove(target)
 
         if list_type == 'observing_run': 
@@ -902,7 +876,6 @@ class ObservationListExtrasView(ListView):
 
 
 class CustomObservationCreateView(ObservationCreateView):
-
     def get_form(self):
         """
         Gets an instance of the form appropriate for the request.
@@ -916,11 +889,34 @@ class CustomObservationCreateView(ObservationCreateView):
             'submit-lco-obs', kwargs={'facility': 'LCO'}
         )
         return form
-    
     def form_valid(self, form):
         form.cleaned_data['start_user'] = self.request.user.username
-        return super().form_valid(form)
-    
+        response = super().form_valid(form)
+        if not settings.TARGET_PERMISSIONS_ONLY:
+            target = self.get_target()
+            groups = form.cleaned_data.get('groups')
+            if not groups:
+                target_ct = ContentType.objects.get_for_model(Target)
+                target_group_ids = GroupObjectPermission.objects.filter(
+                    object_pk=target.id,
+                    content_type=target_ct
+                ).values_list('group_id', flat=True).distinct()
+                groups = Group.objects.filter(id__in=target_group_ids)
+            if groups:
+                latest_record = ObservationRecord.objects.filter(
+                    target=target
+                ).order_by('-created').first()
+                if latest_record:
+                    obsgroup = latest_record.observationgroup_set.first()
+                    if obsgroup:
+                        for group in groups:
+                            assign_perm('tom_observations.view_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.change_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.delete_observationgroup', group, obsgroup)
+                            assign_perm('tom_observations.view_observationrecord', group, latest_record)
+                            assign_perm('tom_observations.change_observationrecord', group, latest_record)
+                            assign_perm('tom_observations.delete_observationrecord', group, latest_record)
+        return response
 
 def make_tns_request_view(request):
     target_id = request.GET.get('target_id')
@@ -928,7 +924,41 @@ def make_tns_request_view(request):
 
     tns_params = _get_tns_params(target)
     if tns_params.get('success', ''):
+        nondet_value = None
+        det_value = None
+
+        if tns_params['nondetection'] is None:
+            logger.warning('No TNS last nondetection found for target %s', target)
+        else:
+            nondet_parts = tns_params['nondetection'].split()
+            nondet_value = json.dumps({
+                'date': nondet_parts[0],
+                'jd': nondet_parts[1].replace('(', '').replace(')', ''),
+                'mag': tns_params['nondet_mag'],
+                'filt': tns_params['nondet_filt'],
+                'source': 'TNS'
+            })
+
+        if tns_params['detection'] is None:
+            logger.warning('No TNS detection found for target %s', target)
+        else:
+            det_parts = tns_params['detection'].split()
+            det_value = json.dumps({
+                'date': det_parts[0],
+                'jd': det_parts[1].replace('(', '').replace(')', ''),
+                'mag': tns_params['det_mag'],
+                'filt': tns_params['det_filt'],
+                'source': 'TNS'
+            })
+
+        if nondet_value or det_value:
+            logger.info('Saving TNS params for target %s', target)
+            Target.objects.filter(pk=target.pk).update(
+                last_nondetection=nondet_value,
+                first_detection=det_value
+            )
         return HttpResponse(json.dumps(tns_params), content_type='application/json')
+    
     else:
         logger.info('TNS parameters not ingested for target {}'.format(target_id))
         response_data = {'failure': 'TNS parameters not ingested for this target'}
@@ -990,9 +1020,8 @@ def load_thumbnail_view(request):
     
     if target_id:
         target = Target.objects.get(id=target_id)
-        # Create a context dict with request, as expected by test_display_thumbnail
         context_dict = {'request': request}
-        context = custom_code_tags.test_display_thumbnail(context_dict, target)
+        context = custom_code_tags.display_thumbnails(context_dict, target)
         html = render_to_string(
             template_name='custom_code/thumbnail.html',
             context=context,
@@ -1226,61 +1255,32 @@ def load_single_spectrum_view(request):
             target = Target.objects.get(id=target_id)
             spectrum = ReducedDatum.objects.get(id=spectrum_id)
             
-            # Get spectrum extras
-            user = User.objects.get(username=request.user)
-            
             try:
                 z = target.redshift
             except:
                 z = 0
             
             # Get spectrum extras - query directly since user already has target access
-            # (ReducedDatumExtra doesn't need separate object-level permissions)
-            snex_id_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', target=target, 
-                key='snex_id', value__icontains='"snex2_id": {}'.format(spectrum.id)
-            ).first()
-            
-            spec_extras = {}
-            if snex_id_row:
-                snex1_id = json.loads(snex_id_row.value)['snex_id']
-                spec_extras_row = ReducedDatumExtra.objects.filter(
-                    data_type='spectroscopy', key='spec_extras', 
-                    value__icontains='"snex_id": {}'.format(snex1_id)
-                ).first()
-                if spec_extras_row:
-                    spec_extras = json.loads(spec_extras_row.value)
-                    if spec_extras.get('instrument', '') == 'en06':
-                        spec_extras['site'] = '(OGG 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    elif spec_extras.get('instrument', '') == 'en12':
-                        spec_extras['site'] = '(COJ 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    
-                    content_type_id = ContentType.objects.get(model='reduceddatum').id
-                    comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                    comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                    spec_extras['comments'] = comments
+            # (DataProductExtra doesn't need separate object-level permissions)
+            spec_extras_row = DataProductExtra.objects.filter(
+                data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
 
-                    spec_extras['comments_list'] = comment_list
-            elif spectrum.data_product_id:
-                spec_extras_row = ReducedDatumExtra.objects.filter(
-                    data_type='spectroscopy', key='upload_extras',
-                    value__icontains='"data_product_id": {}'.format(spectrum.data_product_id)
-                ).first()
-                if spec_extras_row:
-                    spec_extras = json.loads(spec_extras_row.value)
-                    if spec_extras.get('instrument', '') == 'en06':
-                        spec_extras['site'] = '(OGG 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    elif spec_extras.get('instrument', '') == 'en12':
-                        spec_extras['site'] = '(COJ 2m)'
-                        spec_extras['instrument'] += ' (FLOYDS)'
-                    
-                    content_type_id = ContentType.objects.get(model='reduceddatum').id
-                    comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                    comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                    spec_extras['comments'] = comment_list
+            spec_extras = {}
+
+            if spec_extras_row:
+                spec_extras = spec_extras_row.value
+                if spec_extras.get('instrument', '') == 'en06':
+                    spec_extras['site'] = '(OGG 2m)'
+                    spec_extras['instrument'] += ' (FLOYDS)'
+                elif spec_extras.get('instrument', '') == 'en12':
+                    spec_extras['site'] = '(COJ 2m)'
+                    spec_extras['instrument'] += ' (FLOYDS)'
+
+                content_type_id = ContentType.objects.get(model='reduceddatum').id
+                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+                spec_extras['comments'] = comments
+                spec_extras['comments_list'] = comment_list
             
             # Calculate min/max flux
             datum = spectrum.value
@@ -1505,15 +1505,31 @@ class BrokerTargetView(FilterView):
 
 
 def query_swift_observations_view(request):
-   target_id = request.GET['target_id']
-   t = Target.objects.get(id=target_id)
-   ra, dec = t.ra, t.dec
+    target_id = request.GET['target_id']
+    t = Target.objects.get(id=target_id)
+    ra, dec = t.ra, t.dec
 
-   ### NOT CURRENTLY FUNCTIONAL
-   content_response = {'success': 'No'}
+    ### NOT CURRENTLY FUNCTIONAL
+    content_response = {'success': 'No'}
 
-   return HttpResponse(json.dumps(content_response), content_type='application/json')
+    return HttpResponse(json.dumps(content_response), content_type='application/json')
 
+def query_ztf_observations_view(request):
+    target_id = request.GET['target_id']
+    target = Target.objects.get(id=target_id)
+    logger.info(f'Querying ZTF data for {target.name}')
+    
+    ztf_name = next((name for name in target.names if 'ZTF' in name), None)
+    if not ztf_name:
+        return HttpResponse(json.dumps({'error': f'No ZTF name found for {target.name}'}), content_type='application/json')
+    
+    try:
+        get_ztf_data(target)
+        count = ReducedDatum.objects.filter(target=target, data_type='photometry', source_name=ztf_name).count()
+        return HttpResponse(json.dumps({'success': f'Ingested {count} ZTF photometry points for {ztf_name}'}), content_type='application/json')
+    except Exception as e:
+        logger.warning(f'ZTF ingestion failed for {target.name}: {e}')
+        return HttpResponse(json.dumps({'error': f'Ingestion failed: {e}'}), content_type='application/json')
 
 def make_thumbnail_view(request):
 
@@ -1553,7 +1569,63 @@ def download_fits_view(request):
     data = requests.get(results[0]["url"]).content
 
     return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
-    
+
+@require_GET
+def get_frame_ids_view(request):
+    target_id = request.GET.get('target_id')
+    target = Target.objects.get(id = target_id)
+    token = settings.FACILITIES['LCO']['api_key']
+    url = settings.FACILITIES['LCO']['archive_url']
+    frame_ids = []
+    for target_name in list(set(target.names)):
+        params = {
+            'reduction_level': 91,
+            'target_name_exact': target_name,
+            'configuration_type': 'EXPOSE',
+            'pagination_style': 'cursor',
+            'limit': 100
+        }
+        next_url = url
+        while next_url:
+            resp = requests.get(
+                next_url,
+                headers = {'Authorization': f'Token {token}'},
+                params = params if next_url == url else None
+            ).json()
+            for r in resp['results']:
+                frame_ids.append(r['id'])
+            next_url = resp['next']
+
+    unique_ids = list(set(frame_ids))
+    logger.info(f'Total unique frame IDs for {target.name}: {len(unique_ids)}')
+    return JsonResponse({'frame_ids': unique_ids, 'count': len(unique_ids)})
+
+@require_POST
+def download_zip_view(request):
+    frame_ids = json.loads(request.POST.get('frame_ids', '[]'))
+    target_name = request.POST.get('target_name', 'target')
+    token = settings.FACILITIES['LCO']['api_key']
+    url = settings.FACILITIES['LCO']['archive_url']
+    try:
+        zip_resp = requests.post(
+            f"{url}zip/",
+            headers = {"Authorization": f"Token {token}"},
+            json = {"frame_ids": frame_ids, "uncompress": False},
+            stream = True,
+            timeout = 300
+        )
+        zip_resp.raise_for_status()
+    except Exception as e:
+        return HttpResponseBadRequest(f"Failed to fetch zip from archive: {e}")
+    response = StreamingHttpResponse(
+        zip_resp.iter_content(chunk_size=8192),
+        content_type="application/zip",
+    )
+    response["Content-Disposition"] = f'attachment; filename="snex_{target_name}_images.zip"'
+    if 'Content-Length' in zip_resp.headers:
+        response['Content-Length'] = zip_resp.headers['Content-Length']
+    return response
+
 class InterestingTargetsView(ListView):
 
     template_name = 'custom_code/interesting_targets.html'
@@ -1612,6 +1684,8 @@ def sync_targetextra_view(request):
         if newdata['value'] == '':
             newz = None
         target.redshift = newz
+    elif newdata['key'] == 'name':
+        TargetName.objects.get_or_create(target = target, name = newdata['value'])
     logger.info(f"Updated target {newdata['key']} to {newdata['value']}")
     target.save()
     
@@ -1655,118 +1729,73 @@ class SNEx2SpectroscopyTNSSharePassthrough(RedirectView):
         return reverse('tns:report-tns', kwargs={'pk': target_id, 'datum_pk': datum_id})
 
 
+
 class FloydsInboxView(TemplateView):
 
     template_name = 'custom_code/floyds_inbox.html'
-
-    # def get_context_data(self, **kwargs):
-
-    #     context = super().get_context_data(**kwargs)
-
-    #     targetids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
-
-    #     inbox_rows = []
-    #     for i in range(len(targetids)):
-    #         current_dict = {}
-    #         t = Target.objects.get(id=targetids[i])
-    #         current_dict['targetid'] = targetids[i]
-    #         current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
-    #         current_dict['propid'] = propids[i]
-    #         current_dict['dateobs'] = dateobs[i]
-    #         current_dict['path'] = paths[i]
-    #         current_dict['filename'] = filenames[i]
-            
-    #         with open(imgpaths[i], 'rb') as imagefile:
-    #             b64_image = base64.b64encode(imagefile.read())
-    #             thumb = b64_image.decode('utf-8')
-    #         current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
-            
-    #         inbox_rows.append(current_dict)
-
-    #     context['inbox_rows'] = inbox_rows
-
-    #     return context
 
     def update_spec_approval(self, request):
         # get the target_id and path and approval status from the button
         target_id = request.GET.get('target_id')
         specid    = request.GET.get('specid')
-        path      = request.GET.get('path')
+        path      = request.GET.get('path') # this goes to the raw spectrum on supernova machine
         approval  = request.GET.get('approval')
 
         if not all([target_id, path, approval]):
             return JsonResponse({'error': 'Missing required parameters.'}, status=400)
 
-        approved = (approval == 'True') # string to boolean
+        approved = (approval == '1') # string to boolean
 
-        basename   = path.split('/')[-1].replace('.fits', '')
-        parts      = basename.split('-')
-        # basename format: site-instrument-dateobs-id-rlevel
-        # e.g.             ogg2m001-en06-20241015-0012-e91_1d
-        instrument = parts[1] if len(parts) > 1 else ''
-        dateobs    = parts[2] if len(parts) > 2 else ''
-
-
-        try:
-            target = Target.objects.get(id=target_id)
-        except Target.DoesNotExist:
-            raise Http404
-
+        raw_basename   = path.split('/')[-1].replace('.fits', '')
+ 
+        target = Target.objects.get(id=target_id)
+       
         if specid:
-            # Clean path: look up the ReducedDatum directly by its PK
+            # Clean path: look up the ReducedDatum directly by its pk
             try:
                 rd = ReducedDatum.objects.get(id=specid, target=target)
             except ReducedDatum.DoesNotExist:
                 return JsonResponse({'error': f'No ReducedDatum found for specid {specid}'}, status=404)
-        else:
-            # Fallback: match by archive basename stored in source_location
-            rd = ReducedDatum.objects.filter(
-                target=target,
-                data_type='spectroscopy',
-                source_location=basename,
-            ).first()
-            if rd is None:
-                return JsonResponse(
-                    {'error': f'No ReducedDatum found for basename {basename}'},
-                    status=404
-                )
             
-        approval_value = json.dumps({'approval': str(approved)})
+        if approval == '1':
+            dp = rd.data_product
+            #obs_record = dp.observation_record
+            #obs_group = obs_record.observationgroup_set.first() # Check this!
+            # update RDE with approval = '1'
+            rde, created = DataProductExtra.objects.update_or_create(
+                reduced_datum=rd,
+                data_type='spectroscopy',
+                key='spec_extras',
+                defaults={'approval': approval}
+            )
 
-        rde, created = ReducedDatumExtra.objects.update_or_create(
-            reduced_datum=rd,
-            data_type='spectroscopy',
-            key='approval',
-            defaults={'value': approval_value}
-        )
+            logger.info(
+                f"{'Created' if created else 'Updated'} approval={approved} "
+                f"for ReducedDatum id={rd.id} (target={target.name})"
+            )
+            # Need to add logic to let approval ==1 or 0 to appear on target pages -- this will be on other scripts
 
-        logger.info(
-            f"{'Created' if created else 'Updated'} approval={approved} "
-            f"for ReducedDatum id={rd.id} (target={target.name})"
-        )
-        # Need to add logic to let approval ==True and 'None' to appear on target pages
-        if not approved:
-            raw_basename = basename.replace('e91_1d', 'e00')
-            raw_filename = raw_basename + '.fits'
+        # for rejections:
+        #  get obs id, query ObservationRecord.objects.get(observation_id = requestID) - check which id you need to match to cadence strategy. Dataproduct takes observationrecord as parameter, frameid, filename. - if stop and restart w/ same parameters (delay start=0). pull obs record, get cadence info, call modify_sequence from scheduling.py. data comes from schedulingPhot form - use obs.parameters as data, make sure delay-start =0
+        if approval == '-1':
+            dp = rd.data_product
+            obs_record = dp.observation_record
+            obs_group = obs_record.observationgroup_set.first() # wrap in try-except
+            #dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
 
-            with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-                speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
-                
-                raw_spectrum = db_session.query(speclcoraw).filter(
-                    speclcoraw.targetid == target_id,
-                    speclcoraw.filename == raw_filename
-                ).first()
+            obs_record.parameters['delay_start'] = 0.0
+            user = User.objects.get(username=obs_record.parameters.get('start_user', 'supernova_secure')) # check in settings.py adminusername
 
-                if raw_spectrum:
-                    db_session.query(speclcoraw).filter(
-                        speclcoraw.targetid == target_id,
-                        speclcoraw.filename == raw_filename
-                    ).update({'markedasbad': 1})
-                    db_session.commit()
-                    logger.info(f"Marked {raw_filename} as bad for target id={target_id}")
-                else:
-                    logger.warning(f"Could not find {raw_filename} for target id={target_id} in speclcoraw")
-                    
+            # Calling modify sequence will re-enter the sequence with delay_start = 0 --> mimics markbad behaviour
+            _modify_sequence(obs_group, user=user, data=obs_record.parameters)
+            
+            rde, created = DataProductExtra.objects.update_or_create(
+                reduced_datum=rd,
+                data_type='spectroscopy',
+                key='spec_extras',
+                defaults={'approval': approval}
+            )
+
 
         return JsonResponse({
                     'status':    'ok',
@@ -1785,6 +1814,7 @@ class FloydsInboxView(TemplateView):
         
         targetids = []
         banzai_inbox_rows = []
+        unreduced_spectra = [] # list of e00 frames that have no banzai reductions
         logger.info(f"targetnames: {targetnames}")
         for i in range(len(targetnames)):
             current_dict = {}
@@ -1815,7 +1845,7 @@ class FloydsInboxView(TemplateView):
             current_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
             #current_dict['dateobs'] = dateobs[i].split('T')[0]
             current_dict['path'] = paths[i]
-            #need rowid in spec table for banzai reduction
+            
             dash_context = {
                 'spectrum_id': specids[i],
                 'target_id': targetids[i],
@@ -1829,12 +1859,63 @@ class FloydsInboxView(TemplateView):
             banzai_inbox_rows.append(current_dict)
             
             #load_single_spectrum_view --> !!!
-            # need to pass in spec_id to banzai_inbox_rows -- is this the same as snex2_id?
+            # need to pass in spec_id to banzai_inbox_rows this is the reduced datum id
 
         for row in banzai_inbox_rows:
             logger.info(f"printing row and target: {row['targetid']}, {row['targetnames']}")
 
         context['banzai_inbox_rows'] = banzai_inbox_rows
+
+        [targetnames, propids, dateobs, paths, filenames, thumb_urls, times_since_exp] = get_unreduced_spectra()
+        
+        targetids = []
+        unreduced_spectra = [] # list of e00 frames that have no banzai reductions
+        logger.info(f"Targetnames with observations with no reductions yet: {targetnames}")
+        for i in range(len(targetnames)):
+            current_dict = {}
+            
+            current_dict['targetnames'] = targetnames[i]
+            logger.info(f"targetnames: {targetnames}")
+            # Add the SNEx2 targetid of the target to request
+
+                
+            targetquery = Target.objects.filter(name=targetnames[i])
+            logger.info(f"get_context_data targetquery, targetname: {targetquery} , {targetnames[i]}")
+            if not targetquery:
+                targetquery = TargetName.objects.filter(name=targetnames[i])
+                logger.info(f"targetquery in if statement: {targetquery}")
+                targetid = targetquery.first().target_id
+                logger.info(f"in if statement: Targetid: {targetid}")
+                targetids.append(targetid)
+            else:
+                logger.info(f"targetquery in else statement: {targetquery}")
+                targetid = targetquery.first().id
+                logger.info(f"in else statement Targetid: {targetid}")
+                targetids.append(targetid)
+
+            t = Target.objects.get(id=targetids[i])
+
+            current_dict['time_since_exp'] = times_since_exp[i]
+            current_dict['filename'] = filenames[i]
+            current_dict['targetid'] = targetids[i]
+            current_dict['propid'] = propids[i]
+            current_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
+            current_dict['path'] = paths[i]
+
+            image_data = requests.get(thumb_urls[i])
+            thumb = base64.b64encode(image_data.content).decode('utf-8')
+            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb)
+
+
+            unreduced_spectra.append(current_dict)
+            
+
+        for row in unreduced_spectra:
+            logger.info(f"printing row and target: {row['targetid']}, {row['targetnames']}")
+
+        context['unreduced_spectra'] = unreduced_spectra
+
+
         
         return context
 
@@ -1879,9 +1960,9 @@ def download_photometry_view(request, targetid):
 
 def get_target_standards_view(request):
 
-    target_id = request.GET.get('target_id', '')
+    pipeline_id = request.GET.get('pipeline_id', '')
 
-    standard_info = get_standards_from_snex1(target_id)
+    standard_info = get_standards_from_snex1(pipeline_id)
     
     html = render_to_string(
         template_name='custom_code/partials/get_target_standards.html',
@@ -2137,7 +2218,7 @@ class TargetFilteringView(FormView):
         if self.request.user.is_authenticated:
             qs = get_objects_for_user(
                 self.request.user,
-                'tom_targets.view_target',
+                'custom_code.view_target',
                 accept_global_perms=True
             ).annotate(
                 phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),

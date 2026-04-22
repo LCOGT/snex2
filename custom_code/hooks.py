@@ -6,7 +6,6 @@ from tom_dataproducts.models import ReducedDatum
 from custom_code.models import ReducedDatumExtra
 import json
 from tom_targets.models import Target, TargetName
-from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from requests_oauthlib import OAuth1
 from astropy.coordinates import SkyCoord
 from astropy import units as u
@@ -17,6 +16,8 @@ from django.conf import settings
 import urllib
 from custom_code.scheduling import save_comments
 #import custom_code.ingest_banzai_spec
+from custom_code.utils import _return_session, _load_table, _get_session
+from custom_code.models import DataProductExtra 
 
 from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
@@ -25,6 +26,7 @@ from contextlib import contextmanager
 from collections import OrderedDict
 
 
+from guardian.shortcuts import get_groups_with_perms
 
 logger = logging.getLogger(__name__)
 
@@ -40,24 +42,6 @@ priority_dict = {'NORMAL': 'normal',
                     'TIME_CRITICAL': 'time_critical',
                     'RAPID_RESPONSE': 'immediate_too'}
 
-@contextmanager
-def _get_session(db_address):
-    Base = automap_base()
-    engine = create_engine(db_address, poolclass=pool.NullPool)
-    Base.metadata.bind = engine
-
-    db_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    session = db_session()
-
-    try:
-        yield session
-        session.commit()
-    except:
-        session.rollback()
-        raise
-    finally:
-        session.close()
-
 def save_observation_comment(observation, previous_state):
     logger.info('Observation change state hook: %s from %s to %s', observation, previous_state, observation.status)
     if previous_state == '':
@@ -66,27 +50,6 @@ def save_observation_comment(observation, previous_state):
         if comment and obs_group:
             user = User.objects.filter(username=observation.parameters.get('start_user')).first()
             save_comments(comment, obs_group.id, user)
-
-def _return_session(db_address=settings.SNEX1_DB_URL):
-    ### This one is not run within a with loop, must be closed manually
-    Base = automap_base()
-    engine = create_engine(db_address, poolclass=pool.NullPool)
-    Base.metadata.bind = engine
-
-    db_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    session = db_session()
-
-    return session
-
-
-def _load_table(tablename, db_address):
-    Base = automap_base()
-    engine = create_engine(db_address, poolclass=pool.NullPool)
-    Base.prepare(engine, reflect=True)
-
-    table = getattr(Base.classes, tablename)
-    return(table)
- 
 
 def _str_to_timestamp(datestring):
     """
@@ -181,85 +144,8 @@ def _get_tns_params(target):
         response_data = {'failure': 'Parameters not ingested'}
 
     return response_data
-
-
-def target_post_save(target, created, group_names=None, wrapped_session=None):
- 
-    logger.info('Target post save hook: %s created: %s', target, created)
-    
-    if not created:
         
-        ### Add the last nondetection and first detection from TNS, if it exists
-        tns_results = _get_tns_params(target)
-        if tns_results.get('success', ''):
-            if tns_results['nondetection'] == None:
-                print('No TNS last nondetection found for target',target)
-            else:
-                nondet_date = tns_results['nondetection'].split()[0]
-                nondet_jd = tns_results['nondetection'].split()[1].replace('(', '').replace(')', '')
-                nondet_value = json.dumps({
-                    'date': nondet_date,
-                    'jd': nondet_jd,
-                    'mag': tns_results['nondet_mag'],
-                    'filt': tns_results['nondet_filt'],
-                    'source': 'TNS'
-                })
-
-                logger.info(f'Saving target {target} after TNS nondetection ingestion')
-                Target.objects.filter(pk=target.pk).update(last_nondetection=nondet_value)
-            if tns_results['detection'] == None:
-                print('No TNS detection found for target',target)
-            else:
-                det_date = tns_results['detection'].split()[0]
-                det_jd = tns_results['detection'].split()[1].replace('(', '').replace(')', '')
-                det_value = json.dumps({
-                    'date': det_date,
-                    'jd': det_jd,
-                    'mag': tns_results['det_mag'],
-                    'filt': tns_results['det_filt'],
-                    'source': 'TNS'
-                })
-                
-                logger.info(f'Target {target} first detection saved from TNS.')
-                Target.objects.filter(pk=target.pk).update(first_detection=det_value)
-
-        ### Ingest ZTF data, if a ZTF target
-        # get_ztf_data(target) #want to test first with new url before implementing
-
-    else:
-
-        if wrapped_session:
-            db_session = wrapped_session
-    
-        else:
-            db_session = _return_session(settings.SNEX1_DB_URL)
-    
-        Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-        Targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
-        # Insert into SNEx 1 db
-        if group_names:
-            groupidcode = 0
-            for group_name in group_names:
-                groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
-        else:
-            groupidcode = 32769 #Default in SNEx1
-        snex1_target = Targets(id=target.id, ra0=target.ra, dec0=target.dec, groupidcode=groupidcode, lastmodified=target.modified, datecreated=target.created)
-        db_session.add(snex1_target)
-        db_session.add(Targetnames(targetid=target.id, name=target.name, datecreated=target.created, lastmodified=target.modified))
-    
-        if not wrapped_session:
-            try:
-                db_session.commit()
-            except:
-                db_session.rollback()
-            finally:
-                db_session.close()
-        
-        else:
-            db_session.flush()
-
-def find_images_from_snex1(targetid, username, allimages=False):
+def find_images_from_snex1(pipeline_id, username, allimages=False):
     '''
     Hook to find filenames of images in SNEx1,
     given a target ID
@@ -267,27 +153,32 @@ def find_images_from_snex1(targetid, username, allimages=False):
     
     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
         # now queries the snex1 database directly as .execute instead of .query, so don't need to load in Photlco as a table
-        # Photlco = _load_table('photlco', db_address=settings.SNEX1_DB_URL)
-        Users = _load_table('users', db_address=settings.SNEX1_DB_URL)
+        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
         Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
         
-        this_user = db_session.query(Users).filter(Users.name==username).first()
-        this_target = db_session.query(Targets).filter(Targets.id==targetid).first()
+        this_user = User.objects.get(username = username)
+        user_groups = this_user.groups.all()
+        if user_groups:
+            groupidcode = 0
+            for group_name in user_groups:
+                groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
+        this_target = db_session.query(Targets).filter(Targets.id==pipeline_id).first()
 
         if not allimages:
             query = db_session.execute(
                             text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
                             "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
-                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+                            {'tid':pipeline_id, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
         else:
             query = db_session.execute(
                             text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
                             "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
-                            {'tid':targetid, 'target_perm': this_target.groupidcode, 'user_groupid': this_user.groupidcode}).all()
+                            {'tid':pipeline_id, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
         
         filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
         if len(filepaths)==0:
-            raise IndexError(f"No images found for target {targetid}") 
+            logger.info(f'No images found for target {pipeline_id}')
+            return [], [], [], [], [], [], [], [], []
         filenames = [q.filename.replace('.fits', '') for q in query]
         dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
         teles = [q.telescope[:3] for q in query]
@@ -297,7 +188,7 @@ def find_images_from_snex1(targetid, username, allimages=False):
         psfxs = [int(round(q.psfx)) for q in query]
         psfys = [int(round(q.psfy)) for q in query]
 
-    logger.info('Found file names for target {}'.format(targetid))
+    logger.info('Found file names for target {}'.format(pipeline_id))
 
     return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
 
@@ -347,14 +238,15 @@ def find_images_from_snex1(targetid, username, allimages=False):
 #             not_(targetnames.name.contains('test_'))
 #             )
 #         )
-#         targetids = [s.targetid for s in unreduced_spectra]
+#         pipeline_ids = [s.targetid for s in unreduced_spectra]
 #         propids = [s.propid for s in unreduced_spectra]
 #         dateobs = [s.dateobs for s in unreduced_spectra]
 #         paths = [s.filepath for s in unreduced_spectra]
 #         filenames = [s.filename for s in unreduced_spectra]
 #         imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in unreduced_spectra]
 
-#     return targetids, propids, dateobs, paths, filenames, imgpaths
+#     return pipeline_ids, propids, dateobs, paths, filenames, imgpaths
+
 
 
 def get_metadata(authtoken={}, limit=None, **kwargs):
@@ -373,91 +265,114 @@ def get_metadata(authtoken={}, limit=None, **kwargs):
         frames += response['results']
     return frames[:limit]
 
+def get_unreduced_spectra():
+    # Get list of e00 frames that don't have reduced spectra associated with them (from ingest_banzai_reductions)
+    # import custom_code.ingest_banzai_reductions
+    # e00_rows = handle()
+    token = os.environ['LCO_APIKEY']
+    authtoken = {'Authorization': 'Token ' + token}
+    if len(e00_rows) > 0:
+        raw_frames = [row[0] for row in e00_rows]
+        time_since_exp = [row[1] for row in e00_rows]
+        # for basename in basenames:
+        #     raw_frames = get_metadata(
+        #         authtoken=authtoken,
+        #         OBSTYPE='SPECTRUM',
+        #         basename_exact = basename,
+        #         RLEVEL = '0',        
+        #         include_related_frames = False,
+        #         include_thumbnails = True,
+        #         public = False
+        #     ) 
+    
 
-def get_banzai_spectra(allspec=True):
+    targetnames = []
+    propids = []
+    dateobs = []
+    paths = []
+    filenames = []
+ 
+    for frame in raw_frames:
+        targetnames.append(frame["target_name"])
+        propids.append(frame["proposal_id"])
+        dateobs.append(frame["DATE_OBS"])
+        filenames.append(frame['basename'])
+        paths.append(os.path.join('/snex2/data/floyds', frame["basename"].replace('e91-1d', 'e00'))) # Change this to be accurate
+    
+    thumb_urls = [s['thumbnails'][0]['url'] for s in raw_frames]
+    return [targetnames, propids, dateobs, paths, filenames, thumb_urls, time_since_exp]
+
+
+
+def get_banzai_spectra():
     '''
     Hook to find banzai-reduced spectra for FLOYDS inbox
     '''
+    
     token = os.environ['LCO_APIKEY']
-
     authtoken = {'Authorization': 'Token ' + token}
-    # Query archive for data with reduction level 'banzai' - e91
-    #with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-    banzai_frames = []
-    raw_frames = []
+
+    #banzai_frames = []
+    # raw_frames = []
     
+    # # REMOVE TEST SECTION - only for small db
+    # logger.info(f"targets in database:{Target.objects.all()}")
+    # for target in Target.objects.all():
+    #     logger.info(f"Target name in get_banzai_spectra:{target.name}")
+    #     banzai_frames += get_metadata(authtoken, limit = 10, OBSTYPE = "SPECTRUM", basename = 'e91-1d', public=False, include_related_frames = False, target_name = target.name, start="2026-01-01", end="2026-03-22")        # all FTN spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
 
-    # REMOVE TEST SECTION - only for small db
-    logger.info(f"targets in database:{Target.objects.all()}")
-    for target in Target.objects.all():
-        logger.info(f"Target name in get_banzai_spectra:{target.name}")
-        banzai_frames += get_metadata(authtoken, limit = 10, OBSTYPE = "SPECTRUM", basename = 'e91-1d', public=False, include_related_frames = False, target_name = target.name, start="2026-01-01", end="2026-03-22")        # all FTN spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
-
-        raw_frames += get_metadata(authtoken, limit = 10, OBSTYPE = "SPECTRUM", basename = 'e00', public=False, include_thumbnails = True, include_related_frames = False, target_name = target.name, start="2026-01-01", end="2026-03-22")        # all FTN spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
-    # END TEST SECTION
-
-    #import ingest_spectrum_from_frame
-
-    # Need logic: if file is in speccolraw, but same reduced file not in spec need to ingest the spectrum on a cron job. Do spectra automatically get put in spec when reduced by banzai? How to deal with all previous spectrum with no field 'approval'?
+    #     raw_frames += get_metadata(authtoken, limit = 10, OBSTYPE = "SPECTRUM", basename = 'e00', public=False, include_thumbnails = True, include_related_frames = False, target_name = target.name, start="2026-01-01", end="2026-03-22")        # all FTN spectra SNEx is a co-I, checks basename for Banzai-floyds 1ds
+    # # END TEST SECTION
+    # # TEST only
+    # targetnames = [s["target_name"] for s in banzai_frames]
+    # propids = [s["proposal_id"] for s in banzai_frames]
+    # dateobs = [s["DATE_OBS"] for s in banzai_frames]
+    # #filenames = [s["filename"] for s in banzai_frames]
+    # paths = [os.path.join('/snex2/data/floyds', s["filename"].replace('e91-1d', 'e00')) for s in banzai_frames]
+    
     # What is the extension of IRAF reduced spec? 
-    
-    # Need to then ingest all unreduced spectra -- different script, see ingest_banzai_spec.py
 
-    # Flag: Approval: True, False, None
-    # inbox should show all approval = 'None' objects
-    # Approval = False should do the same thing as 'markbad'
+    # Flag: Approval: -1,0,1
+    # inbox should show all approval = '0' objects
+    # Approval = -1 should do the same thing as 'markbad'
     
-
-    # banzai_objects = ReducedDatumExtra.objects.filter(key='approval', 
-    #                                                     value=json.dumps({'approval': 'None'}),
-    #                                                     data_type='spectroscopy')
-    # # Get 2D thumbnail from archive
+    # How to deal with all previous spectrum with no field 'approval'? Is there an extention for IRAF reduced spec that we can filter out? - ie if there is a manual reduction, don't show on the inbox
+    
+    # Will only have a ReducedDatum object if there is a reduction from Banzai
+    banzai_objects = DataProductExtra.objects.filter(key='spec_extras', 
+                                                        value=json.dumps({'approval': '0'}),
+                                                        data_type='spectroscopy')
+    # Get 2D thumbnail from archive
     # for spec in banzai_objects:
-    #     value = json.loads(spec.value)
+    #     # thumbnails = banzai_objects.data_product.thumbnail
+    #     value = spec.value
     #     basename = value["basename_exact"].replace('e91-1d', 'e00')
     #     raw_frames += get_metadata(authtoken, OBSTYPE = "SPECTRUM", basename_exact = basename, public=False, include_thumbnails = True, include_related_frames = False)        
 
+    thumbnails = []
+    targetnames = []
+    propids = []
+    dateobs = []
+    paths = []
+    specids = []
+    for s in banzai_objects:
+        thumbnails.append(s.data_product.thumbnail)
+        value = s.value
+        targetnames.append(value["target_name"])
+        propids.append(value["proposal_id"])
+        dateobs.append(value["DATE_OBS"])
+        paths.append(os.path.join('/snex2/data/floyds', value["filename"].replace('e91-1d', 'e00'))) # Change this to be accurate
+        specids.append(s.pk)
 
-    # logger.info(f"length of banzai_frames: {len(banzai_frames)}")
-    # if len(banzai_frames) != 0:
-    #     logger.info(f"banzai frames print: {banzai_frames}")
-
-    # logger.info(f"length of raw_frames: {len(raw_frames)}")
-    # if len(raw_frames) != 0:
-    #     logger.info(f"raw frames print: {raw_frames}")
-
-    
-    
-    thumb_urls = [s['thumbnails'][0]['url'] for s in raw_frames]
-
-    # targetnames = []
-    # propids = []
-    # dateobs = []
-    # paths = []
-    # specids = []
-    # for s in banzai_objects:
-    #     value = json.loads(s.value)
-    #     targetnames.append(value["target_name"])
-    #     propids.append(value["proposal_id"])
-    #     dateobs.append(value["DATE_OBS"])
-    #     paths.append(os.path.join('/snex2/data/floyds', value["filename"].replace('e91-1d', 'e00')))
-    #     specids.append(value["snex_id"])
-    
-    # TEST only
-    targetnames = [s["target_name"] for s in banzai_frames]
-    propids = [s["proposal_id"] for s in banzai_frames]
-    dateobs = [s["DATE_OBS"] for s in banzai_frames]
-    #filenames = [s["filename"] for s in banzai_frames]
-    paths = [os.path.join('/snex2/data/floyds', s["filename"].replace('e91-1d', 'e00')) for s in banzai_frames]
+    # thumb_urls = [s['thumbnails'][0]['url'] for s in raw_frames]
     
     logger.info(f'targetnames in get_banzai_spectra:{targetnames}')
         
-
-    return [targetnames, propids, dateobs, paths, specids, thumb_urls]
-
+    return [targetnames, propids, dateobs, paths, specids, thumbnails]
 
 
-def get_standards_from_snex1(target_id):
+
+def get_standards_from_snex1(pipeline_id):
     
     with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
         
@@ -482,7 +397,7 @@ def get_standards_from_snex1(target_id):
                 obj.dayobs==std.dayobs,
                 obj.quality==127,
                 std.quality==127,
-                obj.targetid==target_id
+                obj.targetid==pipeline_id
             )
         )
 
