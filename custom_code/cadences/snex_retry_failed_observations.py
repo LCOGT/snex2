@@ -95,7 +95,7 @@ class BaseRetryStrategy(SnexCadencePermissionMixin, RetryFailedObservationsStrat
         if last_obs.status == 'CANCELED':
             self.dynamic_cadence.active = False
             self.dynamic_cadence.save()
-            logger.info(f'Observation {last_obs} was canceled; stopping dynamic cadence')
+            logger.info(f'Observation {last_obs} was canceled, stopping dynamic cadence')
             return
 
         if not self.retry_observation(first_obs, last_obs, facility):
