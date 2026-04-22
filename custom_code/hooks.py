@@ -12,7 +12,7 @@ from django.conf import settings
 import urllib
 from custom_code.scheduling import save_comments
 from custom_code.utils import _return_session, _load_table, _get_session
-from custom_code.models import ReducedDatumExtra 
+from custom_code.models import DataProductExtra 
 
 from sqlalchemy import create_engine, pool, and_, or_, not_, text
 from sqlalchemy.orm import sessionmaker, aliased
@@ -332,7 +332,7 @@ def get_banzai_spectra():
     # How to deal with all previous spectrum with no field 'approval'? Is there an extention for IRAF reduced spec that we can filter out? - ie if there is a manual reduction, don't show on the inbox
     
     # Will only have a ReducedDatum object if there is a reduction from Banzai
-    banzai_objects = ReducedDatumExtra.objects.filter(key='spec_extras', 
+    banzai_objects = DataProductExtra.objects.filter(key='spec_extras', 
                                                         value=json.dumps({'approval': '0'}),
                                                         data_type='spectroscopy')
     # Get 2D thumbnail from archive

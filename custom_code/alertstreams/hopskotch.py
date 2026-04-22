@@ -153,7 +153,7 @@ def alert_handler(alert: JSONBlob, metadata: Metadata):
             rd.save()                                
             rds.append(rd)
 
-    ### Save any ReducedDatumExtra rows, if needed
+    ### Save any DataProductExtra rows, if needed
 
     #logger.info('Data saved successfully')
 

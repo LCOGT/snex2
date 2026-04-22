@@ -37,32 +37,32 @@ class SpecProcessor(SpectroscopyProcessor):
         "reducer": ["reducer", "reducedby"],
     }
 
-    def process_data(self, data_product, extras, rd_extras):
+    def process_data(self, data_product, extras, dp_extras):
         mimetype = mimetypes.guess_type(data_product.data.name)[0]
         if mimetype in self.FITS_MIMETYPES:
-            spectrum, obs_date, rd_extras = self._process_spectrum_from_fits(data_product, rd_extras)
+            spectrum, obs_date, dp_extras = self._process_spectrum_from_fits(data_product, dp_extras)
         elif mimetype in self.PLAINTEXT_MIMETYPES:
-            spectrum, obs_date, rd_extras = self._process_spectrum_from_plaintext(data_product, rd_extras)
+            spectrum, obs_date, dp_extras = self._process_spectrum_from_plaintext(data_product, dp_extras)
         else:
             try:
-                spectrum, obs_date, rd_extras = self._process_spectrum_from_plaintext(data_product, rd_extras)
+                spectrum, obs_date, dp_extras = self._process_spectrum_from_plaintext(data_product, dp_extras)
             except:
                 raise InvalidFileFormatException('Unsupported file type')
         serialized_spectrum = SpectrumSerializer().serialize(spectrum)
 
-        return [(obs_date, serialized_spectrum)], rd_extras
+        return [(obs_date, serialized_spectrum)], dp_extras
 
 
-    def _process_spectrum_from_fits(self, data_product, rd_extras):
+    def _process_spectrum_from_fits(self, data_product, dp_extras):
 
         data_aws = default_storage.open(data_product.data.name, 'rb')
 
-        spectrum, rd_extras, date_obs = process_fits_file(data_aws.open(), rd_extras)
+        spectrum, dp_extras, date_obs = process_fits_file(data_aws.open(), dp_extras)
 
-        return spectrum, date_obs, rd_extras
+        return spectrum, date_obs, dp_extras
 
 
-    def _process_spectrum_from_plaintext(self, data_product, rd_extras):
+    def _process_spectrum_from_plaintext(self, data_product, dp_extras):
         """
         Processes the data from a spectrum from a plaintext file into a Spectrum1D object, which can then be serialized
         and stored as a ReducedDatum for further processing or display. File is read using astropy as specified in
@@ -101,7 +101,7 @@ class SpecProcessor(SpectroscopyProcessor):
             raise InvalidFileFormatException('Empty table or invalid file type')
         facility_name = None
 
-        date_obs = rd_extras.get('date_obs', None)
+        date_obs = dp_extras.get('date_obs', None)
 
         comments = data.meta.get('comments', [])
 
@@ -125,8 +125,8 @@ class SpecProcessor(SpectroscopyProcessor):
                 facility_name = value
 
             keyword = comment.split(delim)[0].lower()
-            if keyword in rd_extras.keys() and not rd_extras.get(keyword, ''):
-                rd_extras[keyword] = value
+            if keyword in dp_extras.keys() and not dp_extras.get(keyword, ''):
+                dp_extras[keyword] = value
 
         facility = get_service_class(facility_name)() if facility_name else None
         wavelength_units = facility.get_wavelength_units() if facility else self.DEFAULT_WAVELENGTH_UNITS
@@ -135,12 +135,12 @@ class SpecProcessor(SpectroscopyProcessor):
         spectral_axis = np.array(data['wavelength']) * wavelength_units
         flux = np.array(data['flux']) * flux_constant
         spectrum = Spectrum1D(flux=flux, spectral_axis=spectral_axis)
-        rd_extras.pop('date_obs')
+        dp_extras.pop('date_obs')
 
-        return spectrum, Time(date_obs).to_datetime(), rd_extras
+        return spectrum, Time(date_obs).to_datetime(), dp_extras
 
 
-def process_fits_file(file, rd_extras):
+def process_fits_file(file, dp_extras):
     hlist = fits.open(file)
     banzai_reduc = 'SPECTRUM' in hlist
     if banzai_reduc:
@@ -155,36 +155,36 @@ def process_fits_file(file, rd_extras):
         facility = get_service_class(facility_class)()
         if facility.is_fits_facility(header):
             flux_constant = facility.get_flux_constant()
-            if rd_extras.get('date_obs'):
-                #logger.info(f"rd_extras date obs: {rd_extras['date_obs']}")
-                date_obs = datetime.fromisoformat(str(rd_extras['date_obs']).replace(' ', 'T'))
+            if dp_extras.get('date_obs'):
+                #logger.info(f"dp_extras date obs: {dp_extras['date_obs']}")
+                date_obs = datetime.fromisoformat(str(dp_extras['date_obs']).replace(' ', 'T'))
             else:
                 date_obs = facility.get_date_obs_from_fits_header(header)
             break
     else:
         flux_constant = self.DEFAULT_FLUX_CONSTANT
-        if rd_extras.get('date_obs'):
-            #logger.info(f"rd_extras date obs in else statement: {rd_extras['date_obs']}")
-            date_obs = datetime.fromisoformat(str(rd_extras['date_obs']).replace(' ', 'T'))
+        if dp_extras.get('date_obs'):
+            #logger.info(f"dp_extras date obs in else statement: {dp_extras['date_obs']}")
+            date_obs = datetime.fromisoformat(str(dp_extras['date_obs']).replace(' ', 'T'))
         else:
             date_obs = Time(datetime.now()).to_datetime
     
-    logger.info(f"rd_extra key and values: {rd_extras.keys()} :{rd_extras.values()}")
+    logger.info(f"dp_extra key and values: {dp_extras.keys()} :{dp_extras.values()}")
     for keyword, possibles in self.field_keywords.items():
         logger.info(f"keyword: {keyword}")
 
-        # Check if the keyword or any possible is already in rd_extras with a non-empty value; if so, skip this keyword
-        if (keyword in rd_extras and rd_extras.get(keyword, '')) or any(possible in rd_extras and rd_extras.get(possible, '') for possible in possibles):
+        # Check if the keyword or any possible is already in dp_extras with a non-empty value; if so, skip this keyword
+        if (keyword in dp_extras and dp_extras.get(keyword, '')) or any(possible in dp_extras and dp_extras.get(possible, '') for possible in possibles):
             continue
 
-        # If none are in rd_extras, check the header for each possible
+        # If none are in dp_extras, check the header for each possible
         for possible in possibles:
-            logger.info(f"possible {possible} is not in rd_extras")
+            logger.info(f"possible {possible} is not in dp_extras")
             if possible in header:
                 value = header[possible]
                 logger.info(f"")
-                if keyword == "date_obs" and not rd_extras.get('date_obs'):
-                    logger.info(f"line 112 date obs not in keyword or rd_extras")
+                if keyword == "date_obs" and not dp_extras.get('date_obs'):
+                    logger.info(f"line 112 date obs not in keyword or dp_extras")
                     k_lower = possible.lower()
                     if "mjd" in k_lower:
                         logger.info(f"going through mjd in header")
@@ -194,7 +194,7 @@ def process_fits_file(file, rd_extras):
                     else:
                         value = datetime.fromisoformat(str(value).replace(' ', 'T'))
                     date_obs = value
-                rd_extras[keyword] = value
+                dp_extras[keyword] = value
                 logger.info(f"keyword:value : {keyword}:{value}")
                 break
 
@@ -218,6 +218,6 @@ def process_fits_file(file, rd_extras):
         valid_mask = ~np.isnan(flux_values)  # keep only non-NaN flux points
         spectrum = Spectrum1D(flux=flux_values[valid_mask] * flux_constant, spectral_axis=wav_values[valid_mask] * units.Angstrom)
         #spectrum = Spectrum1D(flux=flux, spectral_axis=np.array(wav) * units.Angstrom)
-    rd_extras.pop('date_obs')
-    return spectrum, rd_extras, date_obs
+    dp_extras.pop('date_obs')
+    return spectrum, dp_extras, date_obs
     

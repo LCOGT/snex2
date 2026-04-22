@@ -60,7 +60,7 @@ from tom_targets.views import TargetCreateView
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_banzai_spectra
-from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.models import BrokerTarget, InterestedPersons, Papers, DataProductExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments, _modify_sequence
@@ -371,7 +371,7 @@ class CustomDataProductUploadView(DataProductUploadView):
             try:
 
                 ### ------------------------------------------------------------------
-                ### Create row in ReducedDatumExtras with the extra info
+                ### Create row in DataProductExtras with the extra info
                 rdextra_value = {'data_product_id': int(dp.id)}
                 if dp_type == 'photometry':
                     extras = {'reduction_type': 'manual'}
@@ -402,14 +402,14 @@ class CustomDataProductUploadView(DataProductUploadView):
                 rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
                 reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value)
 
-                reduced_datum_extra = ReducedDatumExtra(
+                data_product_extra = DataProductExtra(
                     target = target,
                     data_product = dp,
                     data_type = dp_type,
                     key = 'upload_extras',
                     value = rdextra_value
                 )
-                reduced_datum_extra.save()
+                data_product_extra.save()
 
                 ### -------------------------------------------------------------------
                 
@@ -1260,8 +1260,8 @@ def load_single_spectrum_view(request):
                 z = 0
             
             # Get spectrum extras - query directly since user already has target access
-            # (ReducedDatumExtra doesn't need separate object-level permissions)
-            spec_extras_row = ReducedDatumExtra.objects.filter(
+            # (DataProductExtra doesn't need separate object-level permissions)
+            spec_extras_row = DataProductExtra.objects.filter(
                 data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
 
             spec_extras = {}
@@ -1761,7 +1761,7 @@ class FloydsInboxView(TemplateView):
             #obs_record = dp.observation_record
             #obs_group = obs_record.observationgroup_set.first() # Check this!
             # update RDE with approval = '1'
-            rde, created = ReducedDatumExtra.objects.update_or_create(
+            rde, created = DataProductExtra.objects.update_or_create(
                 reduced_datum=rd,
                 data_type='spectroscopy',
                 key='spec_extras',
@@ -1788,7 +1788,7 @@ class FloydsInboxView(TemplateView):
             # Calling modify sequence will re-enter the sequence with delay_start = 0 --> mimics markbad behaviour
             _modify_sequence(obs_group, user=user, data=obs_record.parameters)
             
-            rde, created = ReducedDatumExtra.objects.update_or_create(
+            rde, created = DataProductExtra.objects.update_or_create(
                 reduced_datum=rd,
                 data_type='spectroscopy',
                 key='spec_extras',

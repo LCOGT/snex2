@@ -698,7 +698,7 @@ def dash_lightcurve(context, target, width, height):
 
     final_background_subtracted = False
     for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                   klass=ReducedDatumExtra.objects.filter(
+                                   klass=DataProductExtra.objects.filter(
                                        target=target,key='upload_extras',data_type='photometry')):
         de_value = de.value
         inst = de_value.get('instrument', '')
@@ -1384,9 +1384,9 @@ def dash_spectra_page(context, target):
         if max(flux) > max_flux: max_flux = max(flux)
         if min(flux) < min_flux: min_flux = min(flux)
 
-        # Query ReducedDatumExtra directly - no object-level permissions needed
+        # Query DataProductExtra directly - no object-level permissions needed
         # (user already has target access if they can view this page)
-        spec_extras_row = ReducedDatumExtra.objects.filter(
+        spec_extras_row = DataProductExtra.objects.filter(
             data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
         spec_extras = {}
         if spec_extras_row:

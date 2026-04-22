@@ -13,7 +13,7 @@ from django.conf import settings
 from tom_dataproducts.models import DataProduct, data_product_path, ReducedDatum
 from django.contrib.auth.models import Group
 from custom_code.utils import update_permissions
-from custom_code.models import ReducedDatumExtra
+from custom_code.models import DataProductExtra
 from guardian.shortcuts import assign_perm
 from tom_targets.models import Target, TargetName
 
@@ -290,10 +290,10 @@ def update_spec(action):
             id_ = result.rowid # The ID of the row in the spec table
             if action=='delete':
                 #Look up the reduceddatum id from the datum_extra table
-                rd_extra = ReducedDatumExtra.objects.filter(
+                dp_extra = DataProductExtra.objects.filter(
                     data_type = 'spectroscopy',
                     value__snex_id = id_)
-                for rde in rd_extra:
+                for rde in dp_extra:
                     if rde.data_product:
                         dp = rde.data_product
                     elif rde.value.get('snex2_id',''):
@@ -354,7 +354,7 @@ def update_spec(action):
                         if getattr(spec_row, key):
                             spec_extras[key] = getattr(spec_row, key)
                     spec_extras['snex_id'] = int(id_)
-                    RDExtras_spec, rd_extras_created = ReducedDatumExtra.objects.update_or_create(
+                    RDExtras_spec, dp_extras_created = DataProductExtra.objects.update_or_create(
                         target = target,
                         data_product = data_product,
                         data_type='spectroscopy',
@@ -363,7 +363,7 @@ def update_spec(action):
 
                     RDExtras_spec.value = spec_extras
                     RDExtras_spec.save()
-                    logger.info(f'new objects created? dp: {dp_created}, rd: {rd_created}, rd_extra: {rd_extras_created}')
+                    logger.info(f'new objects created? dp: {dp_created}, rd: {rd_created}, dp_extra: {dp_extras_created}')
 
                     logger.info(f'rd and extra made or updated: {reduced_datum} {RDExtras_spec} for dataproduct: {data_product} and target {target}')
 

@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from tom_dataproducts.models import ReducedDatum, DataProduct, ObservationRecord
 from tom_targets.models import Target, TargetName
-from custom_code.models import ReducedDatumExtra 
+from custom_code.models import DataProductExtra 
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.processors.spectroscopy_processor import process_fits_file
 from custom_code.hooks import get_metadata
@@ -50,12 +50,12 @@ class Command(BaseCommand):
             version=md5_hash
         return version, file
 
-    def make_ReducedDatums(self, dp, basename, rd_extras):
+    def make_ReducedDatums(self, dp, basename, dp_extras):
         
         hash, file = self.check_hash(basename)
 
         # Make ReducedDatum objects
-        spectrum, rd_extras, date_obs = process_fits_file(file, rd_extras)
+        spectrum, dp_extras, date_obs = process_fits_file(file, dp_extras)
 
         serialized_spectrum = SpectrumSerializer().serialize(spectrum)
         data = [(date_obs, serialized_spectrum)]
@@ -66,7 +66,7 @@ class Command(BaseCommand):
        
         continuous_share_data(dp.target, reduced_datum)
 
-        rd_extras['version_list'][reduced_datum.pk] = hash
+        dp_extras['version_list'][reduced_datum.pk] = hash
         return reduced_datum.pk
     
 
@@ -124,7 +124,7 @@ class Command(BaseCommand):
 
                 rdextra_value['best_rd'] = rd1dpk # automatically set best version if only one reduction
                
-                reduced_datum_extra = ReducedDatumExtra(
+                data_product_extra = DataProductExtra(
                             target = obs_record.target,
                             data_product = data_product,
                             data_type = data_product.data_product_type,
@@ -132,12 +132,12 @@ class Command(BaseCommand):
                             value = rdextra_value
                         )   
                 
-                reduced_datum_extra.save()
+                data_product_extra.save()
 
 
             if not created: # old raw frame, check if there are new extractions -- check the hex from md5 checksum
                 # Get RDE associated with dp
-                rde = ReducedDatumExtra.objects.filter(data_product = data_product, target = obs_record.target)
+                rde = DataProductExtra.objects.filter(data_product = data_product, target = obs_record.target)
                 current_versions = rde.value['version_list'] # gives dictionary of form of {rd.pk: hash}
 
                 reduced_base1d = frame['basename'].replace('e00', 'e91-1d')
@@ -195,7 +195,7 @@ class Command(BaseCommand):
                 # make this the 2D frame, can pass file and thumbnail?
 
                 # Currently a dataproduct extra - one to one with dataproduct, not reduceddatum
-                # to search through dictionary: ReducedDatumExtra.objects.filter(value__reduceddatum_id = rd.pk)
+                # to search through dictionary: DataProductExtra.objects.filter(value__reduceddatum_id = rd.pk)
 
                 #reduced_data, rdextra_value = run_custom_data_processor(data_product, extras, rdextra_value)
 
