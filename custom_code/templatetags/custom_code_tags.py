@@ -912,6 +912,8 @@ def format_lco_summary(obs, group, is_active):
 
     if 'SnexResumeCadenceAfterFailureStrategy' in cadence_strategy and cadence_freq > 0:
         summary.append(f"{cadence_freq}-day {obs_type} cadence of")
+    elif 'SnexRetryFailedObservationsStrategy' in cadence_strategy and cadence_freq > 0:
+        summary.append(f"Single {obs_type} observation (retry until successful) of")
     else:
         summary.append(f"Single {obs_type} observation of")
 
@@ -1151,9 +1153,12 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         if not end:
             end = str(observation.modified).split('.')[0]
 
-        if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
+        cadence_strategy = parameter.get('cadence_strategy', '')
+        if cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
-        else:
+        elif cadence_strategy == 'SnexRetryFailedObservationsStrategy':
+            cadence_strat = '(Onetime, retry untill successful)'
+        elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
             cadence_strat = '(Onetime)'
         
         reminder = parameter.get('reminder', 2 * cadence_frequency_days)
