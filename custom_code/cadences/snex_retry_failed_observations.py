@@ -13,6 +13,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.contrib.sites.models import Site
 from django.core.mail import send_mail
+from slack_sdk import WebClient
 
 import logging
 
@@ -22,20 +23,39 @@ def email_obs_update(obs):
     try:
         # Send email to notify submitting user that observation was obtained
         current_domain = Site.objects.get_current().domain
-        link_to_target = f'https://{current_domain}/targets/{obs.target.id}'
+        link_to_target = f'{current_domain}/targets/{obs.target.id}'
+        link_to_observationgroup = f'{current_domain}/observationgroup/{obs.observationgroup_set.first().id}'
         username = obs.parameters.get('start_user', 'snex_secure')
         user = User.objects.get(username = username)
 
         send_mail(
             subject=f'Your observation of {obs.target.name} has been acquired!',
-            message='',  # leave this blank in favor of html_message
+            message='',  
             from_email=settings.SERVER_EMAIL,
             recipient_list=[user.email],
-            html_message= f'Your observation request for {obs.target.name} been acquired. You can view the data on the target page <a href="{link_to_target}">here</a> and resubmit a one time observation or switch to a repeating cadence.',
+            html_message= f'Your observation request for {obs.target.name} been acquired. You can view the data on the target page <a href="{link_to_target}">here</a> or the observation record <a href="{link_to_observationgroup}">here</a>. Resubmit another one time observation or switch to a repeating cadence.',
             fail_silently=False)
     except (SMTPException, ConnectionRefusedError) as error:
         logger.error(f'Unable to send email: {error}')
 
+def send_slack_notification(obs):
+    current_domain = Site.objects.get_current().domain
+
+    link_to_target = f"https://{current_domain}/targets/{obs.target.id}"
+    link_to_observationgroup = f'{current_domain}/observationgroup/{obs.observationgroup_set.first().id}'
+    message = (
+        f"{obs.parameters['observation_type']} observation of "
+        f"<{link_to_target}|{obs.target.name}> "
+        f"has been acquired. See observation info <{link_to_observationgroup}|here>."
+    )
+
+    client = WebClient(token=settings.SLACK_BOT_TOKEN)
+    response = client.chat_postMessage(
+        channel=settings.SLACK_OBS_CHANNEL,
+        text=message
+    )
+
+    return response["ok"]
 
 class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFailedObservationsStrategy):
     cadence_fields = {'cadence_frequency', 'reminder_date'}
@@ -57,8 +77,16 @@ class SnexRetryFailedObservationsStrategy(SnexCadencePermissionMixin, RetryFaile
         elif last_obs.status == 'COMPLETED':
             self.dynamic_cadence.active = False
             self.dynamic_cadence.save()
-            email_obs_update(last_obs)
-            
+            try:
+                email_obs_update(last_obs)
+            except Exception:
+                logger.exception("Email notification failed")
+
+            try:
+                send_slack_notification(last_obs)
+            except Exception:
+                logger.exception("Slack notification failed")
+
             logger.info(f'Observation {last_obs} complete, emailed user and turned off dynamic cadence')
             return
 

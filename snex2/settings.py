@@ -31,6 +31,9 @@ FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
 OBS_WINDOW_MINIMUM = 24 # Minimum observation window in hours
 
+SLACK_OBS_CHANNEL = "#observation-notifications"
+SLACK_BOT_TOKEN =  os.getenv('SLACK_BOT_TOKEN', '')
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.1/howto/deployment/checklist/
 
