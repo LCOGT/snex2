@@ -60,7 +60,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         super(LCOPhotometricSequenceForm, self).__init__(*args, **kwargs)
         
         self.fields['cadence_strategy'] = forms.ChoiceField(
-            choices=[('SnexResumeCadenceAfterFailureStrategy', 'Repeating every'), ('SnexRetryFailedObservationsStrategy', 'Once in the next')],
+            choices=[('SnexResumeCadenceAfterFailureStrategy', 'Repeating every'), ('SnexRetryUntilDeadlineStrategy', 'Once in the next'), ('SnexRetryFailedObservationsStrategy', 'Retry Until Obtained')],
             required=False,
             label=''
         )
@@ -334,7 +334,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
                                                   label='Slit',
                                                   initial=('slit_2.0as', '2.0 arcsec slit'))
         self.fields['cadence_strategy'] = forms.ChoiceField(
-            choices=[('SnexResumeCadenceAfterFailureStrategy', 'Repeating every'), ('SnexRetryFailedObservationsStrategy', 'Once in the next')],
+            choices=[('SnexResumeCadenceAfterFailureStrategy', 'Repeating every'), ('SnexRetryUntilDeadlineStrategy', 'Once in the next'), ('SnexRetryFailedObservationsStrategy', 'Retry Until Obtained')],
             required=False,
             label=''
         )
