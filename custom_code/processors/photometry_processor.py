@@ -12,16 +12,16 @@ from tom_dataproducts.exceptions import InvalidFileFormatException
 
 class PhotometryProcessor(DataProcessor):
 
-    def process_data(self, data_product, extras, rd_extras):
+    def process_data(self, data_product, extras, dp_extras):
 
         mimetype = mimetypes.guess_type(data_product.data.name)[0]
         if mimetype in self.PLAINTEXT_MIMETYPES:
-            photometry, rd_extras = self._process_photometry_from_plaintext(data_product, extras, rd_extras)
-            return [(datum.pop('timestamp'), json.dumps(datum)) for datum in photometry], rd_extras
+            photometry, dp_extras = self._process_photometry_from_plaintext(data_product, extras, dp_extras)
+            return [(datum.pop('timestamp'), json.dumps(datum)) for datum in photometry], dp_extras
         else:
             raise InvalidFileFormatException('Unsupported file type')
 
-    def _process_photometry_from_plaintext(self, data_product, extras, rd_extras):
+    def _process_photometry_from_plaintext(self, data_product, extras, dp_extras):
 
         photometry = []
 
@@ -40,8 +40,8 @@ class PhotometryProcessor(DataProcessor):
                 delim = ':'
 
             keyword = comment.split(delim)[0].lower()
-            if keyword in rd_extras.keys() and not rd_extras.get(keyword, ''):
-                rd_extras[keyword] = comment.split(delim)[1].strip()
+            if keyword in dp_extras.keys() and not dp_extras.get(keyword, ''):
+                dp_extras[keyword] = comment.split(delim)[1].strip()
 
         for datum in data:
             time = Time(float(datum['time']), format='mjd')
@@ -57,5 +57,5 @@ class PhotometryProcessor(DataProcessor):
 
             photometry.append(value)
 
-        return photometry, rd_extras
+        return photometry, dp_extras
 

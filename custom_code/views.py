@@ -60,7 +60,7 @@ from tom_targets.views import TargetCreateView
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unreduced_spectra
-from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.models import BrokerTarget, InterestedPersons, Papers, DataProductExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
@@ -442,11 +442,11 @@ class CustomDataProductUploadView(DataProductUploadView):
             try:
 
                 ### ------------------------------------------------------------------
-                ### Create row in ReducedDatumExtras with the extra info
-                rdextra_value = {'data_product_id': int(dp.id)}
+                ### Create row in DataProductExtras with the extra info
+                dpextra_value = {'data_product_id': int(dp.id)}
                 if dp_type == 'photometry':
                     extras = {'reduction_type': 'manual'}
-                    rdextra_value['photometry_type'] = form.cleaned_data['photometry_type']
+                    dpextra_value['photometry_type'] = form.cleaned_data['photometry_type']
                     background_subtracted = form.cleaned_data['background_subtracted']
                     if background_subtracted:
                         extras['background_subtracted'] = True
@@ -455,32 +455,32 @@ class CustomDataProductUploadView(DataProductUploadView):
 
                 else: #Don't need to append anything to reduceddatum value if not photometry
                     extras = {}
-                    rdextra_value['telescope'] = form.cleaned_data['telescope']
-                    rdextra_value['exptime'] = form.cleaned_data['exposure_time']
-                    rdextra_value['slit'] = form.cleaned_data['slit']
-                    rdextra_value['date_obs'] = form.cleaned_data['date_obs']
+                    dpextra_value['telescope'] = form.cleaned_data['telescope']
+                    dpextra_value['exptime'] = form.cleaned_data['exposure_time']
+                    dpextra_value['slit'] = form.cleaned_data['slit']
+                    dpextra_value['date_obs'] = form.cleaned_data['date_obs']
                 
-                rdextra_value['instrument'] = form.cleaned_data['instrument']
+                dpextra_value['instrument'] = form.cleaned_data['instrument']
                 reducer_group = form.cleaned_data['reducer_group']
                 if dp_type == 'spectroscopy':
-                    rdextra_value['reducer'] = reducer_group
+                    dpextra_value['reducer'] = reducer_group
                 elif dp_type == 'photometry' and reducer_group != 'LCO':
-                    rdextra_value['reducer_group'] = reducer_group
+                    dpextra_value['reducer_group'] = reducer_group
 
                 used_in = form.cleaned_data['used_in']
                 if used_in:
-                    rdextra_value['used_in'] = int(used_in.id)
-                rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
-                reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value)
+                    dpextra_value['used_in'] = int(used_in.id)
+                dpextra_value['final_reduction'] = form.cleaned_data['final_reduction']
+                reduced_data, dpextra_value = run_custom_data_processor(dp, extras, dpextra_value)
 
-                reduced_datum_extra = ReducedDatumExtra(
+                data_product_extra = DataProductExtra(
                     target = target,
                     data_product = dp,
                     data_type = dp_type,
                     key = 'upload_extras',
-                    value = rdextra_value
+                    value = dpextra_value
                 )
-                reduced_datum_extra.save()
+                data_product_extra.save()
 
                 ### -------------------------------------------------------------------
                 
@@ -1331,8 +1331,8 @@ def load_single_spectrum_view(request):
                 z = 0
             
             # Get spectrum extras - query directly since user already has target access
-            # (ReducedDatumExtra doesn't need separate object-level permissions)
-            spec_extras_row = ReducedDatumExtra.objects.filter(
+            # (DataProductExtra doesn't need separate object-level permissions)
+            spec_extras_row = DataProductExtra.objects.filter(
                 data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
 
             spec_extras = {}
