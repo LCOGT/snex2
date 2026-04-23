@@ -26,7 +26,6 @@
     display: none;
 }
 </style>
-
 <div class="row">
   <div class="col-md-6">
     {% airmass_plot %}
@@ -35,7 +34,6 @@
     {% moon_vis object %}
   </div>
 </div>
-
 <div class="row">
   <div class="col-md-6 border-right">
     <h4>Submit a Photometry Sequence</h4>
@@ -46,7 +44,6 @@
     {% crispy spec_form %}
   </div>
 </div>
-
 <script>
 $(function () {
   const $instType = $("#phot_instrument_type");
@@ -72,14 +69,12 @@ $(function () {
     $("#all-filters-div [id$='_0']").val(0);
     $("#all-filters-div [id$='_1']").val(2);
     $("#all-filters-div [id$='_2']").val(1);
-
     if (settings) {
       settings.show.forEach(f => $(`#row_${f}`).show());
       for (let f in settings.defaults) {
         $(`#phot_${f}_0`).val(settings.defaults[f]);
       }
     }
-
     if (val === '2M0-SCICAM-MUSCAT') {
       $('#block-no-header').hide();
       $('#exp-time-header, #exp-num-header').removeClass('col-md-4').addClass('col-md-6');
@@ -94,81 +89,83 @@ $(function () {
   }
 
   function recalcReminder(prefix) {
-    let cadence = parseFloat($(`#${prefix}_cadence_frequency_value`).val());
-    const cadenceUnit = $(`#${prefix}_cadence_frequency_unit`).val();
-    const delayAmount = parseFloat($(`#${prefix}_delay_amount`).val()) || 0;
-
+    var cadence = parseFloat(document.getElementById(prefix + "_cadence_frequency_value").value);
+    var cadence_unit = document.getElementById(prefix + "_cadence_frequency_unit").value;
     if (isNaN(cadence)) {
       return;
     }
-
-    if (cadenceUnit === 'hours') {
+    if (cadence_unit === 'hours') {
       cadence = cadence / 24;
     }
-
-    const newReminder = 2 * cadence + delayAmount + 0.7;
-    $(`#${prefix}_reminder`).val(newReminder);
+    var delayamount = parseFloat(document.getElementById(prefix + "_delay_amount").value);
+    if (isNaN(delayamount)) {
+      delayamount = 0;
+    }
+    var newreminder = 2 * cadence + delayamount + 0.7;
+    document.getElementById(prefix + "_reminder").value = newreminder;
   }
 
-  function toggleDelay(prefix) {
-    const delayAmount = document.getElementById(`div_${prefix}_delay_amount`);
-    if (delayAmount.style.display === "block") {
-      delayAmount.style.display = "none";
+  function updateDelayVisibility(prefix) {
+    var isChecked = $("#" + prefix + "_delay_start").is(":checked");
+    if (isChecked) {
+      $("#div_" + prefix + "_delay_amount").show();
     } else {
-      delayAmount.style.display = "block";
+      $("#div_" + prefix + "_delay_amount").hide();
+      $("#" + prefix + "_delay_amount").val(0);
+      recalcReminder(prefix);
     }
   }
 
-  function toggleRetryCheckbox(prefix) {
-    const strategy = $(`#${prefix}_cadence_strategy`).val();
-    const $checkboxDiv = $(`#div_${prefix}_retry_until_obtained`);
-    const $checkbox = $(`#${prefix}_retry_until_obtained`);
-
+  function updateRetryVisibility(prefix) {
+    var strategy = $("#" + prefix + "_cadence_strategy").val();
     if (strategy === 'SnexRetryUntilDeadlineStrategy') {
-      $checkboxDiv.show();
+      $("#div_" + prefix + "_retry_until_obtained").show();
     } else {
-      $checkboxDiv.hide();
-      $checkbox.prop('checked', false);
+      $("#div_" + prefix + "_retry_until_obtained").hide();
+      $("#" + prefix + "_retry_until_obtained").prop("checked", false);
     }
   }
 
   $instType.on('change', updateVisibility);
   updateVisibility();
 
-  $("#phot_cadence_frequency_value").on('keyup change', function() {
-    recalcReminder('phot');
+  $("#phot_cadence_frequency_value").on("keyup change", function() {
+    recalcReminder("phot");
   });
-  $("#phot_cadence_frequency_unit").change(function() {
-    recalcReminder('phot');
+  $("#phot_cadence_frequency_unit").on("change", function() {
+    recalcReminder("phot");
   });
-  $("#phot_delay_amount").keyup(function() {
-    recalcReminder('phot');
-  });
-  $("#phot_delay_start").click(function() {
-    toggleDelay('phot');
+  $("#phot_delay_amount").on("keyup change", function() {
+    recalcReminder("phot");
   });
 
-  $("#spec_cadence_frequency_value").on('keyup change', function() {
-    recalcReminder('spec');
+  $("#spec_cadence_frequency_value").on("keyup change", function() {
+    recalcReminder("spec");
   });
-  $("#spec_cadence_frequency_unit").change(function() {
-    recalcReminder('spec');
+  $("#spec_cadence_frequency_unit").on("change", function() {
+    recalcReminder("spec");
   });
-  $("#spec_delay_amount").keyup(function() {
-    recalcReminder('spec');
-  });
-  $("#spec_delay_start").click(function() {
-    toggleDelay('spec');
+  $("#spec_delay_amount").on("keyup change", function() {
+    recalcReminder("spec");
   });
 
-  $("#phot_cadence_strategy").change(function() {
-    toggleRetryCheckbox('phot');
+  $("#phot_delay_start").on("change", function() {
+    updateDelayVisibility("phot");
   });
-  $("#spec_cadence_strategy").change(function() {
-    toggleRetryCheckbox('spec');
+  $("#spec_delay_start").on("change", function() {
+    updateDelayVisibility("spec");
   });
 
-  toggleRetryCheckbox('phot');
-  toggleRetryCheckbox('spec');
+  $("#phot_cadence_strategy").on("change", function() {
+    updateRetryVisibility("phot");
+  });
+  $("#spec_cadence_strategy").on("change", function() {
+    updateRetryVisibility("spec");
+  });
+
+  updateDelayVisibility("phot");
+  updateDelayVisibility("spec");
+  updateRetryVisibility("phot");
+  updateRetryVisibility("spec");
 });
 </script>
