@@ -36,7 +36,8 @@ dependencies = [
     "mysqlclient",
     "gevent>1.4",
     "gunicorn", 
-    "dpd_static_support"
+    "dpd_static_support",
+    "slack_sdk"
 ]
 
 [project.optional-dependencies]
