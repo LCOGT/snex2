@@ -919,9 +919,11 @@ def format_lco_summary(obs, group, is_active):
 
     if obs_type == 'imaging':
         filter_strings = []
-        for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']:
+        for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']:
             val = params.get(f)
             if val and val[0] != 0.0:
+                if f == 'muscat_filter':
+                    f = 'g, r, i, z'
                 filter_strings.append(f"{f} ({val[0]}x{val[1]})")
         if filter_strings:
             summary.append(", ".join(filter_strings))
@@ -1225,9 +1227,12 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
         cadence_frequency = cadence_frequency_days * 24
 
-        if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
+        cadence_strategy = parameter.get('cadence_strategy', '')
+        if cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
-        else:
+        elif cadence_strategy == 'SnexRetryFailedObservationsStrategy':
+            cadence_strat = '(Onetime, retry untill successful)'
+        elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
             cadence_strat = '(Onetime)'
 
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')

@@ -82,7 +82,7 @@
 </div>
 <script>
 function showTable(groupname) {
-  var sequences = document.getElementsByClassName(groupname+'-table');
+  var sequences = document.getElementsByClassName(groupname + '-table');
   for (var i = 0; i < sequences.length; i++) {
     if (sequences[i].style.display != 'block') {
       sequences[i].style.display = 'block';
@@ -92,51 +92,61 @@ function showTable(groupname) {
   }
 }
 function modify_sequence(clickedId) {
-  var oldval = document.getElementById(clickedId).value;
-  document.getElementById(clickedId).value = 'Loading...';
-  var thenum = clickedId.replace( /^\D+/g, '');
+  var button = document.getElementById(clickedId);
+  var oldval = button.value;
+  button.value = 'Loading...';
+  var thenum = clickedId.replace(/^\D+/g, '');
   var theformstr = '#scheduling-form-' + thenum;
+  var commentObj;
   if (clickedId.includes('stop')) {
     var cancelComment = prompt('Reason for stopping observations:', '');
-    var commentObj = {'cancel':cancelComment};
+    if (cancelComment === null) {
+      button.value = oldval;
+      return;
+    }
+    commentObj = {'cancel': cancelComment};
   } else if (clickedId.includes('modify')) {
     var cancelComment = prompt('Reason for modifying this sequence:', '');
-    //var beginComment = prompt('Any comment for this sequence:', '');
-    //var commentObj = {'cancel':cancelComment, 'begin':beginComment};
-    var commentObj = {'cancel':cancelComment};
+    if (cancelComment === null) {
+      button.value = oldval;
+      return;
+    }
+    commentObj = {'cancel': cancelComment};
   } else {
-    var commentObj = {'none': ''};
+    commentObj = {'none': ''};
   }
   var commentJSON = JSON.stringify(commentObj);
   $.ajax({
     url: '{% url "custom_code:scheduling" %}',
-    data: $(theformstr).serialize() + "&button=" + clickedId + "&comment=" + commentJSON,
+    data: $(theformstr).serialize() + "&button=" + clickedId + "&comment=" + encodeURIComponent(commentJSON),
     dataType: 'json',
     success: function(response) {
       if (response.hasOwnProperty('failure')) {
         alert(response.failure);
-        document.getElementById(clickedId).value = oldval;
+        button.value = oldval;
       } else {
-        document.getElementById(clickedId).value = response.success;
+        button.value = response.success;
       }
+    },
+    error: function() {
+      button.value = oldval;
+      alert('Request failed.');
     }
   });
 }
-$("body").on("keyup", ".cadence-input", function() {
-  var t = this;
-  var table = t.closest(".table");
-  var delay_start = table.querySelectorAll('input[name="delay_start"]')[0];
-  var newreminder = 2*parseFloat(t.value) + parseFloat(delay_start.value) + 0.7;
-  var reminder = table.querySelectorAll('input[name="reminder"]')[0];
-  reminder.value = newreminder;
+$("body").on("input change", ".cadence-input", function() {
+  var table = this.closest(".table");
+  var cadence = parseFloat(this.value) || 0;
+  var delay = parseFloat(table.querySelector('input[name="delay_start"]').value) || 0;
+  var reminder = table.querySelector('input[name="reminder"]');
+  reminder.value = 2 * cadence + delay + 0.7;
 });
-$("body").on("keyup", ".delay-start-input", function() {
-  var t = this;
-  var table = t.closest(".table");
-  var cadence_input = table.querySelectorAll('input[name="cadence_frequency_days"]')[0];
-  var newreminder = 2*parseFloat(cadence_input.value) + parseFloat(t.value) + 0.7;
-  var reminder = table.querySelectorAll('input[name="reminder"]')[0];
-  reminder.value = newreminder;
+$("body").on("input change", ".delay-start-input", function() {
+  var table = this.closest(".table");
+  var cadence = parseFloat(table.querySelector('input[name="cadence_frequency_days"]').value) || 0;
+  var delay = parseFloat(this.value) || 0;
+  var reminder = table.querySelector('input[name="reminder"]');
+  reminder.value = 2 * cadence + delay + 0.7;
 });
 </script>
 {% endblock %}
