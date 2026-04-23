@@ -19,6 +19,12 @@
 #div_spec_delay_amount {
     display: none;
 }
+#div_phot_retry_until_obtained {
+    display: none;
+}
+#div_spec_retry_until_obtained {
+    display: none;
+}
 </style>
 <div class="row">
   <div class="col-md-6">
@@ -55,6 +61,7 @@ $(function () {
       defaults: {'muscat_filter': 200}
     }
   };
+
   function updateVisibility() {
     const val = $instType.val();
     const settings = config[val];
@@ -80,97 +87,87 @@ $(function () {
       $("[id$='_2']").closest('div.col-md-4, .col').show();
     }
   }
+
+  function recalcReminder(prefix) {
+    var cadence = parseFloat(document.getElementById(prefix + "_cadence_frequency_value").value);
+    var cadence_unit = document.getElementById(prefix + "_cadence_frequency_unit").value;
+    if (isNaN(cadence)) {
+      return;
+    }
+    if (cadence_unit === 'hours') {
+      cadence = cadence / 24;
+    }
+    var delayamount = parseFloat(document.getElementById(prefix + "_delay_amount").value);
+    if (isNaN(delayamount)) {
+      delayamount = 0;
+    }
+    var newreminder = 2 * cadence + delayamount + 0.7;
+    document.getElementById(prefix + "_reminder").value = newreminder;
+  }
+
+  function updateDelayVisibility(prefix) {
+    var isChecked = $("#" + prefix + "_delay_start").is(":checked");
+    if (isChecked) {
+      $("#div_" + prefix + "_delay_amount").show();
+    } else {
+      $("#div_" + prefix + "_delay_amount").hide();
+      $("#" + prefix + "_delay_amount").val(0);
+      recalcReminder(prefix);
+    }
+  }
+
+  function updateRetryVisibility(prefix) {
+    var strategy = $("#" + prefix + "_cadence_strategy").val();
+    if (strategy === 'SnexRetryUntilDeadlineStrategy') {
+      $("#div_" + prefix + "_retry_until_obtained").show();
+    } else {
+      $("#div_" + prefix + "_retry_until_obtained").hide();
+      $("#" + prefix + "_retry_until_obtained").prop("checked", false);
+    }
+  }
+
   $instType.on('change', updateVisibility);
   updateVisibility();
+
+  $("#phot_cadence_frequency_value").on("keyup change", function() {
+    recalcReminder("phot");
+  });
+  $("#phot_cadence_frequency_unit").on("change", function() {
+    recalcReminder("phot");
+  });
+  $("#phot_delay_amount").on("keyup change", function() {
+    recalcReminder("phot");
+  });
+
+  $("#spec_cadence_frequency_value").on("keyup change", function() {
+    recalcReminder("spec");
+  });
+  $("#spec_cadence_frequency_unit").on("change", function() {
+    recalcReminder("spec");
+  });
+  $("#spec_delay_amount").on("keyup change", function() {
+    recalcReminder("spec");
+  });
+
+  $("#phot_delay_start").on("change", function() {
+    updateDelayVisibility("phot");
+  });
+  $("#spec_delay_start").on("change", function() {
+    updateDelayVisibility("spec");
+  });
+
+  $("#phot_cadence_strategy").on("change", function() {
+    updateRetryVisibility("phot");
+  });
+  $("#spec_cadence_strategy").on("change", function() {
+    updateRetryVisibility("spec");
+  });
+
+  updateDelayVisibility("phot");
+  updateDelayVisibility("spec");
+  updateRetryVisibility("phot");
+  updateRetryVisibility("spec");
 });
-$("#phot_cadence_frequency_value").keyup(function() {
-  var cadence = document.getElementById("phot_cadence_frequency_value").value;
-  var cadence_unit = document.getElementById("phot_cadence_frequency_unit").value;
-  if (cadence_unit === 'hours') {
-    cadence = cadence / 24;
-  } else {
-    cadence = cadence;
-  }
-  var delayamount = document.getElementById("phot_delay_amount").value;
-  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
-  document.getElementById("phot_reminder").value = newreminder;
-});
-$("#phot_cadence_frequency_unit").change(function() {
-  var cadence = document.getElementById("phot_cadence_frequency_value").value;
-  var cadence_unit = document.getElementById("phot_cadence_frequency_unit").value;
-  if (cadence_unit === 'hours') {
-    cadence = cadence / 24;
-  } else {
-    cadence = cadence;
-  }
-  var delayamount = document.getElementById("phot_delay_amount").value;
-  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
-  document.getElementById("phot_reminder").value = newreminder;
-});
-$("#phot_delay_amount").keyup(function() {
-  var cadence = document.getElementById("phot_cadence_frequency_value").value;
-  var cadence_unit = document.getElementById("phot_cadence_frequency_unit").value;
-  if (cadence_unit === 'hours') {
-    cadence = cadence / 24;
-  } else {
-    cadence = cadence;
-  }
-  var delayamount = document.getElementById("phot_delay_amount").value;
-  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
-  document.getElementById("phot_reminder").value = newreminder;
-});
-$("#phot_delay_start").click(function() {
-  var delayAmount = document.getElementById("div_phot_delay_amount");
-  if (delayAmount.style.display === "block") {
-    delayAmount.style.display = "none";
-  } else {
-    delayAmount.style.display = "block";
-  }
-})
-$("#spec_cadence_frequency_value").keyup(function() {
-  var cadence = document.getElementById("spec_cadence_frequency_value").value;
-  var cadence_unit = document.getElementById("spec_cadence_frequency_unit").value;
-  if (cadence_unit === 'hours') {
-    cadence = cadence / 24;
-  } else {
-    cadence = cadence;
-  }
-  var delayamount = document.getElementById("spec_delay_amount").value;
-  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
-  document.getElementById("spec_reminder").value = newreminder;
-});
-$("#spec_cadence_frequency_unit").change(function() {
-  var cadence = document.getElementById("spec_cadence_frequency_value").value;
-  var cadence_unit = document.getElementById("spec_cadence_frequency_unit").value;
-  if (cadence_unit === 'hours') {
-    cadence = cadence / 24;
-  } else {
-    cadence = cadence;
-  }
-  var delayamount = document.getElementById("spec_delay_amount").value;
-  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
-  document.getElementById("spec_reminder").value = newreminder;
-});
-$("#spec_delay_amount").keyup(function() {
-  var cadence = document.getElementById("spec_cadence_frequency_value").value;
-  var cadence_unit = document.getElementById("spec_cadence_frequency_unit").value;
-  if (cadence_unit === 'hours') {
-    cadence = cadence / 24;
-  } else {
-    cadence = cadence;
-  }
-  var delayamount = document.getElementById("spec_delay_amount").value;
-  var newreminder = 2*parseFloat(cadence) + parseFloat(delayamount) + 0.7;
-  document.getElementById("spec_reminder").value = newreminder;
-});
-$("#spec_delay_start").click(function() {
-  var delayAmount = document.getElementById("div_spec_delay_amount");
-  if (delayAmount.style.display === "block") {
-    delayAmount.style.display = "none";
-  } else {
-    delayAmount.style.display = "block";
-  }
-})
 $(function () {
   const $proposalField = $("#spec_proposal");
   const $instrumentDiv = $("#div_spec_instrument_type");

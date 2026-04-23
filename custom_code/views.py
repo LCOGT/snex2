@@ -616,28 +616,26 @@ def save_comments_view(request):
     else:
         return JsonResponse({"success": False})
 
+
 def observation_sequence_cancel_view(request):
-    
     obsr_id = int(float(request.GET['pk']))
     obsr = ObservationRecord.objects.get(id=obsr_id)
     obs_group = obsr.observationgroup_set.first()
-    
+
     try:
         canceled = cancel_observation(obs_group)
-
         if not canceled:
-            response_data = {'failure': 'Error'}
-            return HttpResponse(json.dumps(response_data), content_type='application/json')
-        # Get comments, if any
-        comments = json.loads(request.GET['comment'])
+            return JsonResponse({'failure': 'The sequence could not be canceled.'})
+
+        comments = json.loads(request.GET.get('comment', '{}'))
         if comments.get('cancel', ''):
             save_comments(comments['cancel'], obs_group.id, request.user)
 
-    except:
+        return JsonResponse({'success': 'Stopped'})
+
+    except Exception:
         logger.error('This sequence was not canceled', exc_info=True)
-    
-    response_data = {'success': 'Modified'}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+        return JsonResponse({'failure': 'This sequence was not canceled'})
 
 def scheduling_view(request):
     obs_id = request.GET.get('observation_id')
