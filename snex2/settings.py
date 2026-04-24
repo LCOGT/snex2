@@ -312,6 +312,7 @@ FACILITIES = {
     'SOAR': {
         'portal_url': 'https://observe.lco.global',
         'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
+        'access_group_name': os.environ.get('SOAR_ACCESS_GROUP_NAME', 'passta'),
     },
     'GEM': {
         'portal_url': {
@@ -406,8 +407,8 @@ TOM_FACILITY_CLASSES = [
     'custom_code.facilities.gemini_facility.GeminiFacility',
     #'tom_observations.facilities.gemini.GEMFacility',
     'custom_code.facilities.lco_facility.SnexLCOFacility',
-    'tom_observations.facilities.soar.SOARFacility',
-    #'custom_code.facilities.soar_facility.SOARFacility'
+    'custom_code.facilities.soar_facility.SOARFacility',
+    #'tom_observations.facilities.soar.SOARFacility'
 ]
 
 TOM_HARVESTER_CLASSES = [

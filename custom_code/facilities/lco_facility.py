@@ -412,6 +412,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         self.fields['instrument_type'] = forms.ChoiceField(choices=self.instrument_choices(),
                                                            required=False,
                                                            initial='2M0-FLOYDS-SCICAM')
+        self.fields['instrument_type'].widget = forms.HiddenInput()
 
         self.fields['start'] = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}))
         self.fields['end'] = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}))
@@ -470,7 +471,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         )
 
     def instrument_choices(self):
-        return [('2M0-FLOYDS-SCICAM', '2.0 meter FLOYDS'), ('SOAR_GHTS_REDCAM', 'Goodman Spectrograph Redcam'), ('SOAR_GHTS_BLUECAM', 'Goodman Spectrograph Bluecam'), ('SOAR_TRIPLESPEC', 'Soar TripleSpec')]
+        return [('2M0-FLOYDS-SCICAM', '2.0 meter FLOYDS')]
 
     def clean(self):
         cadence_value = self.cleaned_data.get('cadence_frequency_value')
@@ -553,7 +554,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
                 css_class='col-md-6'
             ),
             Div(
-                Row('instrument_type'),
                 Row('acquisition_radius'),
                 Row('proposal'),
                 Row('observation_mode'),

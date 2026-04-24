@@ -1,31 +1,38 @@
 import copy
-import requests
+import json
+import logging
+from datetime import timedelta, timezone as datetime_timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from tom_common.exceptions import ImproperCredentialsException
-from tom_observations.facilities.soar import SOARFacility, SOARSpectroscopyObservationForm
-from tom_observations.facilities.lco import LCOSpectroscopyObservationForm
+import requests
+from crispy_forms.bootstrap import PrependedText
+from crispy_forms.layout import Column, Div, HTML, Layout, Row
 from django import forms
-import datetime
 from django.conf import settings
-from crispy_forms.layout import Layout, Div, HTML, Column
-from crispy_forms.bootstrap import PrependedAppendedText, PrependedText, AppendedText
+from django.utils import timezone
+from tom_common.exceptions import ImproperCredentialsException
+from tom_observations.facilities.lco import LCOSpectroscopyObservationForm
+from tom_observations.facilities.soar import (
+    SOARFacility as BaseSOARFacility,
+    SOARSpectroscopyObservationForm,
+)
 from tom_targets.models import Target
 
-# Determine settings for this module.
+
 try:
-    LCO_SETTINGS = settings.FACILITIES['LCO']
+    SOAR_SETTINGS = settings.FACILITIES['SOAR']
 except (AttributeError, KeyError):
-    LCO_SETTINGS = {
+    SOAR_SETTINGS = {
         'portal_url': 'https://observe.lco.global',
         'api_key': '',
+        'access_group_name': 'PASSTA',
     }
 
-# Module specific settings.
-PORTAL_URL = LCO_SETTINGS['portal_url']
+PORTAL_URL = SOAR_SETTINGS['portal_url']
 TERMINAL_OBSERVING_STATES = ['COMPLETED', 'CANCELED', 'WINDOW_EXPIRED']
+SOAR_GROUP_NAME = SOAR_SETTINGS.get('access_group_name', 'PASSTA')
+logger = logging.getLogger(__name__)
 
-# There is currently only one available grating, which is required for spectroscopy.
-#SPECTRAL_GRATING = 'SYZY_400'
 
 def make_request(*args, **kwargs):
     response = requests.request(*args, **kwargs)
@@ -35,201 +42,554 @@ def make_request(*args, **kwargs):
     return response
 
 
-class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObservationForm):
-
-    # Auto set name, need to check exp getting submitted correctly
-    #   Use validate endpoint to check, print submission
-    # Field for exp time, exp count, rotator angle
-
-    window = forms.FloatField(initial=3.0,label='',min_value=0.0)
-    ipp_value = forms.FloatField(initial=1.0,label='',min_value=0.5,max_value=2.0)
-    max_airmass = forms.FloatField(initial=1.6,label='',min_value=1.0)
-    min_lunar_distance = forms.IntegerField(min_value=0, label='', initial=20)
-    rotator_angle= forms.FloatField(initial=0.0,label='',min_value=0.0)
-    exposure_count = forms.IntegerField(initial=1,label='',min_value=1)
-    exposure_time = forms.FloatField(min_value=0.1,label='',
-                                     widget=forms.TextInput(attrs={'placeholder': 'Seconds'}))
-    observation_mode= forms.ChoiceField(
-        choices=(('NORMAL', 'Normal'), ('TARGET_OF_OPPORTUNITY', 'Rapid Response')),
-        label='Priority'
+def log_payload(action, payload):
+    logger.warning(
+        'SOAR %s payload:\n%s',
+        action,
+        json.dumps(payload, indent=2, sort_keys=True, default=str)
     )
-    delay_start = forms.BooleanField(required=False, label='Delay Start By')
-    delay_amount = forms.FloatField(initial=0.0, min_value=0, label='', required=False)
-
-    # These are required fields in the base LCO form, so I need to include them but will ignore
-    start = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}), required=False, label='')
-    end = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}), required=False, label='')
-    name = forms.CharField(initial='SOAR Observation', required=False, label='')
 
 
-    def filter_choices(self):
-        return set([
-            (f['code'], f['name']) for ins in self._get_instruments().values() for f in
-            ins['optical_elements'].get('slits', [])
-        ])
+def user_can_access_soar(user):
+    return bool(
+        getattr(user, 'is_authenticated', False)
+        and user.groups.filter(name=SOAR_GROUP_NAME).exists()
+    )
 
-    def grating_choices(self):
-        return set([
-            (f['code'], f['name']) for ins in self._get_instruments().values() for f in 
-            ins['optical_elements'].get('gratings', [])
-        ])
 
+class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObservationForm):
+    window = forms.FloatField(initial=1.0, required=False, widget=forms.HiddenInput())
+    browser_timezone = forms.CharField(required=False, widget=forms.HiddenInput())
+    ipp_value = forms.FloatField(initial=1.0, label='', min_value=0.5, max_value=2.0)
+    max_airmass = forms.FloatField(initial=1.6, min_value=1.0, max_value=5.0, required=False, label='')
+    min_lunar_distance = forms.IntegerField(initial=20, min_value=0, required=False, label='')
+    rotator_angle = forms.FloatField(initial=0.0, required=False, widget=forms.HiddenInput())
+    exposure_count = forms.IntegerField(
+        initial=2,
+        min_value=1,
+        required=False,
+        label='',
+        widget=forms.NumberInput(attrs={'min': 1})
+    )
+    exposure_time = forms.FloatField(
+        min_value=0.1,
+        label='',
+        widget=forms.TextInput(attrs={'placeholder': 'Seconds'})
+    )
+    observation_mode = forms.ChoiceField(
+        choices=(('NORMAL', 'Normal'), ('TARGET_OF_OPPORTUNITY', 'Rapid Response')),
+        initial='NORMAL',
+        required=False,
+        widget=forms.HiddenInput()
+    )
+    grating = forms.CharField(required=False, widget=forms.HiddenInput())
+    filter = forms.CharField(required=False, widget=forms.HiddenInput())
+    readout = forms.ChoiceField(choices=(), required=False, label='')
+    start = forms.DateTimeField(
+        required=False,
+        label='',
+        input_formats=['%Y-%m-%dT%H:%M', '%Y-%m-%d %H:%M:%S'],
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M')
+    )
+    end = forms.DateTimeField(
+        required=False,
+        label='',
+        input_formats=['%Y-%m-%dT%H:%M', '%Y-%m-%d %H:%M:%S'],
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M')
+    )
+    name = forms.CharField(required=False, widget=forms.HiddenInput())
+
+    INSTRUMENT_DEFAULTS = {
+        'SOAR_GHTS_REDCAM': {
+            'exposure_time': 450.0,
+            'max_airmass': 1.6,
+            'exposure_count': 2,
+            'readout': 'GHTS_R_400m2_2x2',
+            'rotator_angle': 0.0,
+        },
+        'SOAR_GHTS_BLUECAM': {
+            'exposure_time': 450.0,
+            'max_airmass': 1.6,
+            'exposure_count': 2,
+            'readout': 'GHTS_B_400m2_2x2',
+            'rotator_angle': 0.0,
+        },
+        'SOAR_TRIPLESPEC': {
+            'exposure_time': 200.0,
+            'max_airmass': 1.6,
+            'exposure_count': 6,
+            'readout': 'fowler16_coadds1',
+            'rotator_angle': 90.0,
+        },
+    }
+
+    READOUT_CHOICES_BY_INSTRUMENT = {
+        'SOAR_GHTS_REDCAM': [
+            ('GHTS_R_400m1_2x2', 'GHTS_R_400m1_2x2'),
+            ('GHTS_R_400m2_2x2', 'GHTS_R_400m2_2x2'),
+        ],
+        'SOAR_GHTS_BLUECAM': [
+            ('GHTS_B_400m1_2x2', 'GHTS_B_400m1_2x2'),
+            ('GHTS_B_400m2_2x2', 'GHTS_B_400m2_2x2'),
+        ],
+        'SOAR_TRIPLESPEC': [
+            ('fowler16_coadds1', 'fowler16_coadds1'),
+        ],
+    }
+
+    HIDDEN_FIELDS = (
+        'name',
+        'facility',
+        'target_id',
+        'observation_type',
+        'browser_timezone',
+        'window',
+        'rotator_angle',
+        'observation_mode',
+        'grating',
+        'filter',
+    )
+
+    PRIMARY_TO_ALIAS_FIELDS = {
+        'instrument_type': ('c_1_instrument_type',),
+        'exposure_time': ('c_1_ic_1_exposure_time',),
+        'exposure_count': ('c_1_ic_1_exposure_count',),
+        'readout': ('c_1_ic_1_mode',),
+        'rotator_angle': ('c_1_ic_1_rotator_angle',),
+        'max_airmass': ('c_1_max_airmass',),
+        'min_lunar_distance': ('c_1_min_lunar_distance',),
+    }
+
+    @staticmethod
+    def instrument_choices():
+        return [
+            ('SOAR_GHTS_REDCAM', 'Goodman RedCam'),
+            ('SOAR_GHTS_BLUECAM', 'Goodman BlueCam'),
+            ('SOAR_TRIPLESPEC', 'TripleSpec'),
+        ]
+
+    @staticmethod
+    def _prepare_form_kwargs(kwargs):
+        data = kwargs.get('data')
+        if data is not None and hasattr(data, 'copy'):
+            kwargs = kwargs.copy()
+            copied_data = data.copy()
+            for field_name in (
+                'facility',
+                'target_id',
+                'observation_type',
+                'name',
+                'instrument_type',
+                'exposure_time',
+                'ipp_value',
+                'proposal',
+                'observation_mode',
+                'browser_timezone',
+                'start',
+                'end',
+            ):
+                if hasattr(copied_data, 'getlist'):
+                    values = [value for value in copied_data.getlist(field_name) if value not in (None, '')]
+                    if values:
+                        copied_data.setlist(field_name, [values[-1]])
+            SOARObservationForm._synchronize_primary_and_alias_data(copied_data)
+            kwargs['data'] = copied_data
+        return kwargs
+
+    @classmethod
+    def _synchronize_primary_and_alias_data(cls, data):
+        if not hasattr(data, 'getlist'):
+            return data
+
+        for primary_name, alias_names in cls.PRIMARY_TO_ALIAS_FIELDS.items():
+            primary_values = [value for value in data.getlist(primary_name) if value not in (None, '')]
+            alias_values = []
+            for alias_name in alias_names:
+                alias_values.extend(
+                    [value for value in data.getlist(alias_name) if value not in (None, '')]
+                )
+
+            canonical_value = None
+            if primary_values:
+                canonical_value = primary_values[-1]
+            elif alias_values:
+                canonical_value = alias_values[-1]
+
+            if canonical_value in (None, ''):
+                continue
+
+            data.setlist(primary_name, [canonical_value])
+            for alias_name in alias_names:
+                data.setlist(alias_name, [canonical_value])
+
+        logger.warning(
+            'SOAR bound values: instrument_type=%s alias_instrument_type=%s exposure_time=%s alias_exposure_time=%s',
+            data.getlist('instrument_type'),
+            data.getlist('c_1_instrument_type'),
+            data.getlist('exposure_time'),
+            data.getlist('c_1_ic_1_exposure_time')
+        )
+        return data
 
     def clean_start(self):
-        # Took care of this in clean method, so ignore
-        return self.cleaned_data['start']
-
+        return self.cleaned_data.get('start')
 
     def clean_end(self):
-        # Took care of this in clean method, so ignore
-        return self.cleaned_data['end']
+        return self.cleaned_data.get('end')
 
+    def _field_value(self, name, aliases=(), default=None, include_initial=True):
+        candidate_keys = (name, *aliases)
+        sources = []
+
+        if hasattr(self, 'cleaned_data'):
+            sources.append(self.cleaned_data)
+        if hasattr(self, 'data'):
+            sources.append(self.data)
+        if hasattr(self, 'initial'):
+            sources.append(self.initial)
+
+        for source in sources:
+            for key in candidate_keys:
+                if hasattr(source, 'get'):
+                    value = source.get(key)
+                    if value not in (None, ''):
+                        field = self.fields.get(name)
+                        if field is not None and not isinstance(value, (list, tuple, dict)):
+                            try:
+                                return field.to_python(value)
+                            except Exception:
+                                return value
+                        return value
+
+        if include_initial:
+            field = self.fields.get(name)
+            if field is not None and field.initial not in (None, ''):
+                return field.initial
+
+        return default
+
+    def _selected_instrument_type(self):
+        return self._field_value(
+            'instrument_type',
+            aliases=('c_1_instrument_type',),
+            default='SOAR_GHTS_REDCAM'
+        )
+
+    def _instrument_defaults(self):
+        return self.INSTRUMENT_DEFAULTS.get(
+            self._selected_instrument_type(),
+            self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']
+        )
+
+    def _selected_exposure_time(self):
+        return self._field_value(
+            'exposure_time',
+            aliases=('c_1_ic_1_exposure_time',),
+            default=self._instrument_defaults()['exposure_time'],
+            include_initial=False
+        )
+
+    def _selected_exposure_count(self):
+        return self._field_value(
+            'exposure_count',
+            aliases=('c_1_ic_1_exposure_count',),
+            default=self._instrument_defaults()['exposure_count']
+        )
+
+    def _selected_readout(self):
+        return self._field_value(
+            'readout',
+            aliases=('c_1_ic_1_mode',),
+            default=self._instrument_defaults()['readout']
+        )
+
+    @classmethod
+    def readout_choices(cls):
+        flattened_choices = []
+        for instrument_choices in cls.READOUT_CHOICES_BY_INSTRUMENT.values():
+            flattened_choices.extend(instrument_choices)
+        return flattened_choices
+
+    def _selected_rotator_angle(self):
+        return self._field_value(
+            'rotator_angle',
+            aliases=('c_1_ic_1_rotator_angle',),
+            default=self._instrument_defaults()['rotator_angle']
+        )
+
+    def _selected_max_airmass(self):
+        return self._field_value(
+            'max_airmass',
+            aliases=('c_1_max_airmass',),
+            default=self._instrument_defaults()['max_airmass']
+        )
+
+    def _selected_min_lunar_distance(self):
+        return self._field_value(
+            'min_lunar_distance',
+            aliases=('c_1_min_lunar_distance',),
+            default=20
+        )
+
+    def _selected_browser_timezone(self):
+        browser_timezone = self._field_value(
+            'browser_timezone',
+            default='',
+            include_initial=False
+        )
+        if not browser_timezone:
+            return timezone.get_current_timezone()
+
+        try:
+            return ZoneInfo(browser_timezone)
+        except ZoneInfoNotFoundError:
+            logger.warning('Unknown SOAR browser timezone %s; using current timezone instead.', browser_timezone)
+            return timezone.get_current_timezone()
 
     def clean(self):
         cleaned_data = super().clean()
-        target = Target.objects.get(pk=cleaned_data['target_id'])
-        cleaned_data['name'] = target.name
-        now = datetime.datetime.utcnow()
-        if cleaned_data.get('delay_start'):
-            cleaned_data['start'] = str(now + datetime.timedelta(days=cleaned_data['delay_amount']))
-            cleaned_data['end'] = str(now + datetime.timedelta(days=cleaned_data['window']+cleaned_data['delay_amount']))
-        else:
-            cleaned_data['start'] = str(now)
-            cleaned_data['end'] = str(now + datetime.timedelta(days=cleaned_data['window']))
-        #cleaned_data['start'] = str(datetime.datetime.utcnow())
-        #cleaned_data['end'] = str(datetime.datetime.utcnow() +
-        #                               datetime.timedelta(days=cleaned_data['window']))
+        target_id = cleaned_data.get('target_id')
+        instrument_type = cleaned_data.get('instrument_type') or self._selected_instrument_type()
+        defaults = self.INSTRUMENT_DEFAULTS.get(instrument_type, self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM'])
+
+        if target_id:
+            target = Target.objects.get(pk=target_id)
+            cleaned_data['name'] = target.name
+
+        max_airmass = cleaned_data.get('max_airmass')
+        min_lunar_distance = cleaned_data.get('min_lunar_distance')
+        exposure_time = cleaned_data.get('exposure_time')
+        exposure_count = cleaned_data.get('exposure_count')
+        readout = cleaned_data.get('readout')
+
+        cleaned_data['window'] = 1.0
+        cleaned_data['observation_mode'] = 'NORMAL'
+        cleaned_data['max_airmass'] = defaults['max_airmass'] if max_airmass in (None, '') else max_airmass
+        cleaned_data['min_lunar_distance'] = 20 if min_lunar_distance in (None, '') else min_lunar_distance
+        cleaned_data['rotator_angle'] = defaults['rotator_angle']
+        cleaned_data['exposure_time'] = defaults['exposure_time'] if exposure_time in (None, '') else exposure_time
+        cleaned_data['exposure_count'] = defaults['exposure_count'] if exposure_count in (None, '') else exposure_count
+        cleaned_data['readout'] = defaults['readout'] if readout in (None, '') else readout
+        cleaned_data['grating'] = ''
+        cleaned_data['filter'] = ''
+
+        now = timezone.now()
+        start_time = cleaned_data.get('start') or now
+        end_time = cleaned_data.get('end') or (start_time + timedelta(days=cleaned_data['window']))
+        selected_timezone = self._selected_browser_timezone()
+
+        if timezone.is_naive(start_time):
+            start_time = timezone.make_aware(start_time, selected_timezone)
+        if timezone.is_naive(end_time):
+            end_time = timezone.make_aware(end_time, selected_timezone)
+
+        if end_time <= start_time:
+            self.add_error('end', 'End time must be after start time.')
+            return cleaned_data
+
+        cleaned_data['start'] = start_time.astimezone(datetime_timezone.utc).isoformat()
+        cleaned_data['end'] = end_time.astimezone(datetime_timezone.utc).isoformat()
         return cleaned_data
 
-    
-    def _build_instrument_config(self):
-        instrument_configs = super()._build_instrument_config()
-        
-        instrument_configs[0]['optical_elements'] = {
-            'slit': self.cleaned_data['filter'],
-            'grating': self.cleaned_data['grating']#SPECTRAL_GRATING
+    def _constraints(self):
+        return {
+            'max_airmass': self._selected_max_airmass(),
+            'min_lunar_distance': self._selected_min_lunar_distance(),
+            'max_lunar_phase': 1.0,
+            'max_seeing': None,
+            'min_transparency': None,
+            'extra_params': {},
         }
-        instrument_configs[0]['rotator_mode'] = 'SKY'
-        instrument_configs[0]['mode'] = self.cleaned_data['readout']
 
-        return instrument_configs
+    def _guiding_config(self):
+        return {
+            'optional': False,
+            'mode': 'ON',
+            'optical_elements': {},
+            'exposure_time': None,
+            'extra_params': {},
+        }
 
+    def _acquisition_config(self, mode):
+        return {
+            'mode': mode,
+            'exposure_time': None,
+            'extra_params': {},
+        }
+
+    def _science_instrument_config(self):
+        instrument_type = self._selected_instrument_type()
+        extra_params = {'offset_ra': 0, 'offset_dec': 0}
+        if instrument_type == 'SOAR_TRIPLESPEC':
+            extra_params['rotator_angle'] = self._selected_rotator_angle()
+
+        return {
+            'exposure_time': self._selected_exposure_time(),
+            'exposure_count': self._selected_exposure_count(),
+            'optical_elements': {},
+            'mode': self._selected_readout(),
+            'rotator_mode': 'SKY',
+            'extra_params': extra_params,
+        }
+
+    def _arc_config(self, science_config, priority):
+        arc_config = copy.deepcopy(science_config)
+        arc_config['type'] = 'ARC'
+        arc_config['priority'] = priority
+        arc_config['instrument_configs'][0]['exposure_time'] = 0.5
+        arc_config['instrument_configs'][0]['exposure_count'] = 1
+        arc_config['instrument_configs'][0]['extra_params']['rotator_angle'] = self._selected_rotator_angle()
+        arc_config['acquisition_config'] = self._acquisition_config('OFF')
+        return arc_config
+
+    def _standard_config(self, science_config):
+        standard_config = copy.deepcopy(science_config)
+        standard_config['type'] = 'STANDARD'
+        standard_config['priority'] = 2
+        standard_config['instrument_configs'][0]['exposure_time'] = 65.0
+        standard_config['instrument_configs'][0]['exposure_count'] = 1
+        standard_config['instrument_configs'][0]['mode'] = 'fowler8_coadds1'
+        standard_config['instrument_configs'][0]['extra_params']['rotator_angle'] = self._selected_rotator_angle()
+        standard_config['acquisition_config'] = self._acquisition_config('OFF')
+        return standard_config
+
+    def observation_payload(self):
+        payload = super().observation_payload()
+        request_group = payload['requests'][0]
+        request_group['configuration_repeats'] = 1
+        request_group['optimization_type'] = 'TIME'
+
+        for config in request_group.get('configurations', []):
+            target = config.get('target', {})
+            if target.get('epoch') is None:
+                target['epoch'] = 2000.0
+            if target.get('proper_motion_ra') is None:
+                target.pop('proper_motion_ra', None)
+            if target.get('proper_motion_dec') is None:
+                target.pop('proper_motion_dec', None)
+
+        science_config = request_group['configurations'][0]
+        instrument_type = self._selected_instrument_type()
+        science_config['type'] = 'SPECTRUM'
+        science_config['instrument_type'] = instrument_type
+        science_config['constraints'] = self._constraints()
+        science_config['instrument_configs'] = [self._science_instrument_config()]
+        science_config['acquisition_config'] = self._acquisition_config('MANUAL')
+        science_config['guiding_config'] = self._guiding_config()
+        science_config['priority'] = 1 if instrument_type == 'SOAR_TRIPLESPEC' else 2
+
+        if instrument_type == 'SOAR_TRIPLESPEC':
+            request_group['configurations'] = [
+                science_config,
+                self._standard_config(science_config),
+            ]
+        else:
+            request_group['configurations'] = [
+                self._arc_config(science_config, 1),
+                science_config,
+                self._arc_config(science_config, 3),
+            ]
+
+        return payload
 
     def __init__(self, *args, **kwargs):
+        kwargs = self._prepare_form_kwargs(kwargs)
         super().__init__(*args, **kwargs)
-        self.fields['proposal'] = forms.ChoiceField(choices=self.proposal_choices(),initial='SOAR2022A-002')
-        self.fields['instrument_type'] = forms.ChoiceField(choices=self.instrument_choices(), initial='SOAR_GHTS_REDCAM', label='')
-        self.fields['grating'] = forms.ChoiceField(choices=self.grating_choices(), initial='400_SYGY', label='')
-        self.fields['filter'] = forms.ChoiceField(choices=list(self.filter_choices()), initial=list(self.filter_choices())[0][0], label='')
-        self.fields['readout'] = forms.ChoiceField(choices=self.mode_choices('readout'), initial='GHTS_R_400m1_2x2', label='')
 
-        for field_name in ['start', 'end', 'name', 'groups']:
-            self.fields[field_name].widget = forms.HiddenInput()
+        if self.is_bound and hasattr(self.data, 'copy'):
+            synchronized_data = self.data.copy()
+            self._synchronize_primary_and_alias_data(synchronized_data)
+            self.data = synchronized_data
+
+        proposal_choices = [
+            choice for choice in self.proposal_choices()
+            if 'SOAR' in choice[0] or 'SOAR' in choice[1]
+        ]
+        if not proposal_choices:
+            proposal_choices = self.proposal_choices()
+
+        initial_proposal = proposal_choices[0][0] if proposal_choices else None
+        self.fields['proposal'] = forms.ChoiceField(choices=proposal_choices, initial=initial_proposal)
+        self.fields['instrument_type'] = forms.ChoiceField(
+            choices=self.instrument_choices(),
+            initial='SOAR_GHTS_REDCAM',
+            required=False,
+            label=''
+        )
+        self.fields['readout'].choices = self.readout_choices()
+        self.fields['exposure_time'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['exposure_time']
+        self.fields['exposure_count'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['exposure_count']
+        self.fields['max_airmass'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['max_airmass']
+        self.fields['min_lunar_distance'].initial = 20
+        self.fields['readout'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['readout']
+        self.fields['start'].initial = ''
+        self.fields['end'].initial = ''
+
+        for field_name in self.HIDDEN_FIELDS:
+            if field_name in self.fields:
+                self.fields[field_name].widget = forms.HiddenInput()
+                self.fields[field_name].required = False
+
+        self.fields['name'].required = False
+        self.fields['exposure_time'].required = False
+        self.fields['exposure_count'].required = False
+        self.fields['max_airmass'].required = False
+        self.fields['min_lunar_distance'].required = False
+        self.fields['readout'].required = False
+        self.fields['start'].required = False
+        self.fields['end'].required = False
+        self.fields['observation_mode'].initial = 'NORMAL'
+        self.fields['instrument_type'].widget.attrs.pop('required', None)
+        self.fields['instrument_type'].widget.is_required = False
+
+        if 'groups' in self.fields:
+            self.fields['groups'].widget = forms.HiddenInput()
+
+        self.helper.render_unmentioned_fields = False
+        hidden_layout = [field_name for field_name in self.HIDDEN_FIELDS if field_name in self.fields]
+        if 'groups' in self.fields:
+            hidden_layout.append('groups')
 
         self.helper.layout = Layout(
-            self.common_layout,
+            *hidden_layout,
             Div(
-                Div(
-                    HTML("<p></p>"),
-                    PrependedAppendedText(
-                        'window','Once in the next', 'days'
-                    ),
-                    Div(
-                        Column('delay_start'),
-                        Column(AppendedText('delay_amount', 'days')),
-                        css_class='form_row'
-                    ),
-                    PrependedText('exposure_time','Exposure Time'),
-                    PrependedText('exposure_count','Exposure Count'),
-                    PrependedText('rotator_angle','Rotator Angle'),
-                    PrependedText('instrument_type','Camera'),
-                    PrependedText('grating', 'Grating'),
-                    PrependedText('filter','Slit Width'),
-                    PrependedText('readout', 'Readout Mode'),
-                    css_class='col'
+                HTML('<p>One-time SOAR submission using the default portal setup for each instrument.</p>'),
+                HTML('<p class="text-muted small" data-soar-timezone-note>Start and end are shown in your local browser timezone.</p>'),
+                Row(
+                    Column(PrependedText('instrument_type', 'Instrument'), css_class='col-md-6'),
+                    Column(PrependedText('readout', 'Readout'), css_class='col-md-6'),
                 ),
-                Div(
-                    HTML("<p></p>"),
-                    PrependedText('max_airmass', 'Airmass <'),
-                    PrependedText('min_lunar_distance', 'Lunar Distance >'),
-                    PrependedText('ipp_value', 'IPP'),
-                    'proposal',
-                    'observation_mode',
-                    css_class='col'
+                Row(
+                    Column(PrependedText('start', 'Start (Local)'), css_class='col-md-6'),
+                    Column(PrependedText('end', 'End (Local)'), css_class='col-md-6'),
                 ),
-                css_class='form-row',
+                Row(
+                    Column(PrependedText('exposure_time', 'Exposure Time'), css_class='col-md-6'),
+                    Column(PrependedText('exposure_count', 'Exposure Count'), css_class='col-md-6'),
+                ),
+                Row(
+                    Column(PrependedText('max_airmass', 'Airmass <'), css_class='col-md-6'),
+                    Column(PrependedText('min_lunar_distance', 'Lunar Distance >'), css_class='col-md-6'),
+                ),
+                Row(
+                    Column(PrependedText('ipp_value', 'IPP'), css_class='col-md-6'),
+                    Column('proposal', css_class='col-md-6'),
+                ),
+                css_class='col-12'
             ),
             self.button_layout()
         )
 
 
-class SOARFacility(SOARFacility):
-
-    observation_types = [('SPECTRA', 'Goodman Spectrograph RedCam: 1.0" slit'),
-                         ('SPECTRA', 'Goodman Spectrograph BlueCam: 1.0" slit')]
+class SOARFacility(BaseSOARFacility):
+    observation_types = [('SPECTRA', 'Spectra')]
     observation_forms = {'SPECTRA': SOARObservationForm}
 
     def get_form(self, observation_type):
         return SOARObservationForm
 
-    def add_calibrations(self, observation_payload):
-        _target = observation_payload['requests'][0]['configurations'][0]['target']
-        _constraints = observation_payload['requests'][0]['configurations'][0]['constraints']
-        instrument_type = observation_payload['requests'][0]['configurations'][0]['instrument_type']
-
-        if instrument_type == 'SOAR_TRIPLESPEC':
-            observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['optical_elements'].pop('slit', '')
-            observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['optical_elements'].pop('grating', '')
-            slit = ''
-            grating = ''
-
-        else:
-            slit = observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['optical_elements']['slit']
-            grating = observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['optical_elements']['grating']
-
-        rotator_angle = observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['extra_params']['rotator_angle']
-        readout = observation_payload['requests'][0]['configurations'][0]['instrument_configs'][0]['mode']
-
-        template_calibration= {
-            "instrument_type": instrument_type,
-            "instrument_configs": [{
-                "exposure_count": 1,
-                "rotator_mode": "SKY",
-                "extra_params": {
-                    "rotator_angle": rotator_angle
-                },
-                'optical_elements': {
-                    'slit': slit,
-                    'grating': grating
-                },
-                'mode': readout,
-
-            }],
-            'acquisition_config': {
-                "mode": "OFF"
-            },
-            'guiding_config': {
-                "mode": "ON",
-            },
-            'target': _target,
-            'constraints': _constraints
-        }
-
-        if instrument_type != 'SOAR_TRIPLESPEC':
-            arc = copy.deepcopy(template_calibration)
-            arc["type"] = "ARC"
-            arc["instrument_configs"][0]["exposure_time"] = 0.5
-            observation_payload['requests'][0]['configurations'].append(arc)
-
-            flat = copy.deepcopy(template_calibration)
-            flat["type"] = "LAMP_FLAT"
-            flat["instrument_configs"][0]["exposure_time"] = 2
-            observation_payload['requests'][0]['configurations'].append(flat)
-
-        return observation_payload
-
     def validate_observation(self, observation_payload):
-        observation_payload = self.add_calibrations(observation_payload)
+        log_payload('validate', observation_payload)
         response = make_request(
             'POST',
             PORTAL_URL + '/api/requestgroups/validate/',
@@ -239,7 +599,7 @@ class SOARFacility(SOARFacility):
         return response.json()['errors']
 
     def submit_observation(self, observation_payload):
-        observation_payload = self.add_calibrations(observation_payload)
+        log_payload('submit', observation_payload)
         response = make_request(
             'POST',
             PORTAL_URL + '/api/requestgroups/',
