@@ -478,5 +478,6 @@ def run():
         logger.info('Done with photometry')
         update_spec(action)
         logger.info('Done with spectra')
-        update_target(action, db_address = _SNEX2_DB)
-        logger.info('Done with targets')
+        if action != 'delete':
+            update_target(action, db_address = _SNEX2_DB)
+            logger.info('Done with targets')
