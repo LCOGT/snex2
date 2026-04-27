@@ -6,7 +6,7 @@
 {% endfor %}
 <a class="button" style="background-color: white; color: gray; font-size: 12px; border: none; outline: none; box-shadow: none;" href="{% url 'custom_code:observationgroup-detail' parameter.group %}">Track This Sequence</a><br>
 {% if is_active %}
-<a id='cancel-btn-{{ parameter.observation }}' class="button" style="background-color: white; color: gray; font-size: 12px; border: none; outline: none; box-shadow: none;" onclick='stopSequence({{ parameter.observation }})'>Stop Sequence</a><br>
+<a id="cancel-btn-{{ parameter.observation }}" class="button" style="background-color: white; color: gray; font-size: 12px; border: none; outline: none; box-shadow: none;" onclick="stopSequence({{ parameter.observation }})">Stop Sequence</a><br>
 {% endif %}
 {% empty %}
 {% if not is_active %}
@@ -16,20 +16,36 @@
 <br>
 <script>
 function stopSequence(observationId) {
-  var cancelComment=prompt('Reason for stopping observations:', '');
+  var button = document.getElementById('cancel-btn-' + observationId);
+  var oldText = button.innerHTML;
+  var cancelComment = prompt('Reason for stopping observations:', '');
+  if (cancelComment === null) {
+    return;
+  }
+  button.innerHTML = 'Loading...';
   var comment = {'cancel': cancelComment};
   var commentJSON = JSON.stringify(comment);
   $.ajax({
     url: '{% url "custom_code:observation-sequence-cancel" %}',
-    data: {'pk': observationId,
-           'comment': commentJSON},
+    data: {
+      'pk': observationId,
+      'comment': commentJSON
+    },
     dataType: 'json',
     success: function(response) {
-      if (response.success === 'Modified') {
-	document.getElementById('cancel-btn-' + observationId).innerHTML = 'Stopped';
+      if (response.success === 'Stopped') {
+        button.innerHTML = 'Stopped';
+      } else if (response.failure) {
+        alert(response.failure);
+        button.innerHTML = oldText;
+      } else {
+        button.innerHTML = oldText;
       }
+    },
+    error: function() {
+      alert('Request failed.');
+      button.innerHTML = oldText;
     }
-  })
+  });
 }
-
-</script>	
+</script>

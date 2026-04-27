@@ -157,6 +157,10 @@ def _continue_sequence(obs_group, data):
         strategy = get_cadence_strategy(cg.cadence_strategy)(cg)
         try:
             new_observations = strategy.run()
+            if not new_observations:
+                logger.error(f'Cadence strategy returned no new observations for group {obs_group.id}')
+                return {'failure': 'No new observation was created for this sequence'}
+
             obs = new_observations[0]
         except Exception as e:
             logger.error((f'Unable to run cadence_group: {cg}; strategy {strategy};'
@@ -210,11 +214,15 @@ def _modify_sequence(obs_group, user, data):
     
     delay = data.get('delay_start', 0.0)
     now = timezone.now()
-    
+
+    start_time = now + timedelta(days=delay)
+    min_window = settings.OBS_WINDOW_MINIMUM or 24
+    window_length_hours = min(new_params['cadence_frequency'], min_window)
+
     new_params['reminder'] = data['reminder']
     new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).isoformat()
-    new_params['start'] = (now + timedelta(days=delay)).isoformat()
-    new_params['end'] = (now + timedelta(days=delay + data['cadence_frequency_days'])).isoformat()
+    new_params['start'] = start_time.isoformat()
+    new_params['end'] = (start_time + timedelta(hours=window_length_hours)).isoformat()
     
     # Update filters
     filters = ['U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
@@ -225,7 +233,7 @@ def _modify_sequence(obs_group, user, data):
     try:
         facility = get_service_class(obs.facility)()
         form_class = facility.get_form(data['observation_type'])
-        form = form_class(new_params)
+        form = form_class(data=new_params)
         
         if not form.is_valid():
             logger.error(f"Form validation failed: {form.errors}")
