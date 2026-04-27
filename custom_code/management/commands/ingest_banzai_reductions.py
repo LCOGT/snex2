@@ -4,7 +4,7 @@ from tom_dataproducts.models import ReducedDatum, DataProduct, ObservationRecord
 from tom_targets.models import Target, TargetName
 from tom_targets.sharing import continuous_share_data
 from tom_dataproducts.processors.data_serializers import SpectrumSerializer
-from custom_code.models import ReducedDatumExtra 
+from custom_code.models import DataProductExtra, ReducedDatumSpecExtra 
 from custom_code.processors.spectroscopy_processor import process_fits_file
 from custom_code.hooks import get_metadata
 from astropy.time import Time
@@ -23,15 +23,8 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = 'Ingest banzai-floyds reduced spectra from the last 7 days into ReducedDatum table'
 
-    def get_md5_from_file(self, file):
-        hash = hashlib.md5()
-        with open(file, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                hash.update(chunk)
-        return hash.hexdigest()
     
-    
-    def check_hash(self, basename):
+    def get_hash(self, basename):
         token = settings.FACILITIES['LCO']['api_key']
         url = settings.FACILITIES['LCO']['archive_url']
 
@@ -41,28 +34,40 @@ class Command(BaseCommand):
                             params={'basename_exact': basename, 'include_related_frames': False}).json()["results"]
         
         version = results[0]['version_set'][0].get('md5', False)
+        data = requests.get(results[0]["url"]).content
+        file =  FileResponse(BytesIO(data),filename=basename+'.fits')
         
         if not version:
-            data = requests.get(results[0]["url"]).content
-            file =  FileResponse(BytesIO(data),filename=basename+'.fits')
-            md5_hash = self.get_md5_from_file(file)
-            version=md5_hash
-            return version, file
+            hash = hashlib.md5()
+            with open(file, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    hash.update(chunk)
+            version = hash.hexdigest()
+        return version, file
+    
+    def check_unique(self, hash, rde_list):
+        """Returns True/False"""
+        rd_hash_list = [rde.version for rde in rde_list]
+        if hash not in rd_hash_list:
+            return True
         else:
-            logger.info(f"{basename} is not a new extraction, {version} hash already exists.")
-            return 
+            logger.info(f"Hash {hash} is not unique.")
+            return False
+            
 
 
-    def make_ReducedDatums(self, dp, basename, rd_extras):
+    def make_ReducedDatums(self, dp, basename, dp_extras):
+        token = settings.FACILITIES['LCO']['api_key']
+        url = settings.FACILITIES['LCO']['archive_url']
+        results = requests.get(url,
+                            headers={'Authorization': f'Token {token}'}, 
+                            params={'basename_exact': basename, 'include_related_frames': False}).json()["results"]
         
-        try:
-            hash, file = self.check_hash(basename)
-        except:
-            return 
-        
+        data = requests.get(results[0]["url"]).content
+        file =  FileResponse(BytesIO(data),filename=basename+'.fits')
 
         # Make ReducedDatum objects
-        spectrum, rd_extras, date_obs = process_fits_file(file, rd_extras)
+        spectrum, dp_extras, date_obs = process_fits_file(file, dp_extras)
 
         serialized_spectrum = SpectrumSerializer().serialize(spectrum)
 
@@ -70,9 +75,7 @@ class Command(BaseCommand):
                             timestamp=date_obs, value=serialized_spectrum)
        
         continuous_share_data(dp.target, reduced_datum)
-
-        rd_extras['version_list'][reduced_datum.pk] = hash
-        return reduced_datum.pk
+        return reduced_datum
     
 
     def handle(self, *args, **kwargs):
@@ -112,52 +115,95 @@ class Command(BaseCommand):
             reduced_base2d = frame['basename'].replace('e00', 'e91-2d')
             
             if created: # New raw frame observation, new dp - no reduceddatum currently associated
-                rdextra_value = {
+                dpextra_value = {
                     'telescope':  frame.get('TELID', ''),
                     'instrument': frame.get('INSTRUME', ''),
                     'site':       frame.get('SITEID', ''),
                     'exptime':    frame.get('EXPTIME', ''),
                     'reducer':    'Banzai-Floyds',       # fill in if known -- how to change if reduced manually??
                     'airmass':    frame.get('AIRMASS', ''),
-                    'version_list': {},
-                    'best_rd': '',
                 }
-
-                try:
-                    rd1dpk = self.make_ReducedDatums(data_product, reduced_base1d, rdextra_value)
-
-                    rdextra_value['best_rd'] = rd1dpk # automatically set best version if only one reduction
                
-                    reduced_datum_extra = ReducedDatumExtra(
-                                target = obs_record.target,
-                                data_product = data_product,
-                                data_type = data_product.data_product_type,
-                                key = 'spec_extras',
-                                value = rdextra_value
-                            )   
-                    
-                    reduced_datum_extra.save()
-                except:
-                    logger.info(f"Didn't make ReducedDatum for {reduced_base1d}.")
-                try:
-                    rd2dpk = self.make_ReducedDatums(data_product, reduced_base2d, rdextra_value)
-                except:
-                    logger.info(f"Didn't make ReducedDatum for {reduced_base2d}.")
+                reduced_base1d = frame['basename'].replace('e00', 'e91-1d')
+                reduced_base2d = frame['basename'].replace('e00', 'e91-2d')
+                
+                rde_list = ReducedDatumSpecExtra.objects.filter(target = obs_record.target, data_product = data_product)
 
+                v1, _ = self.get_hash(reduced_base1d)
+                if self.check_unique(v1, rde_list):  
+                    rd1d = self.make_ReducedDatums(data_product, reduced_base1d, dpextra_value)
+                    
+
+                    rde_1d = ReducedDatumSpecExtra(target = obs_record.target, 
+                                                                    data_product = data_product, reduced_datum = rd1d, 
+                                                                    reducer = 'Banzai-Floyds', 
+                                                                    show = True,
+                                                                    version = v1)
+                    
+                    rde_1d.save()
+
+                
+                v2, _ = self.get_hash(reduced_base2d)
+                if self.check_unique(v2, rde_list):  
+                    rd2d = self.make_ReducedDatums(data_product, reduced_base2d, dpextra_value)
+
+                    rde_2d = ReducedDatumSpecExtra(target = obs_record.target, 
+                                                                    data_product = data_product, reduced_datum = rd2d, 
+                                                                    reducer = 'Banzai-Floyds', 
+                                                                    show = True,
+                                                                    version = v2)
+                    
+                    rde_2d.save()
+
+                #dpextra_value['best_rd'] = rd1d.pk # automatically set best version if only one reduction
+               
+                data_product_extra = DataProductExtra(
+                            target = obs_record.target,
+                            data_product = data_product,
+                            data_type = data_product.data_product_type,
+                            key = 'spec_extras',
+                            value = dpextra_value,
+                            viewed = False
+                        )   
+                
+                data_product_extra.save()
 
 
             if not created: # old raw frame, check if there are new extractions -- check the hex from md5 checksum
-                # Get RDE associated with dp
-                rde = ReducedDatumExtra.objects.filter(data_product = data_product, target = obs_record.target)
-                #current_versions = rde.value['version_list'] # gives dictionary of form of {rd.pk: hash}
+                # Get existing ReducedDatumSpecExtra objects
+                rde_list = ReducedDatumSpecExtra.objects.filter(target = obs_record.target, data_product = data_product)
+                
+                #current_versions = dpe.value['version_list'] # gives dictionary of form of {rd.pk: hash}
+
+                reduced_base1d = frame['basename'].replace('e00', 'e91-1d')
+                reduced_base2d = frame['basename'].replace('e00', 'e91-2d')
 
                 try:
-                    rdpk = self.make_ReducedDatums(data_product, reduced_base2d, rde.value)
+                    v2, _ = self.get_hash(reduced_base2d)
+                    if self.check_unique(v2, rde_list):  
+                        rd = self.make_ReducedDatums(data_product, reduced_base2d, dpe.value)
+                        rde = ReducedDatumSpecExtra(target = obs_record.target, 
+                                                                    data_product = data_product, reduced_datum = rd, 
+                                                                    reducer = 'Banzai-Floyds', 
+                                                                    show = True,
+                                                                    version = v2)
+                        rde.save()
+            
                 except:
                     logger.info(f"Didn't make ReducedDatum for {reduced_base2d}.")
                 
                 try:
-                    rdpk = self.make_ReducedDatums(data_product, reduced_base1d, rde.value)
+                    v1, _ = self.get_hash(reduced_base1d)
+
+                    if self.check_unique(v1, rde_list): # version isn't already in database, make RD
+                        rd = self.make_ReducedDatums(data_product, reduced_base1d, dpe.value)
+                        rde = ReducedDatumSpecExtra(target = obs_record.target, 
+                                                                   data_product = data_product, reduced_datum = rd, 
+                                                                   reducer = 'Banzai-Floyds', 
+                                                                   show = True,
+                                                                   version = v1)
+                        rde.save()
+                
                 except:
                     logger.info(f"Didn't make ReducedDatum for {reduced_base1d}.")
 
@@ -166,20 +212,14 @@ class Command(BaseCommand):
                         date_obs = date_obs[:-1]
                     obs_time = Time(date_obs, format='isot', scale='utc')
                     time_since_exp = Time.now() - obs_time
-                    e00_no_extractions[frame['basename']] = time_since_exp
-        return e00_no_extractions
+                    e00_no_extractions[frame['basename']] = time_since_exp 
 
 
 
                    
-
                 
-                # # Make new ReducedDatum
-                # rdextra_value = rde.value
-                # extras = {}
-                # reduced_data, rdextra_value = run_custom_data_processor(data_product, extras, rdextra_value)
-                # rd_list = ReducedDatum.objects.filter(data_product = data_product, target = obs_record.target)
-            
+                
+                
                 # Work flow: run a chron to ingest new banzai reductions from the archive (how to filter for this??? perhaps just a time frame?). This script then makes a dataproduct and reduceddatum object for the spectrum, with approval = 0 as default. 
                 # Target pages need to be updated to query reduceddatum table with approval flag '0' or '1'
                 # Floyds Inbox needs to query for approval flag '0' with buttons that link to a script changing the reduceddatum approval flag to 1 or -1. Changing the flag to -1 should call the modify_sequence function in scheduling.py to re-request the sequence immediately (mimiccing markbad behaviour).
@@ -190,7 +230,7 @@ class Command(BaseCommand):
                 # make this the 2D frame, can pass file and thumbnail?
 
                 # Currently a dataproduct extra - one to one with dataproduct, not reduceddatum
-                # to search through dictionary: ReducedDatumExtra.objects.filter(value__reduceddatum_id = rd.pk)
+                # to search through dictionary: DataProductExtra.objects.filter(value__reduceddatum_id = rd.pk)
 
                 #reduced_data, rdextra_value = run_custom_data_processor(data_product, extras, rdextra_value)
 

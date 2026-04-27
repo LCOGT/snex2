@@ -5,7 +5,7 @@ import logging
 from astropy.time import Time, TimezoneInfo
 from tom_dataproducts.models import ReducedDatum, DataProduct
 from tom_targets.models import Target
-from custom_code.models import ReducedDatumExtra
+from custom_code.models import DataProductExtra
 from guardian.shortcuts import assign_perm
 from django.contrib.auth.models import Group
 
@@ -55,7 +55,7 @@ def get_ztf_data(target):
             'photometry_type': 'PSF',
             'data_product_product_id': f'{ztf_name}_photometry'
         }
-        rd_extra, _ = ReducedDatumExtra.objects.get_or_create(
+        dp_extra, _ = DataProductExtra.objects.get_or_create(
             target = target,
             data_product = dp,
             data_type = 'photometry',

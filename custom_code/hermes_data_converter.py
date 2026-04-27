@@ -1,16 +1,16 @@
 import json
 
 from tom_dataproducts.alertstreams.hermes import HermesDataConverter
-from custom_code.models import ReducedDatumExtra
+from custom_code.models import DataProductExtra
 
 
 class SNEx2HermesDataConverter(HermesDataConverter):
     def get_hermes_spectroscopy(self, datum):
         spectroscopy_row = super().get_hermes_spectroscopy(datum)
-        reduced_datum_extra = ReducedDatumExtra.objects.filter(
+        data_product_extra = DataProductExtra.objects.filter(
             data_type='spectroscopy', key='spec_extras', data_product = datum.data_product).first()
-        if reduced_datum_extra:
-            extra_data = reduced_datum_extra.value
+        if data_product_extra:
+            extra_data = data_product_extra.value
             if 'telescope' in extra_data:
                 spectroscopy_row['telescope'] = extra_data.pop('telescope')
             if 'instrument' in extra_data:

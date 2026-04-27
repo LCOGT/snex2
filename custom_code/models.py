@@ -96,7 +96,7 @@ class TNSTarget(models.Model):
         get_latest_by = ('-name',)
 
 
-class ReducedDatumExtra(models.Model):
+class DataProductExtra(models.Model):
     
     target = models.ForeignKey(
         Target, on_delete=models.CASCADE
@@ -125,6 +125,10 @@ class ReducedDatumExtra(models.Model):
         null=True, blank=True, verbose_name='Boolean Value',
         help_text='Boolean value of the information being stored, if applicable'
     )
+    viewed = models.BooleanField(
+        default=True, verbose_name='Boolean Value',
+        help_text='Show in FLOYDS inbox'
+    )
 
     class Meta:
         get_latest_by = ('id,')
@@ -144,6 +148,33 @@ class ReducedDatumExtra(models.Model):
             self.bool_value = None
 
         super().save(*args, **kwargs)
+
+class ReducedDatumSpecExtra(models.Model):
+    
+    target = models.ForeignKey(
+        Target, on_delete=models.CASCADE
+    )
+    data_product = models. ForeignKey(
+        DataProduct, on_delete=models.CASCADE, verbose_name='DataProduct',
+        help_text='DataProduct this extra belongs to'
+    )
+    reduced_datum = models. ForeignKey(
+        ReducedDatum, on_delete=models.CASCADE, verbose_name='ReducedDatum',
+        help_text='ReducedDatum this extra belongs to'
+    )
+    reducer = models.CharField(
+        max_length=50, default = '', verbose_name='Reduced By',
+        help_text='Who reduced this data'
+    )
+    show = models.BooleanField(
+        default=True, verbose_name='Boolean',
+        help_text='Boolean for showing data on target page'
+    )
+    version = models.CharField(
+        verbose_name='String',
+        help_text='md5 hash'
+    )
+    created = models.DateTimeField(auto_now_add=True)
 
 
 class ScienceTags(models.Model):
