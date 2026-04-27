@@ -61,7 +61,7 @@ from tom_targets.views import TargetCreateView
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_banzai_spectra
-from custom_code.models import BrokerTarget, InterestedPersons, Papers, DataProductExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.models import BrokerTarget, InterestedPersons, Papers, DataProductExtra, ScienceTags, TargetTags, TNSTarget, ReducedDatumSpecExtra
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments, _modify_sequence
@@ -1738,46 +1738,43 @@ class FloydsInboxView(TemplateView):
         # get the target_id and path and approval status from the button
         target_id = request.GET.get('target_id')
         specid    = request.GET.get('specid')
-        path      = request.GET.get('path') # this goes to the raw spectrum on supernova machine
         approval  = request.GET.get('approval')
 
-        if not all([target_id, path, approval]):
+        if not all([target_id, specid, approval]):
             return JsonResponse({'error': 'Missing required parameters.'}, status=400)
-
-        approved = (approval == '1') # string to boolean
-
-        raw_basename   = path.split('/')[-1].replace('.fits', '')
  
         target = Target.objects.get(id=target_id)
        
         if specid:
-            # Clean path: look up the ReducedDatum directly by its pk
             try:
                 rd = ReducedDatum.objects.get(id=specid, target=target)
             except ReducedDatum.DoesNotExist:
                 return JsonResponse({'error': f'No ReducedDatum found for specid {specid}'}, status=404)
             
-        if approval == '1':
+        if approval:
             dp = rd.data_product
-            #obs_record = dp.observation_record
-            #obs_group = obs_record.observationgroup_set.first() # Check this!
-            # update RDE with approval = '1'
-            rde, created = DataProductExtra.objects.update_or_create(
-                reduced_datum=rd,
+
+            # update DPE with viewed = True
+            dpe, created = DataProductExtra.objects.update_or_create(
+                data_product=dp,
                 data_type='spectroscopy',
                 key='spec_extras',
-                defaults={'approval': approval}
+                viewed = True
             )
-
+            # Update RDE with show = True:
+            rde, created = ReducedDatumSpecExtra.objects.update_or_create(
+                data_product = dp,
+                reduced_datum = rd,
+                data_type='spectroscopy',
+                key='spec_extras',
+                defaults={'show': True}
+            )
             logger.info(
                 f"{'Created' if created else 'Updated'} approval={approved} "
                 f"for ReducedDatum id={rd.id} (target={target.name})"
             )
-            # Need to add logic to let approval ==1 or 0 to appear on target pages -- this will be on other scripts
 
-        # for rejections:
-        #  get obs id, query ObservationRecord.objects.get(observation_id = requestID) - check which id you need to match to cadence strategy. Dataproduct takes observationrecord as parameter, frameid, filename. - if stop and restart w/ same parameters (delay start=0). pull obs record, get cadence info, call modify_sequence from scheduling.py. data comes from schedulingPhot form - use obs.parameters as data, make sure delay-start =0
-        if approval == '-1':
+        if not approval:
             dp = rd.data_product
             obs_record = dp.observation_record
             obs_group = obs_record.observationgroup_set.first() # wrap in try-except
@@ -1789,19 +1786,26 @@ class FloydsInboxView(TemplateView):
             # Calling modify sequence will re-enter the sequence with delay_start = 0 --> mimics markbad behaviour
             _modify_sequence(obs_group, user=user, data=obs_record.parameters)
             
-            rde, created = DataProductExtra.objects.update_or_create(
-                reduced_datum=rd,
+            dpe, created = DataProductExtra.objects.update_or_create(
+                data_product = dp,
                 data_type='spectroscopy',
                 key='spec_extras',
-                defaults={'approval': approval}
+                defaults={'viewed': True}
             )
 
+            rde, created = ReducedDatumSpecExtra.objects.update_or_create(
+                data_product = dp,
+                reduced_datum = rd,
+                data_type='spectroscopy',
+                key='spec_extras',
+                defaults={'show': False}
+            )
 
         return JsonResponse({
                     'status':    'ok',
                     'specid':    rd.id,
                     'target_id': target.id,
-                    'approval':  approved,
+                    'approval':  approval,
                 })
 
         
@@ -1810,20 +1814,16 @@ class FloydsInboxView(TemplateView):
 
         context = super().get_context_data(**kwargs)
 
-        [targetnames, propids, dateobs, paths, specids, thumb_urls] = get_banzai_spectra()
+        [targetnames, propids, dateobs, specids, thumbnails, unreduced_dp] = get_banzai_spectra()
         
         targetids = []
         banzai_inbox_rows = []
-        unreduced_spectra = [] # list of e00 frames that have no banzai reductions
-        logger.info(f"targetnames: {targetnames}")
         for i in range(len(targetnames)):
             current_dict = {}
-            
             current_dict['targetnames'] = targetnames[i]
             logger.info(f"targetnames: {targetnames}")
-            # Add the SNEx2 targetid of the target to request
-
-                
+            
+            # Get the SNEx2 targetid 
             targetquery = Target.objects.filter(name=targetnames[i])
             logger.info(f"get_context_data targetquery, targetname: {targetquery} , {targetnames[i]}")
             if not targetquery:
@@ -1843,41 +1843,39 @@ class FloydsInboxView(TemplateView):
             current_dict['targetid'] = targetids[i]
             current_dict['propid'] = propids[i]
             current_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
-            #current_dict['dateobs'] = dateobs[i].split('T')[0]
-            current_dict['path'] = paths[i]
             
             dash_context = {
                 'spectrum_id': specids[i],
                 'target_id': targetids[i],
             }
             current_dict['dash_context'] = dash_context
-            image_data = requests.get(thumb_urls[i])
-            thumb = base64.b64encode(image_data.content).decode('utf-8')
-            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb)
+            # image_data = requests.get(thumb_urls[i])
+            # thumb = base64.b64encode(image_data.content).decode('utf-8')
+            # current_dict['img'] = 'data:image/png;base64,{}'.format(thumb)
+            current_dict['2d_img'] = thumbnails[i]
 
 
             banzai_inbox_rows.append(current_dict)
             
-            #load_single_spectrum_view --> !!!
-            # need to pass in spec_id to banzai_inbox_rows this is the reduced datum id
+        context['banzai_inbox_rows'] = banzai_inbox_rows
 
         for row in banzai_inbox_rows:
             logger.info(f"printing row and target: {row['targetid']}, {row['targetnames']}")
 
-        context['banzai_inbox_rows'] = banzai_inbox_rows
-
-        [targetnames, propids, dateobs, paths, filenames, thumb_urls, times_since_exp] = get_unreduced_spectra()
-        
         targetids = []
-        unreduced_spectra = [] # list of e00 frames that have no banzai reductions
+        unreduced_spectra = []
+        targetnames = [dp.target for dp in unreduced_dp]
+        thumbnails = [dp.thumbnail for dp in unreduced_dp]
+        propids = [dp.observation_record.parameters['proposal'] for dp in unreduced_dp]
+        dateobs = [dp.observation_record.parameters['scheduled_end'] for dp in unreduced_dp]
+        
         logger.info(f"Targetnames with observations with no reductions yet: {targetnames}")
-        for i in range(len(targetnames)):
-            current_dict = {}
+        for i in range(len(unreduced_dp)):
+            new_dict = {}
             
-            current_dict['targetnames'] = targetnames[i]
-            logger.info(f"targetnames: {targetnames}")
-            # Add the SNEx2 targetid of the target to request
-
+            new_dict['propid'] = propids[i]
+            new_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
+            new_dict['targetnames'] = targetnames[i]
                 
             targetquery = Target.objects.filter(name=targetnames[i])
             logger.info(f"get_context_data targetquery, targetname: {targetquery} , {targetnames[i]}")
@@ -1895,19 +1893,13 @@ class FloydsInboxView(TemplateView):
 
             t = Target.objects.get(id=targetids[i])
 
-            current_dict['time_since_exp'] = times_since_exp[i]
-            current_dict['filename'] = filenames[i]
-            current_dict['targetid'] = targetids[i]
-            current_dict['propid'] = propids[i]
-            current_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
-            current_dict['path'] = paths[i]
+            new_dict['time_since_exp'] = Time(dateobs[i]) - Time.now()
 
-            image_data = requests.get(thumb_urls[i])
-            thumb = base64.b64encode(image_data.content).decode('utf-8')
-            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb)
+            new_dict['targetid'] = targetids[i]
+            new_dict['propid'] = propids[i]
+            new_dict['2d_img'] = thumbnails[i]
 
-
-            unreduced_spectra.append(current_dict)
+            unreduced_spectra.append(new_dict)
             
 
         for row in unreduced_spectra:
@@ -1915,8 +1907,6 @@ class FloydsInboxView(TemplateView):
 
         context['unreduced_spectra'] = unreduced_spectra
 
-
-        
         return context
 
 

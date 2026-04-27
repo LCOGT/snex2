@@ -170,6 +170,10 @@ class ReducedDatumSpecExtra(models.Model):
         default=True, verbose_name='Boolean',
         help_text='Boolean for showing data on target page'
     )
+    version = models.CharField(
+        verbose_name='String',
+        help_text='md5 hash'
+    )
     created = models.DateTimeField(auto_now_add=True)
 
 
