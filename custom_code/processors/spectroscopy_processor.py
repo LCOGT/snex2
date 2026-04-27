@@ -11,10 +11,6 @@ from astropy import units
 from specutils import Spectrum1D
 from datetime import datetime
 import numpy as np
-import logging
-
-
-logger = logging.getLogger(__name__)
 
 class SpecProcessor(SpectroscopyProcessor):
 
@@ -140,85 +136,78 @@ class SpecProcessor(SpectroscopyProcessor):
         return spectrum, Time(date_obs).to_datetime(), dp_extras
 
 
-def process_fits_file(file, dp_extras):
-    hlist = fits.open(file)
-    banzai_reduc = 'SPECTRUM' in hlist
-    if banzai_reduc:
-            header = hlist['PRIMARY'].header
-            spec_table = hlist['SPECTRUM'].data
-            flux = spec_table['flux']
-            wav = spec_table['wavelength']
-    else:
-        flux, header = fits.getdata(file, header=True)
+    def process_fits_file(self, file, dp_extras):
+        hlist = fits.open(file)
+        banzai_reduc = 'SPECTRUM' in hlist
+        if banzai_reduc:
+                header = hlist['PRIMARY'].header
+                spec_table = hlist['SPECTRUM'].data
+                flux = spec_table['flux']
+                wav = spec_table['wavelength']
+        else:
+            flux, header = fits.getdata(file, header=True)
 
-    for facility_class in get_service_classes():
-        facility = get_service_class(facility_class)()
-        if facility.is_fits_facility(header):
-            flux_constant = facility.get_flux_constant()
+        for facility_class in get_service_classes():
+            facility = get_service_class(facility_class)()
+            if facility.is_fits_facility(header):
+                flux_constant = facility.get_flux_constant()
+                if dp_extras.get('date_obs'):
+                    #logger.info(f"dp_extras date obs: {dp_extras['date_obs']}")
+                    date_obs = datetime.fromisoformat(str(dp_extras['date_obs']).replace(' ', 'T'))
+                else:
+                    date_obs = facility.get_date_obs_from_fits_header(header)
+                break
+        else:
+            flux_constant = self.DEFAULT_FLUX_CONSTANT
             if dp_extras.get('date_obs'):
-                #logger.info(f"dp_extras date obs: {dp_extras['date_obs']}")
+                #logger.info(f"dp_extras date obs in else statement: {dp_extras['date_obs']}")
                 date_obs = datetime.fromisoformat(str(dp_extras['date_obs']).replace(' ', 'T'))
             else:
-                date_obs = facility.get_date_obs_from_fits_header(header)
-            break
-    else:
-        flux_constant = self.DEFAULT_FLUX_CONSTANT
-        if dp_extras.get('date_obs'):
-            #logger.info(f"dp_extras date obs in else statement: {dp_extras['date_obs']}")
-            date_obs = datetime.fromisoformat(str(dp_extras['date_obs']).replace(' ', 'T'))
+                date_obs = Time(datetime.now()).to_datetime
+        
+        for keyword, possibles in self.field_keywords.items():
+
+
+            # Check if the keyword or any possible is already in dp_extras with a non-empty value; if so, skip this keyword
+            if (keyword in dp_extras and dp_extras.get(keyword, '')) or any(possible in dp_extras and dp_extras.get(possible, '') for possible in possibles):
+                continue
+
+            # If none are in dp_extras, check the header for each possible
+            for possible in possibles:
+                if possible in header:
+                    value = header[possible]
+                    if keyword == "date_obs" and not dp_extras.get('date_obs'):
+                        k_lower = possible.lower()
+                        if "mjd" in k_lower:
+                            value = Time(float(value), format="mjd").to_datetime()
+                        elif "jd" in k_lower:
+                            value = Time(float(value), format="jd").to_datetime()
+                        else:
+                            value = datetime.fromisoformat(str(value).replace(' ', 'T'))
+                        date_obs = value
+                    dp_extras[keyword] = value
+                    break
+
+        if not banzai_reduc:
+            dim = len(flux.shape)
+            if dim == 3:
+                flux = flux[0, 0, :]
+            elif flux.shape[0] == 2:
+                flux = flux[0, :]
+            flux = flux * flux_constant
+            header['CUNIT1'] = 'Angstrom'
+
+        
+            wcs = WCS(header=header, naxis=1)
+            spectrum = Spectrum1D(flux=flux, wcs=wcs)
         else:
-            date_obs = Time(datetime.now()).to_datetime
-    
-    logger.info(f"dp_extra key and values: {dp_extras.keys()} :{dp_extras.values()}")
-    for keyword, possibles in self.field_keywords.items():
-        logger.info(f"keyword: {keyword}")
-
-        # Check if the keyword or any possible is already in dp_extras with a non-empty value; if so, skip this keyword
-        if (keyword in dp_extras and dp_extras.get(keyword, '')) or any(possible in dp_extras and dp_extras.get(possible, '') for possible in possibles):
-            continue
-
-        # If none are in dp_extras, check the header for each possible
-        for possible in possibles:
-            logger.info(f"possible {possible} is not in dp_extras")
-            if possible in header:
-                value = header[possible]
-                logger.info(f"")
-                if keyword == "date_obs" and not dp_extras.get('date_obs'):
-                    logger.info(f"line 112 date obs not in keyword or dp_extras")
-                    k_lower = possible.lower()
-                    if "mjd" in k_lower:
-                        logger.info(f"going through mjd in header")
-                        value = Time(float(value), format="mjd").to_datetime()
-                    elif "jd" in k_lower:
-                        value = Time(float(value), format="jd").to_datetime()
-                    else:
-                        value = datetime.fromisoformat(str(value).replace(' ', 'T'))
-                    date_obs = value
-                dp_extras[keyword] = value
-                logger.info(f"keyword:value : {keyword}:{value}")
-                break
-
-    if not banzai_reduc:
-        dim = len(flux.shape)
-        if dim == 3:
-            flux = flux[0, 0, :]
-        elif flux.shape[0] == 2:
-            flux = flux[0, :]
-        flux = flux * flux_constant
-        header['CUNIT1'] = 'Angstrom'
-
-    
-        wcs = WCS(header=header, naxis=1)
-        spectrum = Spectrum1D(flux=flux, wcs=wcs)
-    else:
-        logger.info(f"Checking for nans in flux: {np.isnan(flux).sum()}")
-        flux_constant = SpecProcessor.DEFAULT_FLUX_CONSTANT
-        # Convert flux and wavelength to arrays and skip NaNs
-        flux_values = np.array(flux, dtype=float)
-        wav_values = np.array(wav, dtype=float)
-        valid_mask = ~np.isnan(flux_values)  # keep only non-NaN flux points
-        spectrum = Spectrum1D(flux=flux_values[valid_mask] * flux_constant, spectral_axis=wav_values[valid_mask] * units.Angstrom)
-        #spectrum = Spectrum1D(flux=flux, spectral_axis=np.array(wav) * units.Angstrom)
-    dp_extras.pop('date_obs')
-    return spectrum, dp_extras, date_obs
-    
+            flux_constant = SpecProcessor.DEFAULT_FLUX_CONSTANT
+            # Convert flux and wavelength to arrays and skip NaNs
+            flux_values = np.array(flux, dtype=float)
+            wav_values = np.array(wav, dtype=float)
+            valid_mask = ~np.isnan(flux_values)  # keep only non-NaN flux points
+            spectrum = Spectrum1D(flux=flux_values[valid_mask] * flux_constant, spectral_axis=wav_values[valid_mask] * units.Angstrom)
+            #spectrum = Spectrum1D(flux=flux, spectral_axis=np.array(wav) * units.Angstrom)
+        dp_extras.pop('date_obs')
+        return spectrum, dp_extras, date_obs
+        

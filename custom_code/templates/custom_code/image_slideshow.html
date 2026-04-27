@@ -29,6 +29,9 @@
       <button type="button" class="btn btn-primary" onclick="downloadFile(event)">Download Fits</button>
     </div>
     <div class="row justify-content-center mt-3">
+      <input type="hidden" id="target-id" value="{{ target.id }}">
+      <input type="hidden" id="archive-root" value="{{ archive_root }}">
+      <input type="hidden" id="archive-token" value="{{ archive_token }}">
       <button type="button" class="btn btn-primary" onclick="downloadAll(event)">Download All Images</button>
     </div>
     <div class="row justify-content-center mt-2">
@@ -68,7 +71,6 @@
     }
     makeThumbnail();
   });
-
   function makeThumbnail() {
     var zoomVal = document.getElementById("id_zoom").value;
     var sigmaVal = document.getElementById("id_sigma").value;
@@ -91,7 +93,6 @@
       }
     });
   };
-
   function prevImg() {
     var select = document.getElementById("id_filenames");
     if (select.selectedIndex === select.options.length - 2) {
@@ -104,7 +105,6 @@
     }
     makeThumbnail();
   };
-
   function nextImg() {
     var select = document.getElementById("id_filenames");
     if (select.selectedIndex === 1) {
@@ -117,7 +117,6 @@
     }
     makeThumbnail();
   };
-
   async function downloadFile(event) {
     event.preventDefault();
     const downloadButton = document.querySelector("button[onclick='downloadFile(event)']");
@@ -152,73 +151,44 @@
     makeThumbnail();
   });
   async function downloadAll(event) {
-    event.preventDefault();
-    const button = document.querySelector("button[onclick='downloadAll(event)']");
-    const status = document.getElementById('download-status');
-    const originalText = button.innerHTML;
-    button.disabled = true;
-    button.innerHTML = 'Searching for frames...';
-    status.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Querying archive...';
-    try {
-      const getResp = await fetch('{% url "get-frame-ids" %}?target_id={{ target.id }}');
-      const response = await getResp.json();
-      const frameIds = response.frame_ids;
-      const count = response.count;
-      const batchSize = 500;
-      const batches = [];
-      for (let i = 0; i < frameIds.length; i += batchSize) {
-          batches.push(frameIds.slice(i, i + batchSize));
+    const statusDiv = document.getElementById("download-status");
+    const targetId = document.getElementById("target-id").value;
+    const downloadButton = document.querySelector("button[onclick='downloadAll(event)']");
+    statusDiv.innerHTML = "Fetching images...";
+    downloadButton.disabled = true;
+
+    const response = await fetch(`{% url 'get-frame-ids' %}?target_id=${targetId}`);
+    const data = await response.json();
+
+    const numZips = Math.ceil(data.frame_ids.length / 500);
+    statusDiv.innerHTML = `Found ${data.count} images${numZips > 1 ? ` — downloading as ${numZips} zip files` : ''}.`;
+
+    const archiveRoot = document.getElementById("archive-root").value;
+    const archiveToken = document.getElementById("archive-token").value;
+    await downloadZip(data.frame_ids, false, archiveRoot, archiveToken);
+    statusDiv.innerHTML = `${numZips > 1 ? `${numZips} zip files opening` : 'Download starting'} in new tab(s). Enable pop-ups and check your browser downloads.`;
+    downloadButton.disabled = false;
+  }
+  async function downloadZip(frameIds, uncompress, archiveRoot, archiveToken) {
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < frameIds.length; i += CHUNK_SIZE) {
+      const chunk = frameIds.slice(i, i + CHUNK_SIZE);
+      const form = $('<form>', {
+        method: 'POST',
+        action: `${archiveRoot}zip/`,
+        target: '_blank'
+      });
+      chunk.forEach(function(value, j) {
+        form.append($('<input>', { type: 'hidden', name: `frame_ids[${j}]`, value: value }));
+      });
+      form.append($('<input>', { type: 'hidden', name: 'auth_token', value: archiveToken }));
+      form.append($('<input>', { type: 'hidden', name: 'uncompress', value: uncompress }));
+      $('body').append(form);
+      form.submit();
+      form.remove();
+      if (i + CHUNK_SIZE < frameIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-      const totalBatches = batches.length;
-
-      status.innerHTML = `<span style="color: green;">&#x2713; Found ${count} frames. Starting ${totalBatches} parallel downloads...</span>`;
-      button.innerHTML = 'Downloading...';
-
-      for (let i = 0; i < totalBatches; i++) {
-        const iframe = document.createElement('iframe');
-        iframe.name = `download-iframe-${i}`;
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '{% url "download-zip" %}';
-        form.target = `download-iframe-${i}`;
-        form.style.display = 'none';
-
-        const csrfInput = document.createElement('input');
-        csrfInput.type = 'hidden';
-        csrfInput.name = 'csrfmiddlewaretoken';
-        csrfInput.value = '{{ csrf_token }}';
-        form.appendChild(csrfInput);
-
-        const frameIdsInput = document.createElement('input');
-        frameIdsInput.type = 'hidden';
-        frameIdsInput.name = 'frame_ids';
-        frameIdsInput.value = JSON.stringify(batches[i]);
-        form.appendChild(frameIdsInput);
-
-        const targetNameInput = document.createElement('input');
-        targetNameInput.type = 'hidden';
-        targetNameInput.name = 'target_name';
-        targetNameInput.value = `{{ target.name }}_part${i + 1}`;
-        form.appendChild(targetNameInput);
-
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-        await new Promise(r => setTimeout(r, 500));
-      }
-
-      status.innerHTML = `<span style="color: green;">&#x2713; ${totalBatches} downloads started — check your downloads folder.</span>`;
-      button.innerHTML = originalText;
-      button.disabled = false;
-
-    } catch(e) {
-      console.error('Error:', e);
-      status.innerHTML = `<span style="color: red;">&#x2715; Error: ${e.message}</span>`;
-      button.innerHTML = originalText;
-      button.disabled = false;
     }
   }
 </script>

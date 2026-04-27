@@ -3,6 +3,7 @@ import plotly.graph_objs as go
 from django import template, forms
 from django.conf import settings
 from django.db.models.functions import Lower
+from django.db.models import Max
 from django.shortcuts import reverse
 from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
@@ -20,6 +21,7 @@ from tom_common.hooks import run_hook
 
 from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
 import datetime
+from django.utils import timezone
 import json
 from astropy.time import Time
 from astropy import units as u
@@ -910,14 +912,18 @@ def format_lco_summary(obs, group, is_active):
 
     if 'SnexResumeCadenceAfterFailureStrategy' in cadence_strategy and cadence_freq > 0:
         summary.append(f"{cadence_freq}-day {obs_type} cadence of")
+    elif 'SnexRetryFailedObservationsStrategy' in cadence_strategy and cadence_freq > 0:
+        summary.append(f"Single {obs_type} observation (retry until successful) of")
     else:
         summary.append(f"Single {obs_type} observation of")
 
     if obs_type == 'imaging':
         filter_strings = []
-        for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']:
+        for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']:
             val = params.get(f)
             if val and val[0] != 0.0:
+                if f == 'muscat_filter':
+                    f = 'g, r, i, z'
                 filter_strings.append(f"{f} ({val[0]}x{val[1]})")
         if filter_strings:
             summary.append(", ".join(filter_strings))
@@ -1149,9 +1155,12 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         if not end:
             end = str(observation.modified).split('.')[0]
 
-        if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
+        cadence_strategy = parameter.get('cadence_strategy', '')
+        if cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
-        else:
+        elif cadence_strategy == 'SnexRetryFailedObservationsStrategy':
+            cadence_strat = '(Onetime, retry untill successful)'
+        elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
             cadence_strat = '(Onetime)'
         
         reminder = parameter.get('reminder', 2 * cadence_frequency_days)
@@ -1218,9 +1227,12 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
         cadence_frequency = cadence_frequency_days * 24
 
-        if parameter.get('cadence_strategy', '') == 'SnexResumeCadenceAfterFailureStrategy':
+        cadence_strategy = parameter.get('cadence_strategy', '')
+        if cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
             cadence_strat = '(Repeating)'
-        else:
+        elif cadence_strategy == 'SnexRetryFailedObservationsStrategy':
+            cadence_strat = '(Onetime, retry untill successful)'
+        elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
             cadence_strat = '(Onetime)'
 
         end = str(parameter.get('reminder_date', '')).replace('T', ' ')
@@ -1304,26 +1316,22 @@ def scheduling_list_with_form(context, observation):
     return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
 
 @register.filter
-def filter_current_reminders(queryset, pagenumber):
-    now = datetime.datetime.now()
-    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__lt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-    queryset = queryset.order_by('parameters__reminder_date')
-
-    paginator = Paginator(queryset, 25)
-    page_number = pagenumber.strip('page=')
-    page_obj = paginator.get_page(page_number)
-    return page_obj
+def filter_current_reminders(_, pagenumber):
+    now = timezone.now()
+    queryset = ObservationRecord.objects.filter(
+        id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
+        latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
+        parameters__reminder_date__lte=now.isoformat()).order_by('parameters__reminder_date')
+    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
 
 @register.filter
-def filter_upcoming_reminders(queryset, pagenumber):
-    now = datetime.datetime.now()
-    queryset = ObservationRecord.objects.filter(status='PENDING',parameters__reminder_date__gt=datetime.datetime.strftime(now, '%Y-%m-%dT%H:%M:%S'))
-    queryset = queryset.order_by('parameters__reminder_date')
-
-    paginator = Paginator(queryset, 25)
-    page_number = pagenumber.strip('page=')
-    page_obj = paginator.get_page(page_number)
-    return page_obj
+def filter_upcoming_reminders(_, pagenumber):
+    now = timezone.now()
+    queryset = ObservationRecord.objects.filter(
+        id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
+        latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
+        parameters__reminder_date__gte=now.isoformat()).order_by('parameters__reminder_date')
+    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
 def dash_spectra_page(context, target):
@@ -1706,7 +1714,9 @@ def image_slideshow(context, target):
             'telescope': teles[0],
             'instrument': instr[0],
             'filter': filters[0],
-            'exptime': exptimes[0]}
+            'exptime': exptimes[0],
+            'archive_root': settings.FACILITIES['LCO']['archive_url'],
+            'archive_token': settings.FACILITIES['LCO']['api_key']}
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')

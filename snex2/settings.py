@@ -29,6 +29,11 @@ FITS_DIR = os.path.join(DATA_DIR,'fits')
 LSC_DIR = os.path.join(SN_DIR,'data','lsc')
 FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
+OBS_WINDOW_MINIMUM = 24 # Minimum observation window in hours
+
+SLACK_OBS_CHANNEL = "#observation-notifications"
+SLACK_BOT_TOKEN =  os.getenv('SLACK_BOT_TOKEN', '')
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/2.1/howto/deployment/checklist/
 
@@ -415,6 +420,7 @@ TOM_CADENCE_STRATEGIES = [
     'tom_observations.cadences.retry_failed_observations.RetryFailedObservationsStrategy',
     'tom_observations.cadences.resume_cadence_after_failure.ResumeCadenceAfterFailureStrategy',
     'custom_code.cadences.snex_retry_failed_observations.SnexRetryFailedObservationsStrategy',
+    'custom_code.cadences.snex_retry_failed_observations.SnexRetryUntilDeadlineStrategy',
     'custom_code.cadences.snex_resume_cadence_after_failure.SnexResumeCadenceAfterFailureStrategy'
 ]
 

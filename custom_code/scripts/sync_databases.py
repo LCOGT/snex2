@@ -314,6 +314,8 @@ def update_spec(action):
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
                 spec_groupid = spec_row.groupidcode
+                if not spec_groupid:
+                    spec_groupid = 1703768065789
     
                 with get_session(db_address=settings.SNEX1_DB_URL) as db_session:
                     standard_classification_row = db_session.query(Classifications).filter(Classifications.name=='Standard').first()
@@ -367,10 +369,9 @@ def update_spec(action):
 
                     logger.info(f'rd and extra made or updated: {reduced_datum} {RDExtras_spec} for dataproduct: {data_product} and target {target}')
 
-                    if spec_groupid is not None:
-                        update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
-                        assign_perm('tom_dataproducts.view_dataproduct', Group.objects.get(name = "LCOGT"), data_product) # LCOGT group view and edit all dataproducts
-                        assign_perm('tom_dataproducts.delete_dataproduct', Group.objects.get(name = "LCOGT"), data_product)
+                    update_permissions(int(spec_groupid), 'view_reduceddatum', reduced_datum, snex1_groups) # everyone view reduceddatum
+                    assign_perm('tom_dataproducts.view_dataproduct', Group.objects.get(name = "LCOGT"), data_product) # LCOGT group view and edit all dataproducts
+                    assign_perm('tom_dataproducts.delete_dataproduct', Group.objects.get(name = "LCOGT"), data_product)
 
         except Exception as e:
             logger.exception(f"Failed to process spectrum for db_changes row {result.id} spec {result.rowid} with exception {e}")

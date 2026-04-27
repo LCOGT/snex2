@@ -3,12 +3,14 @@ from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm
 from django.contrib.auth.models import Group
 from django.conf import settings
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from django_comments.models import Comment
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.facility import get_service_class
+from tom_observations.cadence import get_cadence_strategy
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -143,7 +145,7 @@ def cancel_observation(obs_group):
     
     first_obs = obs_group.observation_records.order_by('created').first()
     if first_obs:
-        first_obs.parameters['sequence_end'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+        first_obs.parameters['sequence_end'] = timezone.now().isoformat()
         first_obs.save()
 
     return True
@@ -151,7 +153,20 @@ def cancel_observation(obs_group):
 def _continue_sequence(obs_group, data):
     obs = obs_group.observation_records.filter(status='PENDING').first()
     if not obs:
-        return {'failure': 'No observations found in group'}
+        cg = obs_group.dynamiccadence_set.first()
+        strategy = get_cadence_strategy(cg.cadence_strategy)(cg)
+        try:
+            new_observations = strategy.run()
+            if not new_observations:
+                logger.error(f'Cadence strategy returned no new observations for group {obs_group.id}')
+                return {'failure': 'No new observation was created for this sequence'}
+
+            obs = new_observations[0]
+        except Exception as e:
+            logger.error((f'Unable to run cadence_group: {cg}; strategy {strategy};'
+                            f' with id {cg.id} due to error: {e}'))
+            return {'failure': f'There is an error with this sequence: {e}'}
+        
     
     logger.info(f'Continuing Sequence group {obs_group.id} as-is')
     
@@ -161,8 +176,8 @@ def _continue_sequence(obs_group, data):
                 return {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
 
     obs.parameters['reminder'] = data['reminder']
-    now = datetime.utcnow()
-    reminder_date = (now + timedelta(days=data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
+    now = timezone.now()
+    reminder_date = (now + timedelta(days=data['reminder'])).isoformat()
     obs.parameters['reminder_date'] = reminder_date
     obs.save()
 
@@ -198,12 +213,16 @@ def _modify_sequence(obs_group, user, data):
     new_params['start_user'] = user.username
     
     delay = data.get('delay_start', 0.0)
-    now = datetime.utcnow()
-    
+    now = timezone.now()
+
+    start_time = now + timedelta(days=delay)
+    min_window = settings.OBS_WINDOW_MINIMUM or 24
+    window_length_hours = min(new_params['cadence_frequency'], min_window)
+
     new_params['reminder'] = data['reminder']
-    new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).strftime('%Y-%m-%dT%H:%M:%S')
-    new_params['start'] = (now + timedelta(days=delay)).strftime('%Y-%m-%dT%H:%M:%S')
-    new_params['end'] = (now + timedelta(days=delay + data['cadence_frequency_days'])).strftime('%Y-%m-%dT%H:%M:%S')
+    new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).isoformat()
+    new_params['start'] = start_time.isoformat()
+    new_params['end'] = (start_time + timedelta(hours=window_length_hours)).isoformat()
     
     # Update filters
     filters = ['U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
@@ -214,7 +233,7 @@ def _modify_sequence(obs_group, user, data):
     try:
         facility = get_service_class(obs.facility)()
         form_class = facility.get_form(data['observation_type'])
-        form = form_class(new_params)
+        form = form_class(data=new_params)
         
         if not form.is_valid():
             logger.error(f"Form validation failed: {form.errors}")
