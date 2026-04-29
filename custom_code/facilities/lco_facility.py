@@ -38,6 +38,20 @@ FLUX_CONSTANT = (1e-15 * u.erg) / (u.cm ** 2 * u.second * u.angstrom)
 WAVELENGTH_UNITS = u.angstrom
 
 
+class SnexCadenceStrategyField(forms.ChoiceField):
+    """
+    Shows only the two user-facing cadence choices, but also accepts
+    SnexRetryFailedObservationsStrategy as an internal saved/mapped value.
+    """
+
+    extra_valid_values = {
+        'SnexRetryFailedObservationsStrategy',
+    }
+
+    def valid_value(self, value):
+        return super().valid_value(value) or value in self.extra_valid_values
+
+
 class InitialValue:
     exposure_count = 2
     block_num = 1
@@ -74,7 +88,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
     def __init__(self, *args, **kwargs):
         super(LCOPhotometricSequenceForm, self).__init__(*args, **kwargs)
 
-        self.fields['cadence_strategy'] = forms.ChoiceField(
+        self.fields['cadence_strategy'] = SnexCadenceStrategyField(
             choices=[
                 ('SnexResumeCadenceAfterFailureStrategy', 'Repeating every'),
                 ('SnexRetryUntilDeadlineStrategy', 'Once in the next'),
@@ -82,6 +96,11 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             required=False,
             label=''
         )
+        initial_strategy = self.initial.get('cadence_strategy')
+
+        if initial_strategy == 'SnexRetryFailedObservationsStrategy':
+            self.initial['cadence_strategy'] = 'SnexRetryUntilDeadlineStrategy'
+            self.initial['retry_until_obtained'] = True
 
         self.fields['ipp_value'].initial = 1.0
         self.fields['max_airmass'].initial = 1.6
@@ -188,6 +207,8 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         retry_until_obtained = cleaned_data.get('retry_until_obtained', False)
         if strategy == 'SnexRetryUntilDeadlineStrategy' and retry_until_obtained:
             cleaned_data['cadence_strategy'] = 'SnexRetryFailedObservationsStrategy'
+        elif strategy == 'SnexRetryFailedObservationsStrategy':
+            cleaned_data['retry_until_obtained'] = True
 
         existing_reminder = self.data.get('reminder_date')
         now = timezone.now()
@@ -400,7 +421,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             label='Slit',
             initial=('slit_2.0as', '2.0 arcsec slit')
         )
-        self.fields['cadence_strategy'] = forms.ChoiceField(
+        self.fields['cadence_strategy'] = SnexCadenceStrategyField(
             choices=[
                 ('SnexResumeCadenceAfterFailureStrategy', 'Repeating every'),
                 ('SnexRetryUntilDeadlineStrategy', 'Once in the next'),
@@ -408,6 +429,12 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             required=False,
             label=''
         )
+        initial_strategy = self.initial.get('cadence_strategy')
+
+        if initial_strategy == 'SnexRetryFailedObservationsStrategy':
+            self.initial['cadence_strategy'] = 'SnexRetryUntilDeadlineStrategy'
+            self.initial['retry_until_obtained'] = True
+
         self.fields['instrument_type'] = forms.ChoiceField(
             choices=self.instrument_choices(),
             required=False,
@@ -488,8 +515,11 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
 
         strategy = cleaned_data.get('cadence_strategy')
         retry_until_obtained = cleaned_data.get('retry_until_obtained', False)
+
         if strategy == 'SnexRetryUntilDeadlineStrategy' and retry_until_obtained:
             cleaned_data['cadence_strategy'] = 'SnexRetryFailedObservationsStrategy'
+        elif strategy == 'SnexRetryFailedObservationsStrategy':
+            cleaned_data['retry_until_obtained'] = True
 
         existing_reminder = self.data.get('reminder_date')
         now = timezone.now()

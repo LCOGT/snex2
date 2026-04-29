@@ -186,9 +186,6 @@ class BaseRetryStrategy(SnexCadencePermissionMixin, RetryFailedObservationsStrat
         observation_payload,
         start_keyword='start',
         end_keyword='end',
-        first_obs=None,
-        last_obs=None,
-        facility=None,
     ):
         cadence_frequency = self.dynamic_cadence.cadence_parameters.get('cadence_frequency')
         if cadence_frequency is None:
@@ -230,7 +227,6 @@ class SnexRetryUntilDeadlineStrategy(BaseRetryStrategy):
         start_keyword='start',
         end_keyword='end',
         first_obs=None,
-        last_obs=None,
         facility=None,
     ):
         cadence_frequency = self.dynamic_cadence.cadence_parameters.get('cadence_frequency')
