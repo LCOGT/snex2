@@ -1047,7 +1047,7 @@ def observation_summary(context, target = None, is_active = False):
     content_type_obs_group = ContentType.objects.get_for_model(ObservationGroup)
 
     for group in obs_groups:
-        obs = group.observation_records.order_by('-id').first()
+        obs = group.observation_records.order_by('id').first()
         if not obs:
             continue
         obs_records_active.append(obs)
