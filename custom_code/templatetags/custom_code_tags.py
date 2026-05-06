@@ -964,9 +964,12 @@ def format_lco_summary(obs, group, is_active):
         summary.append(f"starting on {start_date}")
 
     if not is_active:
-        endtime = params.get('sequence_end') or params.get('end')
+        endtime = obs.modified
         if endtime:
-            summary.append(f"ending on {str(endtime).split('T')[0]}")
+            split_ch = ' '
+            if 'T' in str(endtime):
+                split_ch = 'T'
+            summary.append(f"ending on {str(endtime).split(split_ch)[0]}")
 
     start_user = params.get('start_user')
     if start_user:
