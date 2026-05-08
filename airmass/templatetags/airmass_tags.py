@@ -12,7 +12,7 @@ import datetime
 import json
 from astropy.time import Time
 from astropy import units as u
-from astropy.coordinates import get_moon, get_sun, SkyCoord, AltAz
+from astropy.coordinates import get_sun, SkyCoord
 import numpy as np
 import time
 from django.contrib.auth.models import User

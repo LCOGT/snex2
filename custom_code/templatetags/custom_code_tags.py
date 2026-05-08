@@ -25,7 +25,7 @@ from django.utils import timezone
 import json
 from astropy.time import Time
 from astropy import units as u
-from astropy.coordinates import get_body, get_sun, SkyCoord, AltAz
+from astropy.coordinates import get_body, get_sun, SkyCoord
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -379,7 +379,7 @@ def moon_vis(target):
     )
     
     obj_pos = SkyCoord(target.ra, target.dec, unit=u.deg)
-    moon_pos = get_body("moon",times)
+    moon_pos = get_body("moon", times)
 
     separations = moon_pos.separation(obj_pos).deg
     phases = moon_illumination(times)
