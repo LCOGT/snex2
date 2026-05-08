@@ -42,7 +42,7 @@ from django_comments.models import Comment
 from django_filters.views import FilterView
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
-from custom_code.dash_apps import spectra_individual
+from custom_code.dash_apps import spectra_individual, base_spectra_individual
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
 from guardian.models import GroupObjectPermission
@@ -60,16 +60,22 @@ from tom_targets.templatetags.targets_extras import target_groups
 from tom_targets.views import TargetCreateView
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
-from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_banzai_spectra
+from custom_code.hooks import _get_tns_params, get_standards_from_snex1
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, DataProductExtra, ScienceTags, TargetTags, TNSTarget, ReducedDatumSpecExtra
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
-from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments, _modify_sequence
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments, _modify_sequence, _stop_sequence
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
 from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create
 import logging
 from urllib.parse import quote_plus
+from astropy.io import fits
+from PIL import Image
+import numpy as np
+import base64
+import io
+from django.core.management import call_command
 
 logger = logging.getLogger(__name__)
 
@@ -1777,6 +1783,37 @@ class FloydsInboxView(TemplateView):
 
     template_name = 'custom_code/floyds_inbox.html'
 
+    def get_banzai_spectra(self):
+        '''
+        Hook to find banzai-reduced spectra for FLOYDS inbox
+        '''
+
+        dp_list = DataProduct.objects.filter(data_product_type='spectroscopy', dataproductextra__viewed = False,)
+        
+        thumbnails = []
+        specids = []    
+        unreduced_dp = []  
+        reduced_dp = []
+        for dp in dp_list:
+            specids = [rd.pk for rd in ReducedDatum.objects.filter(data_product = dp)] 
+            if len(specids) == 0:
+                unreduced_dp.append(dp)
+            else:
+                reduced_dp.append(dp)
+                dpe = DataProductExtra.objects.get(data_product = dp)
+                thumb_url = dpe.value['thumbnail']
+                thumbnails.append(thumb_url)
+        
+        return  thumbnails, specids, reduced_dp, unreduced_dp
+    
+    def refresh_ingestion(self):
+        try:
+            call_command('ingest_banzai_reductions')
+            return JsonResponse({'status': 'ok'})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
+
     def update_spec_approval(self, request):
         # get the target_id and path and approval status from the button
         target_id = request.GET.get('target_id')
@@ -1791,58 +1828,74 @@ class FloydsInboxView(TemplateView):
         if specid:
             try:
                 rd = ReducedDatum.objects.get(id=specid, target=target)
-            except ReducedDatum.DoesNotExist:
-                return JsonResponse({'error': f'No ReducedDatum found for specid {specid}'}, status=404)
-            
-        if approval:
-            dp = rd.data_product
+            except Exception as e:
+                return JsonResponse({f'{e} No ReducedDatum found for specid {specid}'}, status=404)
+        try:
+            if approval =='Stop':
+                dp = rd.data_product
+                # update DPE with viewed = True
+                dpe, created = DataProductExtra.objects.update_or_create(
+                    data_product=dp,
+                    viewed = True
+                )
 
-            # update DPE with viewed = True
-            dpe, created = DataProductExtra.objects.update_or_create(
-                data_product=dp,
-                data_type='spectroscopy',
-                key='spec_extras',
-                viewed = True
-            )
-            # Update RDE with show = True:
-            rde, created = ReducedDatumSpecExtra.objects.update_or_create(
-                data_product = dp,
-                reduced_datum = rd,
-                data_type='spectroscopy',
-                key='spec_extras',
-                defaults={'show': True}
-            )
-            logger.info(
-                f"{'Created' if created else 'Updated'} approval={approved} "
-                f"for ReducedDatum id={rd.id} (target={target.name})"
-            )
+                obs_record = dp.observation_record
+                obs_group = obs_record.observationgroup_set.first() # wrap in try-except
+                #dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
 
-        if not approval:
-            dp = rd.data_product
-            obs_record = dp.observation_record
-            obs_group = obs_record.observationgroup_set.first() # wrap in try-except
-            #dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
+                user = User.objects.get(username=obs_record.parameters.get('start_user', 'supernova_secure')) # check in settings.py adminusername
 
-            obs_record.parameters['delay_start'] = 0.0
-            user = User.objects.get(username=obs_record.parameters.get('start_user', 'supernova_secure')) # check in settings.py adminusername
+                # 
+                _stop_sequence(obs_group, user=user, data=obs_record.parameters)
+                # Update RDE with show = True:
+                rde, created = ReducedDatumSpecExtra.objects.update_or_create(
+                    reduced_datum = rd,
+                    defaults={'show': True}
+                )
+                
 
-            # Calling modify sequence will re-enter the sequence with delay_start = 0 --> mimics markbad behaviour
-            _modify_sequence(obs_group, user=user, data=obs_record.parameters)
-            
-            dpe, created = DataProductExtra.objects.update_or_create(
-                data_product = dp,
-                data_type='spectroscopy',
-                key='spec_extras',
-                defaults={'viewed': True}
-            )
+            elif approval:
+                dp = rd.data_product
 
-            rde, created = ReducedDatumSpecExtra.objects.update_or_create(
-                data_product = dp,
-                reduced_datum = rd,
-                data_type='spectroscopy',
-                key='spec_extras',
-                defaults={'show': False}
-            )
+                # update DPE with viewed = True
+                dpe, created = DataProductExtra.objects.update_or_create(
+                    data_product=dp,
+                    viewed = True
+                )
+                # Update RDE with show = True:
+                rde, created = ReducedDatumSpecExtra.objects.update_or_create(
+                    reduced_datum = rd,
+                    defaults={'show': True}
+                )
+                logger.info(
+                    f"{'Created' if created else 'Updated'} approval={approval} "
+                    f"for ReducedDatum id={rd.id} (target={target.name})"
+                )
+
+            elif not approval:
+                dp = rd.data_product
+                obs_record = dp.observation_record
+                obs_group = obs_record.observationgroup_set.first() # wrap in try-except
+                #dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
+
+                obs_record.parameters['delay_start'] = 0.0
+                user = User.objects.get(username=obs_record.parameters.get('start_user', 'supernova_secure')) # check in settings.py adminusername
+
+                # Calling modify sequence will re-enter the sequence with delay_start = 0 --> mimics markbad behaviour
+                _modify_sequence(obs_group, user=user, data=obs_record.parameters)
+                
+                dpe, created = DataProductExtra.objects.update_or_create(
+                    data_product = dp,
+                    defaults={'viewed': True}
+                )
+
+                rde, created = ReducedDatumSpecExtra.objects.update_or_create(
+                    reduced_datum = rd,
+                    defaults={'show': False}
+                )
+        except Exception as e:
+            logger.info(f"{e}")
+
 
         return JsonResponse({
                     'status':    'ok',
@@ -1851,52 +1904,92 @@ class FloydsInboxView(TemplateView):
                     'approval':  approval,
                 })
 
+
+
+    def make_thumbnail_from_rd(self, dp):
+        rd = ReducedDatum.objects.filter(
+            data_product=dp,
+            value__fits_data__isnull=False
+        ).first()
         
+        if not rd:
+            return ''
+        
+        fits_bytes = base64.b64decode(rd.value['fits_data'])
+        
+        with fits.open(io.BytesIO(fits_bytes)) as hdul:
+            data = hdul[0].data
+            if data is None and len(hdul) > 1:
+                data = hdul[1].data
+        
+        if data is None:
+            return ''
+        
+        # Normalize to 0-255, clipping outliers
+        data = np.nan_to_num(data)
+        vmin, vmax = np.percentile(data, [5, 95])
+        data = np.clip((data - vmin) / (vmax - vmin) * 255, 0, 255).astype(np.uint8)
+        data = np.flipud(data)  # flip vertically
+        
+        img = Image.fromarray(data)
+        img = img.resize((1200, 300), Image.LANCZOS)  # adjust dimensions to taste
+ 
+        
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        return f"data:image/png;base64,{b64}"
+            
         
     def get_context_data(self, **kwargs):
 
         context = super().get_context_data(**kwargs)
 
-        [targetnames, propids, dateobs, specids, thumbnails, unreduced_dp] = get_banzai_spectra()
+        thumbnails, specids, reduced_dp, unreduced_dp = self.get_banzai_spectra()
         
-        targetids = []
         banzai_inbox_rows = []
-        for i in range(len(targetnames)):
+        for i in range(len(reduced_dp)):
             current_dict = {}
-            current_dict['targetnames'] = targetnames[i]
-            logger.info(f"targetnames: {targetnames}")
-            
-            # Get the SNEx2 targetid 
-            targetquery = Target.objects.filter(name=targetnames[i])
-            logger.info(f"get_context_data targetquery, targetname: {targetquery} , {targetnames[i]}")
-            if not targetquery:
-                targetquery = TargetName.objects.filter(name=targetnames[i])
-                logger.info(f"targetquery in if statement: {targetquery}")
-                targetid = targetquery.first().target_id
-                logger.info(f"in if statement: Targetid: {targetid}")
-                targetids.append(targetid)
-            else:
-                logger.info(f"targetquery in else statement: {targetquery}")
-                targetid = targetquery.first().id
-                logger.info(f"in else statement Targetid: {targetid}")
-                targetids.append(targetid)
+            current_dict['targetnames'] = custom_code_tags.smart_name_list(reduced_dp[i].target)[0]
+            logger.info(f"targetnames: {current_dict['targetnames']}")
+            current_dict['filename'] = reduced_dp[i].extra_data
 
-            t = Target.objects.get(id=targetids[i])
+        
 
-            current_dict['targetid'] = targetids[i]
-            current_dict['propid'] = propids[i]
-            current_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
-            
+            current_dict['targetid'] = reduced_dp[i].target.id
+            current_dict['propid'] = reduced_dp[i].observation_record.parameters['proposal']
+            try:
+                dateobs = reduced_dp[i].observation_record.scheduled_end
+            except Exception as e:
+                logger.info(f"{e}")
+                dateobs = reduced_dp[i].observation_record.parameters['end']
+
+            current_dict['dateobs'] =dateobs.strftime("%b %d, %Y")
+
             dash_context = {
-                'spectrum_id': specids[i],
-                'target_id': targetids[i],
+                'spectrum_id': {'value': specids[i]},
+                'target_id':   {'value': reduced_dp[i].target.id},
             }
             current_dict['dash_context'] = dash_context
+            
             # image_data = requests.get(thumb_urls[i])
             # thumb = base64.b64encode(image_data.content).decode('utf-8')
             # current_dict['img'] = 'data:image/png;base64,{}'.format(thumb)
-            current_dict['2d_img'] = thumbnails[i]
+            logger.info(f"Thumbnail URL: {thumbnails[i]}")
+            # current_dict['2d_img'] = thumbnails[i]
+            current_dict['img_2d'] = self.make_thumbnail_from_rd(reduced_dp[i])
 
+            siblings = ReducedDatum.objects.filter(
+                data_product=reduced_dp[i],
+                data_type='spectroscopy'
+            ).exclude(
+                value__fits_data__isnull=False
+            ).order_by('-timestamp')
+
+            current_dict['versions'] = [
+                {'id': rd.id, 'label': rd.timestamp.strftime('%Y-%m-%d %H:%M')}
+                for rd in siblings
+                ]
 
             banzai_inbox_rows.append(current_dict)
             
@@ -1905,37 +1998,22 @@ class FloydsInboxView(TemplateView):
         for row in banzai_inbox_rows:
             logger.info(f"printing row and target: {row['targetid']}, {row['targetnames']}")
 
-        targetids = []
+        targetids = [dp.target_id for dp in unreduced_dp] 
         unreduced_spectra = []
-        targetnames = [dp.target for dp in unreduced_dp]
+        targetnames = [custom_code_tags.smart_name_list(dp.target) for dp in unreduced_dp] 
         thumbnails = [dp.thumbnail for dp in unreduced_dp]
         propids = [dp.observation_record.parameters['proposal'] for dp in unreduced_dp]
-        dateobs = [dp.observation_record.parameters['scheduled_end'] for dp in unreduced_dp]
+        try:
+            dateobs = [dp.observation_record.scheduled_end for dp in unreduced_dp]
+        except:
+            dateobs = [dp.observation_record.parameters['end'] for dp in unreduced_dp]
         
         logger.info(f"Targetnames with observations with no reductions yet: {targetnames}")
         for i in range(len(unreduced_dp)):
             new_dict = {}
-            
             new_dict['propid'] = propids[i]
             new_dict['dateobs'] = datetime.strptime(dateobs[i].split('T')[0],'%B %d %Y')
             new_dict['targetnames'] = targetnames[i]
-                
-            targetquery = Target.objects.filter(name=targetnames[i])
-            logger.info(f"get_context_data targetquery, targetname: {targetquery} , {targetnames[i]}")
-            if not targetquery:
-                targetquery = TargetName.objects.filter(name=targetnames[i])
-                logger.info(f"targetquery in if statement: {targetquery}")
-                targetid = targetquery.first().target_id
-                logger.info(f"in if statement: Targetid: {targetid}")
-                targetids.append(targetid)
-            else:
-                logger.info(f"targetquery in else statement: {targetquery}")
-                targetid = targetquery.first().id
-                logger.info(f"in else statement Targetid: {targetid}")
-                targetids.append(targetid)
-
-            t = Target.objects.get(id=targetids[i])
-
             new_dict['time_since_exp'] = Time(dateobs[i]) - Time.now()
 
             new_dict['targetid'] = targetids[i]

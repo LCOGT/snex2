@@ -45,48 +45,72 @@
 <table class="table">
   <thead>
     <tr>
-      <th style="width: 10%;">Target</th>
-      <th style="width: 10%;">Proposal</th>
-      <th style="width: 5%;">Date</th>
-      <th style="width: 35%;">Reduction Preview</th>
-      <th style="width: 25%;">2D Image</th>
-      <th style="width: 5%;">Approval?</th>
+      <th style="width: 15%;">Target Info</th>
+      <th style="width: 40%;">Reduction Preview
+        <style>
+          .btn-small {
+            padding: 2px 8px;
+            font-size: 12px;
+            cursor: pointer;
+          }
+        </style>
+        <!-- Small icon-only button -->
+        <button class="btn btn-primary refresh-btn ms-3"  title="Refresh Ingestion">&#x27F3;</button>
+      </th>
+      <th style="width: 35%;">2D Image</th>
+      <th style="width: 10%;">Approval?</th>
     </tr>
   </thead>
   <tbody>
   {% for row in banzai_inbox_rows %}
   <tr>
     <td>
-      <a href="{% url 'targets:detail' row.targetid %}">{{ row.targetnames }}</a>
+      <table>
+      <tr><a href="{% url 'targets:detail' row.targetid %}">{{ row.targetnames }}</a></tr>
+      <tr><td><b>Proposal:</b> {{ row.propid }}</td></tr>
+      <tr><td><b>Date:</b> {{ row.dateobs }}</td></tr>
+      <tr><td><b>File:</b> {{ row.filename }}</td></tr>
+      </table>
+      
     </td>
-    <td>{{ row.propid }}</td>
-    <td>{{ row.dateobs }}</td>
-    <td>
-      {% plotly_app name="Spectra_Individual" ratio=0.5 initial_arguments={{ row.dash_context }} %}
-      <div class="mt-2">
-        <label for="reduced-version-{{ forloop.counter }}" class="form-label">Version:</label>
-        <select id="reduced-version-{{ forloop.counter }}" class="form-control form-control-sm reduced-version-select" data-specid="{{ row.specid }}">
-          <option value="latest">Latest</option>
-          <option value="v1">v1</option>
-          <option value="v2">v2</option>
-          <option value="v3">v3</option>
-        </select>
+    <td style="height: 400px;">
+      <div style="height: 400px;">
+      {% plotly_app name="Base_Spectra_Individual" ratio=0.8 initial_arguments=row.dash_context %}
       </div>
     </td>
-    <td><img width="270" src="{{ row.2d_img }}" alt="img"></td>
+    <td><img width="350" src="{{ row.img_2d }}" alt="img"></td>
+    
     <td>
+      <select class="form-control form-control-sm mb-2 version-approval-select" data-specid="{{ row.specid }}">
+        {% for version in row.versions %}
+          <option value="{{ version.id }}" {% if forloop.first %}selected{% endif %}>
+            {{ version.label }}
+          </option>
+        {% endfor %}
+      </select>
       <button type="button"
-              class="btn btn-success btn-sm approve-btn"
+              class="btn btn-success btn-sm approve-btn d-block w-100 mb-1"
               data-target_id="{{ row.targetid }}"
               data-specid="{{ row.specid }}">
         Approve Extraction
       </button>
-      <a href="https://banzai-floyds.lco.earth/" class="btn btn-secondary btn-sm">Re-extract</a>
+      <a href="https://banzai-floyds.lco.earth/" 
+        class="btn btn-secondary btn-sm d-block w-100 mb-1">
+        Re-extract
+      </a>
       <button type="button"
-              class="btn btn-danger btn-sm reject-btn"
+              class="btn btn-sm reject-btn d-block w-100 mb-1"
+              style="background-color: #e07b39; border-color: #e07b39; color: white;"
               data-target_id="{{ row.targetid }}"
               data-specid="{{ row.specid }}">
-        Reject Spectrum
+        Resubmit Observation
+      </button>
+      <button type="button"
+              class="btn btn-sm stop-btn d-block w-100 mb-1"
+              style="background-color: #c0392b; border-color: #c0392b; color: white;"
+              data-target_id="{{ row.targetid }}"
+              data-specid="{{ row.specid }}">
+        Stop Sequence
       </button>
     </td>
   </tr>
@@ -128,7 +152,7 @@
 </table>
 <!-- add checkbox to plot other spectra from same target to compare. add functionality if banzai floyds fails - use e00 (check observation record vs dataproduct. if dp not made, get matching e00), link to observation record (track this sequence) -->
 <script>
-  function update_spec_approval(target_id, specid, path, approval) {
+  function update_spec_approval(target_id, specid, approval) {
     $.ajax({
       url: "{% url 'custom_code:update-spec-approval' %}",
       method: "GET",
@@ -148,13 +172,26 @@
     });
   }
 
+  function refresh_ingestion() {
+      $.ajax({
+        url: "{% url 'custom_code:refresh-banzai-ingestion' %}",
+        method: "GET",
+        success: function(response) {
+          console.log("Running refresh_ingestion", response);
+        },
+        error: function(xhr, status, err) {
+          console.error("Ingestion failed:", status, err);
+        }
+      });
+  }
+
   $(document).ready(function() {
 
     $(document).on('click', '.approve-btn', function() {
-      const btn      = $(this);
-      const targetid = btn.data('target_id');
-      const specid   = btn.data('specid');
-      update_spec_approval(targetid, specid, 'True');
+        const btn      = $(this);
+        const targetid = btn.data('target_id');
+        const specid   = btn.closest('td').find('.version-approval-select').val();
+        update_spec_approval(targetid, specid, 'True');
     });
 
     $(document).on('click', '.reject-btn', function() {
@@ -162,6 +199,18 @@
       const targetid = btn.data('target_id');
       const specid   = btn.data('specid');
       update_spec_approval(targetid, specid, 'False');
+    });
+    
+    $(document).on('click', '.stop-btn', function() {
+      const btn      = $(this);
+      const targetid = btn.data('target_id');
+      const specid   = btn.data('specid');
+      update_spec_approval(targetid, specid, 'Stop');
+    });
+
+    $(document).on('click', '.refresh-btn', function() {
+      const btn      = $(this);
+      refresh_ingestion();
     });
 
   });

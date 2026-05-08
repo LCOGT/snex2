@@ -701,7 +701,7 @@ def dash_lightcurve(context, target, width, height):
     final_background_subtracted = False
     for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
                                    klass=DataProductExtra.objects.filter(
-                                       target=target,key='upload_extras',data_type='photometry')):
+                                       target=target,key='upload_extras',data_product__data_product_type='photometry')):
         de_value = de.value
         inst = de_value.get('instrument', '')
         used_in = de_value.get('used_in', '')
@@ -1395,7 +1395,7 @@ def dash_spectra_page(context, target):
         # Query DataProductExtra directly - no object-level permissions needed
         # (user already has target access if they can view this page)
         spec_extras_row = DataProductExtra.objects.filter(
-            data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
+            data_product__data_type='spectroscopy',  data_product=spectrum.data_product).first()
         spec_extras = {}
         if spec_extras_row:
             spec_extras = spec_extras_row.value

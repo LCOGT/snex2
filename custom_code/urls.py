@@ -19,6 +19,8 @@ urlpatterns = [
     path('tns-share-spectrum/<int:pk>/<int:datum_pk>', SNEx2SpectroscopyTNSSharePassthrough.as_view(), name='tns-share-spectrum'),
     path('users/<int:pk>/update/', CustomUserUpdateView.as_view(), name='custom-user-update'),
     path('target_filter/', TargetFilteringView.as_view(), name='target_filter'),
-    path('update-spec-approval/', FloydsInboxView.update_spec_approval, name='update-spec-approval')
+    path('update-spec-approval/', FloydsInboxView.update_spec_approval, name='update-spec-approval'),
+    path('refresh-banzai-ingestion/', FloydsInboxView.refresh_ingestion, name='refresh-banzai-ingestion')
+
 
 ]

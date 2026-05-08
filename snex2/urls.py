@@ -20,7 +20,7 @@ from django.urls import include
 from custom_code.views import *
 from custom_code.api_views import CustomDataProductViewSet, CustomObservationRecordViewSet, SNExTargetViewSet
 from rest_framework.routers import DefaultRouter
-from custom_code.dash_apps import lightcurve, spectra, spectra_individual
+from custom_code.dash_apps import lightcurve, spectra, spectra_individual, base_spectra_individual
 from gw.views import *
 from django.contrib.auth import views as auth_views
 from custom_code.forms import SafeAuthenticationForm

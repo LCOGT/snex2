@@ -98,17 +98,10 @@ class TNSTarget(models.Model):
 
 class DataProductExtra(models.Model):
     
-    target = models.ForeignKey(
-        Target, on_delete=models.CASCADE
-    )
-    data_product = models. ForeignKey(
+    data_product = models.OneToOneField(
         DataProduct, on_delete=models.CASCADE, verbose_name='DataProduct',
         help_text='DataProduct this extra belongs to'
-    )
-    data_type = models.CharField(
-        max_length=100, default='', verbose_name='Data Type', 
-        help_text='Type of data (either photometry or spectroscopy)'
-    )
+    ) 
     key = models.CharField(
         max_length=200, default='', verbose_name='Key',
         help_text='Keyword for information being stored'
@@ -151,17 +144,10 @@ class DataProductExtra(models.Model):
 
 class ReducedDatumSpecExtra(models.Model):
     
-    target = models.ForeignKey(
-        Target, on_delete=models.CASCADE
-    )
-    data_product = models. ForeignKey(
-        DataProduct, on_delete=models.CASCADE, verbose_name='DataProduct',
-        help_text='DataProduct this extra belongs to'
-    )
-    reduced_datum = models. ForeignKey(
+    reduced_datum = models.OneToOneField(
         ReducedDatum, on_delete=models.CASCADE, verbose_name='ReducedDatum',
         help_text='ReducedDatum this extra belongs to'
-    )
+    ) 
     reducer = models.CharField(
         max_length=50, default = '', verbose_name='Reduced By',
         help_text='Who reduced this data'
@@ -171,6 +157,7 @@ class ReducedDatumSpecExtra(models.Model):
         help_text='Boolean for showing data on target page'
     )
     version = models.CharField(
+        null=True, blank=True,
         verbose_name='String',
         help_text='md5 hash'
     )

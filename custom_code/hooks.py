@@ -192,34 +192,6 @@ def find_images_from_snex1(pipeline_id, username, allimages=False):
 
     return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
 
-def get_banzai_spectra():
-    '''
-    Hook to find banzai-reduced spectra for FLOYDS inbox
-    '''
-
-    dp_extras_list = DataProductExtra.objects.filter(data_type='spectroscopy', viewed = False)
-    dp_list = [dpe.data_product for dpe in dp_extras_list]
-
-    thumbnails = []
-    targetnames = []
-    propids = []
-    dateobs = []
-    specids = []    
-    unreduced_dp = []  
-    for dp in dp_list:
-        rd_list = ReducedDatum.objects.filter(data_product = dp) 
-        if len(rd_list) == 0:
-            unreduced_dp.append(dp)
-        else:
-            thumbnails.append(dp.thumbnail)
-            propids.append(dp.observation_record.parameters['proposal'])
-            targetnames.append(dp.target)
-            dateobs.append(dp.observation_record.parameters['scheduled_end'])
-            specids.append([rd.pk for rd in rd_list])
-    
-    return [targetnames, propids, dateobs, specids, thumbnails, unreduced_dp]
-
-
 
 def get_standards_from_snex1(pipeline_id):
     
