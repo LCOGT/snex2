@@ -296,12 +296,12 @@ def update_spec(action):
                 for rde in rd_extra:
                     if rde.data_product:
                         dp = rde.data_product
+                        dp.delete()
                     elif rde.value.get('snex2_id',''):
                         rd_pk = rde.value.get('snex2_id','')
                         rd = ReducedDatum.objects.get(pk = rd_pk)
                         dp = rd.data_product
-                
-                dp.delete()
+                        dp.delete()
 
             else:
                 spec_row = get_current_row(Spec, id_, db_address=settings.SNEX1_DB_URL) # The row corresponding to id_ in the spec table
@@ -478,5 +478,6 @@ def run():
         logger.info('Done with photometry')
         update_spec(action)
         logger.info('Done with spectra')
-        update_target(action, db_address = _SNEX2_DB)
-        logger.info('Done with targets')
+        if action != 'delete':
+            update_target(action, db_address = _SNEX2_DB)
+            logger.info('Done with targets')

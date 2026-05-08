@@ -25,7 +25,7 @@ from django.utils import timezone
 import json
 from astropy.time import Time
 from astropy import units as u
-from astropy.coordinates import get_moon, get_sun, SkyCoord, AltAz
+from astropy.coordinates import get_body, get_sun, SkyCoord, AltAz
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -379,7 +379,7 @@ def moon_vis(target):
     )
     
     obj_pos = SkyCoord(target.ra, target.dec, unit=u.deg)
-    moon_pos = get_moon(times)
+    moon_pos = get_body("moon",times)
 
     separations = moon_pos.separation(obj_pos).deg
     phases = moon_illumination(times)
@@ -940,7 +940,7 @@ def format_lco_summary(obs, group, is_active):
             val = params.get(f)
             if val and val[0] != 0.0:
                 if f == 'muscat_filter':
-                    f = 'g, r, i, z'
+                    f = 'gp, rp, ip, zs'
                 filter_strings.append(f"{f} ({val[0]}x{val[1]})")
         if filter_strings:
             summary.append(", ".join(filter_strings))
@@ -988,9 +988,12 @@ def format_lco_summary(obs, group, is_active):
         summary.append(f"starting on {start_date}")
 
     if not is_active:
-        endtime = params.get('sequence_end') or params.get('end')
+        endtime = obs.modified
         if endtime:
-            summary.append(f"ending on {str(endtime).split('T')[0]}")
+            split_ch = ' '
+            if 'T' in str(endtime):
+                split_ch = 'T'
+            summary.append(f"ending on {str(endtime).split(split_ch)[0]}")
 
     start_user = params.get('start_user')
     if start_user:
@@ -1086,7 +1089,7 @@ def observation_summary(context, target = None, is_active = False):
         if not _group_belongs_in_summary(group, is_active):
             continue
 
-        obs = group.observation_records.order_by('-id').first()
+        obs = group.observation_records.order_by('id').first()
         if not obs:
             continue
     
