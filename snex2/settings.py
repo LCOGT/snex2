@@ -498,7 +498,7 @@ SNEX1_DB_PORT = os.getenv('SNEX1_DB_PORT', '3306')
 SNEX1_DB_NAME = os.getenv('SNEX1_DB_NAME', 'supernova')
 SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
 SNEX1_DB_PASSWORD = os.getenv('SNEX1_DB_PASSWORD', '')
-SNEX1_DB_URL = f'mysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
+SNEX1_DB_URL = f'mysql+pymysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
 
 PLOTLY_DASH = {
     'cache_arguments': False,
