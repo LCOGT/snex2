@@ -524,6 +524,10 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         self.fields['readout'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['readout']
         self.fields['start'].initial = ''
         self.fields['end'].initial = ''
+        self.fields['start'].required = False
+        self.fields['end'].required = False
+        self.fields['start'].label = False
+        self.fields['end'].label = False
 
         for field_name in self.HIDDEN_FIELDS:
             if field_name in self.fields:
@@ -560,8 +564,14 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
                     Column(PrependedText('readout', 'Readout'), css_class='col-md-6'),
                 ),
                 Row(
-                    Column(PrependedText('start', 'Start (Local)'), css_class='col-md-6'),
-                    Column(PrependedText('end', 'End (Local)'), css_class='col-md-6'),
+                    Column(
+                        PrependedText('start', 'Start (Local)'),
+                        css_class='col-md-6'
+                    ),
+                    Column(
+                        PrependedText('end', 'End (Local)'),
+                        css_class='col-md-6'
+                    ),
                 ),
                 Row(
                     Column(PrependedText('exposure_time', 'Exposure Time'), css_class='col-md-6'),
@@ -607,3 +617,11 @@ class SOARFacility(BaseSOARFacility):
             headers=self._portal_headers()
         )
         return [r['id'] for r in response.json()['requests']]
+
+'''
+There was a problem authenticating with SOAR: b'{"requests":[{"configurations":[{"non_field_errors":["Readout mode GHTS_B_400m2_2x2 is not available for instrument type SOAR_GHTS_BLUECAM"]},{"non_field_errors":["Readout mode GHTS_B_400m2_2x2 is not available for instrument type SOAR_GHTS_BLUECAM"]},{"non_field_errors":["Readout mode GHTS_B_400m2_2x2 is not available for instrument type SOAR_GHTS_BLUECAM"]}]}]}'. Please check that you have the correct credentials in the corresponding settings variable. https://tom-toolkit.readthedocs.io/en/stable/common/customsettings.html
+
+for triplespec, 200s is default for target, 65s for standard, have 2 configs, one standard, one target
+standard has fowler 8, target is 16.
+
+'''
