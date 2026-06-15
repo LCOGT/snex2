@@ -227,7 +227,6 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         if cleaned_data.get('delay_start') and cleaned_data['delay_amount'] > 0:
             delay = cleaned_data['delay_amount']
             cleaned_data['start'] = (now + timedelta(days=delay)).isoformat()
-            cleaned_data['end'] = (now + timedelta(hours=window_length + delay * 24)).isoformat()
             cleaned_data['delay_start'] = False
             cleaned_data['delay_amount'] = 0
 
@@ -239,9 +238,12 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
                 calculated_date = now + timedelta(days=reminder + delay)
                 cleaned_data['reminder_date'] = calculated_date.isoformat()
 
-            start = cleaned_data.get('start')
-            if start:
-                cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
+        # Always cap the observing window length, even on re-submissions that
+        # carry an existing reminder_date. Otherwise the window set by the base
+        # toolkit (start + cadence_frequency) leaks through.
+        start = cleaned_data.get('start')
+        if start:
+            cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
 
         cleaned_data = {
             k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v)
@@ -538,7 +540,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         if cleaned_data.get('delay_start') and cleaned_data['delay_amount'] > 0:
             delay = cleaned_data['delay_amount']
             cleaned_data['start'] = (now + timedelta(days=delay)).isoformat()
-            cleaned_data['end'] = (now + timedelta(hours=window_length + delay * 24)).isoformat()
             cleaned_data['delay_start'] = False
             cleaned_data['delay_amount'] = 0
 
@@ -550,9 +551,12 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
                 calculated_date = now + timedelta(days=reminder + delay)
                 cleaned_data['reminder_date'] = calculated_date.isoformat()
 
-            start = cleaned_data.get('start')
-            if start:
-                cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
+        # Always cap the observing window length, even on re-submissions that
+        # carry an existing reminder_date. Otherwise the window set by the base
+        # toolkit (start + cadence_frequency) leaks through.
+        start = cleaned_data.get('start')
+        if start:
+            cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
 
         return cleaned_data
 
