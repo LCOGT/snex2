@@ -101,7 +101,7 @@ class ReducedDatumExtra(models.Model):
     target = models.ForeignKey(
         Target, on_delete=models.CASCADE
     )
-    data_product = models. ForeignKey(
+    data_product = models.ForeignKey(
         DataProduct, on_delete=models.CASCADE, verbose_name='DataProduct',
         help_text='DataProduct this extra belongs to'
     )

@@ -132,7 +132,8 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
             cadence_frequency = self.dynamic_cadence.cadence_parameters.get('cadence_frequency')
             if cadence_frequency is None:
                 raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
-            window_length = 24 if cadence_frequency > 24 else cadence_frequency
+            min_window = settings.OBS_WINDOW_MINIMUM or 24
+            window_length = min(cadence_frequency, min_window)
             now = timezone.now()
             observation_payload[start_keyword] = now.isoformat()
             observation_payload[end_keyword] = (now + timedelta(hours=window_length)).isoformat()
@@ -186,11 +187,8 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
         if cadence_frequency is None:
             raise Exception(f'The {self.name} strategy requires a cadence_frequency cadence_parameter.')
         advance_window_hours = cadence_frequency
-        if settings.OBS_WINDOW_MINIMUM:
-            min_window = settings.OBS_WINDOW_MINIMUM
-        else:
-            min_window = 24
-        window_length = min_window if cadence_frequency > min_window else cadence_frequency
+        min_window = settings.OBS_WINDOW_MINIMUM or 24
+        window_length = min(cadence_frequency, min_window)
 
         scheduled_end = observation_payload['scheduled_end']
 
