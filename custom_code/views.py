@@ -1498,11 +1498,13 @@ class ObservationGroupDetailView(DetailView):
             if obs.parameters['observation_type'] == 'SPECTRA':
                 acq_radius = obs.parameters['acquisition_radius']
                 p['acq_radius'] = acq_radius
-            for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']:
+            for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']:
                 if f in obs.parameters.keys() and not obs.parameters[f]:
                     continue
                 elif f in obs.parameters.keys() and obs.parameters[f][0]:
                     current_filt = obs.parameters[f]
+                    if f == 'muscat_filter':
+                        f = 'gp, rp, ip, zs'
                     if not first_filt:
                         first_filt = {
                             'filt': f, 
