@@ -1,6 +1,6 @@
 from django.urls import path
 
-from custom_code.views import TNSTargets, PaperCreateView, PaperUpdateView, PaperDeleteView, scheduling_view, ReferenceStatusUpdateView, ObservationGroupDetailView, observation_sequence_cancel_view, AuthorshipInformation, download_photometry_view, get_target_standards_view, SNEx2SpectroscopyTNSSharePassthrough, CustomUserUpdateView, TargetFilteringView, download_data_product_view
+from custom_code.views import BulkDownloadView, TNSTargets, PaperCreateView, PaperUpdateView, PaperDeleteView, scheduling_view, ReferenceStatusUpdateView, ObservationGroupDetailView, observation_sequence_cancel_view, AuthorshipInformation, download_photometry_view, get_target_standards_view, SNEx2SpectroscopyTNSSharePassthrough, CustomUserUpdateView, TargetFilteringView, download_data_product_view
 
 app_name = 'custom_code'
 
@@ -20,4 +20,5 @@ urlpatterns = [
     path('tns-share-spectrum/<int:pk>/<int:datum_pk>', SNEx2SpectroscopyTNSSharePassthrough.as_view(), name='tns-share-spectrum'),
     path('users/<int:pk>/update/', CustomUserUpdateView.as_view(), name='custom-user-update'),
     path('target_filter/', TargetFilteringView.as_view(), name='target_filter'),
+    path('dataproducts/bulk-download/', BulkDownloadView.as_view(), name='bulk-download-dataproducts')
 ]

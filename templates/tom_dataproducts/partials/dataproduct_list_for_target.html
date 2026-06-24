@@ -2,33 +2,145 @@
 {% load custom_code_tags %}
 {% include 'tom_dataproducts/partials/js9_scripts.html' %}
 <h4>Data</h4>
-<table class="table table-striped">
-  <thead><tr><th></th><th></th><th>Filename</th><th>Type</th><th>Update</th><th>Delete</th></tr></thead>
-  <tbody>
-  {% for product in products %}
-    {% if product.data %}
-    <tr>
-      {% if not product.featured %}
-      <td><a href="{% url 'tom_dataproducts:feature' pk=product.id %}?target_id={{ target.id }}" title="Make Featured Image" class="btn btn-primary">Feature</a></td>
-      {% else %}
-      <td><span class="btn btn-secondary active featured">Featured</span></td>
+<div class="row mb-3 bg-light p-3 rounded">
+  <div class="col-md-3">
+    <label for="startDateFilter" class="font-weight-bold">Start Date:</label>
+    <input type="date" id="startDateFilter" class="form-control product-filter">
+  </div>
+  <div class="col-md-3">
+    <label for="endDateFilter" class="font-weight-bold">End Date:</label>
+    <input type="date" id="endDateFilter" class="form-control product-filter">
+  </div>
+  <div class="col-md-2">
+    <label for="telescopeFilter" class="font-weight-bold">Telescope:</label>
+    <select id="telescopeFilter" class="form-control product-filter">
+      <option value="">-- All --</option>
+      {% for t in telescopes %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label for="instrumentFilter" class="font-weight-bold">Instrument:</label>
+    <select id="instrumentFilter" class="form-control product-filter">
+      <option value="">-- All --</option>
+      {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2 d-flex align-items-end">
+    <button type="button" id="clearFilters" class="btn btn-secondary btn-block">Clear Filters</button>
+  </div>
+</div>
+<form action="{% url 'custom_code:bulk-download-dataproducts' %}" method="POST" id="bulkDownloadForm">
+  {% csrf_token %}
+  <input type="hidden" name="target_name" value="{{ target.name }}">
+  <div class="mb-3 d-inline-block">
+    <button type="submit" name="download_format" value="fits" class="btn btn-success">Download as fits (.zip)</button>
+  </div>
+  <div class="mb-3 d-inline-block">
+    <button type="submit" name="download_format" value="ascii" class="btn btn-success">Download as ascii (.zip)</button>
+  </div>
+  <table class="table table-striped" id="dataproductsTable">
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="selectAll"></th>
+        <th></th>
+        <th></th>
+        <th>Filename</th>
+        <th>Type</th>
+        <th>Update</th>
+        <th>Delete</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for product in products %}
+      {% if product.data %}
+      {% with extra=product.reduceddatumextra_set.first %}
+      <tr class="product-row"
+          data-created="{{ product.created|date:'Y-m-d' }}"
+          data-telescope="{{ extra.value.telescope|default:'' }}"
+          data-instrument="{{ extra.value.instrument|default:'' }}">
+        <td>
+          <input type="checkbox" name="selected_products" value="{{ product.id }}" class="product-checkbox">
+        </td>
+        {% if not product.featured %}
+        <td><a href="{% url 'tom_dataproducts:feature' pk=product.id %}?target_id={{ target.id }}" title="Make Featured Image" class="btn btn-primary">Feature</a></td>
+        {% else %}
+        <td><span class="btn btn-secondary active featured">Featured</span></td>
+        {% endif %}
+        <td>
+          {% if 'fits' in product.get_file_name or product.data_product_type == 'fits_file' %}
+            {% url 'custom_code:download-dataproduct' pk=product.id as js9_url %}
+            {% include 'tom_dataproducts/partials/js9_button.html' with url=js9_url only %}
+          {% endif %}
+        </td>
+        <td><a href="{% url 'custom_code:download-dataproduct' product.id %}">{{ product.get_file_name }}</a></td>
+        <td>
+          {% if product.data_product_type %}
+            {{ product.get_type_display }}
+          {% endif %}
+        </td>
+        <td>{% dataproduct_update product %}</td>
+        <td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>
+      </tr>
+      {% endwith %}
       {% endif %}
-      <td>
-        {%  if 'fits' in product.get_file_name or product.data_product_type == 'fits_file' %}
-          {% url 'custom_code:download-dataproduct' pk=product.id as js9_url %}
-          {% include 'tom_dataproducts/partials/js9_button.html' with url=js9_url only %}
-        {% endif %}
-      </td>
-      <td><a href="{% url 'custom_code:download-dataproduct' product.id %}">{{ product.get_file_name }}</a></td>
-      <td>
-        {% if product.data_product_type %}
-          {{ product.get_type_display }}
-        {% endif %}
-        </a>
-      </td>
-      <td>{% dataproduct_update product %}</td>
-      <td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>
-    </tr>
-    {% endif %}
-  {% endfor %}
-</table>
+    {% endfor %}
+    </tbody>
+  </table>
+</form>
+<script>
+(function () {
+  if (window.__dataProductFiltersBound) { return; }
+  window.__dataProductFiltersBound = true;
+
+  function filterTable() {
+    const start = document.getElementById('startDateFilter');
+    const end = document.getElementById('endDateFilter');
+    const tel = document.getElementById('telescopeFilter');
+    const ins = document.getElementById('instrumentFilter');
+    if (!start) { return; }   // partial not present yet
+    const startVal = start.value;
+    const endVal = end.value;
+    const selTel = (tel.value || '').toLowerCase();
+    const selIns = (ins.value || '').toLowerCase();
+    document.querySelectorAll('.product-row').forEach(function (row) {
+      const d = row.getAttribute('data-created') || '';
+      const okStart = !startVal || d >= startVal;
+      const okEnd = !endVal || d <= endVal;
+      const okTel = !selTel || (row.getAttribute('data-telescope') || '').toLowerCase() === selTel;
+      const okIns = !selIns || (row.getAttribute('data-instrument') || '').toLowerCase() === selIns;
+      const show = okStart && okEnd && okTel && okIns;
+      row.style.display = show ? '' : 'none';
+      if (!show) {
+        const cb = row.querySelector('.product-checkbox');
+        if (cb) { cb.checked = false; }
+      }
+    });
+  }
+  document.addEventListener('change', function (ev) {
+    const t = ev.target;
+    if (t.classList && t.classList.contains('product-filter')) {
+      filterTable();
+    } else if (t.id === 'selectAll') {
+      document.querySelectorAll('.product-row:not([style*="display: none"]) .product-checkbox')
+        .forEach(function (cb) { cb.checked = t.checked; });
+    }
+  });
+  document.addEventListener('click', function (ev) {
+    if (ev.target.id === 'clearFilters') {
+      ['startDateFilter', 'endDateFilter', 'telescopeFilter', 'instrumentFilter'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) { el.value = ''; }
+      });
+      filterTable();
+    }
+  });
+  document.addEventListener('submit', function (ev) {
+    if (ev.target.id === 'bulkDownloadForm') {
+      if (!document.querySelectorAll('.product-checkbox:checked').length) {
+        ev.preventDefault();
+        alert("No items selected. Please check at least one data product before downloading.");
+      }
+    }
+  });
+})();
+</script>

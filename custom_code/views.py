@@ -3,6 +3,7 @@ import json
 import os
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
+import zipfile
 import requests
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -13,6 +14,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import Group, User
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.core.cache import cache
@@ -1179,7 +1181,19 @@ def load_manage_data_tab_view(request):
         # Get the template tag contexts
         upload_context = custom_code_tags.custom_upload_dataproduct(context_dict, target) if request.user.is_authenticated else None
         dataproduct_context = dataproduct_list_for_target(context_dict, target)
-        
+        telescopes, instruments = set(), set()
+        for p in dataproduct_context['products']:
+            rde = p.reduceddatumextra_set.first()
+            if rde and rde.value:
+                t = rde.value.get('telescope')
+                i = rde.value.get('instrument')
+                if t:
+                    telescopes.add(t)
+                if i:
+                    instruments.add(i)
+        dataproduct_context['telescopes'] = sorted(telescopes)
+        dataproduct_context['instruments'] = sorted(instruments)
+
         # Render the components
         upload_html = render_to_string('custom_code/custom_upload_dataproduct.html', upload_context, request=request) if upload_context else ''
         dataproduct_html = render_to_string('tom_dataproducts/partials/dataproduct_list_for_target.html', dataproduct_context, request=request)
@@ -1196,7 +1210,6 @@ def load_manage_data_tab_view(request):
         )
         return JsonResponse({'html': html}, safe=False)
     return JsonResponse({'html': '<div>Error loading manage data</div>'}, safe=False)
-
 
 
 def load_observing_runs_tab_view(request):
@@ -1649,6 +1662,53 @@ def download_fits_view(request):
     data = requests.get(results[0]["url"]).content
 
     return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
+
+
+class BulkDownloadView(LoginRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        product_ids = request.POST.getlist('selected_products')
+        target_name = request.POST.get('target_name', 'snextarget')
+        clean_target_name = target_name.replace(' ', '_')
+        download_format = request.POST.get('download_format', 'fits')
+
+        if not product_ids:
+            return HttpResponse('No items selected.', status=400)
+
+        allowed = get_objects_for_user(
+            request.user, 'tom_dataproducts.view_dataproduct',
+            klass=DataProduct.objects.filter(id__in=product_ids),
+        )
+
+        zip_buffer = BytesIO()
+        written = 0
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for product in allowed:
+                if not product.data:
+                    continue
+                file_name = product.get_file_name()
+
+                if download_format == 'ascii':
+                    src_path = os.path.splitext(product.data.path)[0] + '.ascii'
+                    if not os.path.exists(src_path):
+                        continue
+                    arc_name = os.path.splitext(file_name)[0] + '.ascii'
+                else:
+                    src_path = product.data.path
+                    if not os.path.exists(src_path):
+                        continue
+                    arc_name = file_name
+
+                zip_file.write(src_path, arcname=arc_name)
+                written += 1
+
+        if written == 0:
+            return HttpResponse('No downloadable files found for selection.', status=404)
+
+        zip_buffer.seek(0)
+        response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename={clean_target_name}_{download_format}.zip'
+        return response
+
 
 @require_GET
 def get_frame_ids_view(request):
