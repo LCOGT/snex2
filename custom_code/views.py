@@ -20,7 +20,7 @@ from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F,
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
 from django.views.decorators.http import require_POST, require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
@@ -1625,6 +1625,16 @@ def make_thumbnail_view(request):
                     }
 
     return HttpResponse(json.dumps(content_response), content_type='application/json')
+
+def download_data_product_view(request, pk):
+    dp = get_object_or_404(DataProduct, pk=pk)
+    if not request.user.has_perm('tom_dataproducts.view_dataproduct', dp):
+        return HttpResponseForbidden('Not authorized')
+    if not dp.data or not os.path.exists(dp.data.path):
+        raise Http404('File not found on disk')
+    return FileResponse(open(dp.data.path, 'rb'),
+                        as_attachment=True,
+                        filename=os.path.basename(dp.data.name))
 
 def download_fits_view(request):
     token = settings.FACILITIES['LCO']['api_key']
