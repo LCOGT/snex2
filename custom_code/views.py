@@ -1702,7 +1702,7 @@ class BulkDownloadView(LoginRequiredMixin, View):
                 written += 1
 
         if written == 0:
-            return HttpResponse('No downloadable files found for selection.', status=404)
+            return JsonResponse({'error': 'No downloadable files found for selection.'}, status=404)
 
         zip_buffer.seek(0)
         response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')

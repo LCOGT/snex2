@@ -135,12 +135,42 @@
     }
   });
   document.addEventListener('submit', function (ev) {
-    if (ev.target.id === 'bulkDownloadForm') {
-      if (!document.querySelectorAll('.product-checkbox:checked').length) {
-        ev.preventDefault();
-        alert("No items selected. Please check at least one data product before downloading.");
-      }
+    if (ev.target.id !== 'bulkDownloadForm') return;
+    ev.preventDefault();
+    const form = ev.target;
+    if (!document.querySelectorAll('.product-checkbox:checked').length) {
+      alert("No items selected. Please check at least one data product before downloading.");
+      return;
     }
+    const formData = new FormData(form);
+    const fmt = ev.submitter ? ev.submitter.value : 'fits';
+    formData.set('download_format', fmt);
+    fetch(form.action, {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    }).then(function (resp) {
+      const ct = resp.headers.get('Content-Type') || '';
+      if (ct.indexOf('application/zip') !== -1) {
+        return resp.blob().then(function (blob) {
+          const cd = resp.headers.get('Content-Disposition') || '';
+          const m = cd.match(/filename=([^;]+)/);
+          const name = m ? m[1].replace(/["']/g, '').trim() : 'download.zip';
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = name;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+        });
+      }
+      return resp.json().then(function (data) {
+        alert(data.error || 'Download failed.');
+      }).catch(function () {
+        alert('Download failed.');
+      });
+    }).catch(function () {
+      alert('Download failed. Please try again.');
+    });
   });
 })();
 </script>
