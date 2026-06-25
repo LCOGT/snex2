@@ -4,12 +4,10 @@
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
 <style>
-  /* Use the full page width on this page (override the 83% .col-md cap). */
   #scheduling-content {
       flex: 0 0 100%;
       max-width: 100%;
   }
-  /* Auto-fit handles any remaining shrink; never force a scrollbar. */
   #scheduling-content {
       overflow-x: hidden;
   }
@@ -98,8 +96,8 @@ function fitTables() {
   if (!container) return;
   var avail = container.clientWidth;
   document.querySelectorAll('#scheduling-content table.table').forEach(function(t) {
-    if (t.offsetParent === null) return;   // skip hidden tables (filtered/collapsed)
-    t.style.zoom = 1;                       // reset before measuring natural width
+    if (t.offsetParent === null) return;
+    t.style.zoom = 1;
     var natural = t.scrollWidth;
     t.style.zoom = natural > avail ? (avail / natural) : 1;
   });
