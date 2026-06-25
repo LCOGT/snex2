@@ -1,6 +1,6 @@
 {% load bootstrap4 targets_extras custom_code_tags %}
 <style>
-#id_cadence_frequency {
+.cadence-input {
     width: 50px;
 }
 #id_ipp_value {
@@ -14,6 +14,9 @@
 }
 .exposure-row {
     width: 325px;
+}
+.exposure-row input[type=number] {
+    width: 68px;
 }
 .btn {
     width: 90%;
@@ -40,11 +43,11 @@ input[type=number]::-webkit-outer-spin-button {
 {% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,exposure_time,reminder,delay_start' %}
 {% endif %}
 {% if 'SUPA202' in parameter.proposal %}
-<table class="table pessto-table">
+<table class="table pessto-table" data-proposal="{{ parameter.proposal }}">
 {% elif parameter.proposal == 'LCO2022A-013' %}
-<table class="table dlt40-table">
+<table class="table dlt40-table" data-proposal="{{ parameter.proposal }}">
 {% else %}
-<table class="table">
+<table class="table" data-proposal="{{ parameter.proposal }}">
 {% endif %}
   <thead>
     <tr>
@@ -83,10 +86,6 @@ input[type=number]::-webkit-outer-spin-button {
       {% if parameter.observation_type == "Phot" %}
 	<td>
 	  <div class="row">{{ form.cadence_frequency_days }}</div>
-	  <!--div class="row" style="width: 100px;">
-	    <input type="checkbox" id="delay-start-{{ parameter.observation_id }}">
-	    <label for="delay-start-{{ parameter.observation_id }}">Delay Start By</label>
-	  </div-->
 	</td>
 	<td>{{ form.ipp_value }}</td>
 	<td>{{ form.max_airmass }}</td>
@@ -147,7 +146,7 @@ input[type=number]::-webkit-outer-spin-button {
 	<div class="row">{{ parameter.start }}</div>
 	<div class="row">{{ parameter.comment }}</div>
       </td>
-      <td>{{ parameter.reminder_date }}</td>
+      <td style="overflow-wrap: anywhere; word-break: break-word;">{{ parameter.reminder_date }}</td>
     </tr>
       <td colspan=10 style="border-top:none;">
         <div class="collapse show" id="show-both-{{parameter.target.name|cut:" "}}">
@@ -171,6 +170,7 @@ input[type=number]::-webkit-outer-spin-button {
             $('#spectra-{{parameter.observation_id}}').html(spectra_plot);
             var airmass_plot = response.airmass_plot;
             $('#airmass-{{parameter.observation_id}}').html(airmass_plot);
+            if (window.fitTables) fitTables();
           }
         });
       });

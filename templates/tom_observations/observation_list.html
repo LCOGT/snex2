@@ -4,8 +4,17 @@
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
 <style>
-  .col-md-10 {
-      zoom: 0.65;
+  /* Use the full page width on this page (override the 83% .col-md cap). */
+  #scheduling-content {
+      flex: 0 0 100%;
+      max-width: 100%;
+  }
+  /* Auto-fit handles any remaining shrink; never force a scrollbar. */
+  #scheduling-content {
+      overflow-x: hidden;
+  }
+  #scheduling-content table.table {
+      transform-origin: top left;
   }
 </style>
 {% endblock %}
@@ -19,7 +28,7 @@
   </div>
 </nav>
 <div class="row">
-  <div class="col-md-10">
+  <div class="col-md-10" id="scheduling-content">
     <div class="row">
       <div class="col-md-6">
         {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
@@ -45,6 +54,14 @@
       <div class="col-md-6">
         <input type="checkbox" id="checkbox-dlt40" onclick="showTable('dlt40')" value="Show DLT40 Sequences">
         <label for="checkbox-dlt40">Show DLT40 Sequences</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-md-6">
+        <label for="proposal-filter">Filter by proposal:</label>
+        <select id="proposal-filter" multiple onchange="filterByProposal(this.value)">
+          <option value="all">All proposals</option>
+        </select>
       </div>
     </div>
     <div class="row">
@@ -74,7 +91,55 @@ function showTable(groupname) {
       sequences[i].style.display = 'none';
     }
   }
+  fitTables();
 }
+function fitTables() {
+  var container = document.getElementById('scheduling-content');
+  if (!container) return;
+  var avail = container.clientWidth;
+  document.querySelectorAll('#scheduling-content table.table').forEach(function(t) {
+    if (t.offsetParent === null) return;   // skip hidden tables (filtered/collapsed)
+    t.style.zoom = 1;                       // reset before measuring natural width
+    var natural = t.scrollWidth;
+    t.style.zoom = natural > avail ? (avail / natural) : 1;
+  });
+}
+var _fitTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(_fitTimer);
+  _fitTimer = setTimeout(fitTables, 150);
+});
+window.addEventListener('load', fitTables);  // after plots/fonts settle
+function buildProposalFilter() {
+  var select = document.getElementById('proposal-filter');
+  if (!select) return;
+  var current = select.value;
+  var seen = {};
+  document.querySelectorAll('table[data-proposal]').forEach(function(t) {
+    var p = t.getAttribute('data-proposal');
+    if (p) seen[p] = true;
+  });
+  select.length = 1;  // keep "All proposals", drop the rest
+  Object.keys(seen).sort().forEach(function(p) {
+    var opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    select.appendChild(opt);
+  });
+  select.value = seen[current] ? current : 'all';
+  filterByProposal(select.value);
+}
+function filterByProposal(value) {
+  document.querySelectorAll('table[data-proposal]').forEach(function(t) {
+    if (value === 'all') {
+      t.style.display = '';  // revert to CSS default (pessto/dlt40 stay hidden)
+    } else {
+      t.style.display = (t.getAttribute('data-proposal') === value) ? 'block' : 'none';
+    }
+  });
+  fitTables();
+}
+document.addEventListener('DOMContentLoaded', buildProposalFilter);
 function loadUpcomingReminders() {
   document.getElementById("load-upcoming-reminders-btn").innerHTML = "Loading...";
   var obs_ids = [];
@@ -92,6 +157,8 @@ function loadUpcomingReminders() {
       var upcomingRow = document.getElementById("load-upcoming-reminders");
       upcomingRow.insertAdjacentHTML('afterend', response['html_from_view']);
       document.getElementById("load-upcoming-reminders-btn").style.display = "none";
+      buildProposalFilter();  // include newly injected tables in the dropdown
+      fitTables();
       {% with pagenumber=request.GET.urlencode %}
       {% for q in filter.qs|filter_upcoming_reminders:pagenumber %}
         $.ajax({
@@ -108,6 +175,7 @@ function loadUpcomingReminders() {
             $('#spectra-{{q.id}}').html(spectra_plot);
             var airmass_plot = response.airmass_plot;
             $('#airmass-{{q.id}}').html(airmass_plot);
+            if (window.fitTables) fitTables();
           }
         });
       {% endfor %}
