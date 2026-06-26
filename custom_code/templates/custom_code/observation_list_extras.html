@@ -102,10 +102,10 @@ function showTable(groupname) {
 function fitTables() {
   var container = document.getElementById('scheduling-content');
   if (!container) return;
-  var avail = container.clientWidth;
   document.querySelectorAll('#scheduling-content table.table').forEach(function(t) {
-    if (t.offsetParent === null) return;   // skip hidden tables (toggled off)
-    t.style.zoom = 1;                       // reset before measuring natural width
+    if (t.offsetParent === null) return
+    t.style.zoom = 1;
+    var avail = t.parentElement.clientWidth;
     var natural = t.scrollWidth;
     t.style.zoom = natural > avail ? (avail / natural) : 1;
   });
@@ -115,7 +115,7 @@ window.addEventListener('resize', function() {
   clearTimeout(_fitTimer);
   _fitTimer = setTimeout(fitTables, 150);
 });
-window.addEventListener('load', fitTables);  // after plots/fonts settle
+window.addEventListener('load', fitTables);
 function modify_sequence(clickedId) {
   var button = document.getElementById(clickedId);
   var oldval = button.value;

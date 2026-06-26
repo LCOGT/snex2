@@ -27,6 +27,28 @@
   #proposal-filter-menu .form-check {
       margin-bottom: 2px;
   }
+  #proposal-filter-btn {
+      width: auto !important;
+      min-width: 170px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      white-space: nowrap;
+      padding: 0.3rem 0.75rem;
+      background: #fff;
+      border: 1px solid #164560;
+      border-radius: 0.25rem;
+      color: #164560;
+      vertical-align: middle;
+  }
+  #proposal-filter-btn:hover,
+  #proposal-filter-btn:focus {
+      background: #164560;
+      color: #fff;
+  }
+  #proposal-filter-btn::after {
+      margin-left: 0.5rem;
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -114,10 +136,10 @@ function showTable(groupname) {
 function fitTables() {
   var container = document.getElementById('scheduling-content');
   if (!container) return;
-  var avail = container.clientWidth;
   document.querySelectorAll('#scheduling-content table.table').forEach(function(t) {
     if (t.offsetParent === null) return;
     t.style.zoom = 1;
+    var avail = t.parentElement.clientWidth;
     var natural = t.scrollWidth;
     t.style.zoom = natural > avail ? (avail / natural) : 1;
   });
@@ -187,7 +209,7 @@ function loadUpcomingReminders() {
     obs_ids.push({{ q.id }});
   {% endfor %}
   {% endwith %}
-  $.ajaxSetup({traditional: true}); 
+  $.ajaxSetup({traditional: true});
   $.ajax({
     url: '{% url "load-upcoming-reminders" %}',
     data: {'obs_ids': JSON.stringify(obs_ids)},
