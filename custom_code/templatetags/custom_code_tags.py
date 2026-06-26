@@ -25,7 +25,7 @@ from django.utils import timezone
 import json
 from astropy.time import Time
 from astropy import units as u
-from astropy.coordinates import get_body, get_sun, SkyCoord
+from astropy.coordinates import get_body, get_sun, SkyCoord, AltAz
 import numpy as np
 import matplotlib.pyplot as plt
 

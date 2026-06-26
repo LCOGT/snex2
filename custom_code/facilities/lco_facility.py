@@ -231,6 +231,10 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             cleaned_data['delay_start'] = False
             cleaned_data['delay_amount'] = 0
 
+        start = cleaned_data.get('start')
+        if start:
+            cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
+
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
         else:
@@ -238,10 +242,6 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             if reminder is not None:
                 calculated_date = now + timedelta(days=reminder + delay)
                 cleaned_data['reminder_date'] = calculated_date.isoformat()
-
-            start = cleaned_data.get('start')
-            if start:
-                cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
 
         cleaned_data = {
             k: ([] if isinstance(v, list) and len(v) == 3 and (v[0] == 0 or v[1] == 0 or v[2] == 0) else v)
@@ -544,6 +544,10 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             cleaned_data['delay_start'] = False
             cleaned_data['delay_amount'] = 0
 
+        start = cleaned_data.get('start')
+        if start:
+            cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
+
         if existing_reminder:
             cleaned_data['reminder_date'] = existing_reminder
         else:
@@ -551,10 +555,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             if reminder is not None:
                 calculated_date = now + timedelta(days=reminder + delay)
                 cleaned_data['reminder_date'] = calculated_date.isoformat()
-
-            start = cleaned_data.get('start')
-            if start:
-                cleaned_data['end'] = (parse(start) + timedelta(hours=window_length)).isoformat()
 
         return cleaned_data
 
