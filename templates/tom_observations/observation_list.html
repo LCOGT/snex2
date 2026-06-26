@@ -14,6 +14,19 @@
   #scheduling-content table.table {
       transform-origin: top left;
   }
+  #proposal-filter-menu {
+      background: #fff !important;
+      border: 1px solid #ccc;
+  }
+  #proposal-filter-menu .form-check-label {
+      color: #212529 !important;
+  }
+  #proposal-filter-menu #proposal-filter-clear {
+      color: #164560 !important;
+  }
+  #proposal-filter-menu .form-check {
+      margin-bottom: 2px;
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -56,10 +69,17 @@
     </div>
     <div class="row">
       <div class="col-md-6">
-        <label for="proposal-filter">Filter by proposal:</label>
-        <select id="proposal-filter" multiple onchange="filterByProposal(this.value)">
-          <option value="all">All proposals</option>
-        </select>
+        <label class="mr-2">Filter by proposal:</label>
+        <div class="dropdown d-inline-block">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                  id="proposal-filter-btn" data-toggle="dropdown"
+                  aria-haspopup="true" aria-expanded="false">All proposals</button>
+          <div class="dropdown-menu p-2" id="proposal-filter-menu"
+               aria-labelledby="proposal-filter-btn"
+               style="max-height: 320px; overflow-y: auto; min-width: 240px;">
+            <a href="#" id="proposal-filter-clear" class="small d-block mb-2">Clear selection</a>
+          </div>
+        </div>
       </div>
     </div>
     <div class="row">
@@ -107,36 +127,57 @@ window.addEventListener('resize', function() {
   clearTimeout(_fitTimer);
   _fitTimer = setTimeout(fitTables, 150);
 });
-window.addEventListener('load', fitTables);  // after plots/fonts settle
+window.addEventListener('load', fitTables);
 function buildProposalFilter() {
-  var select = document.getElementById('proposal-filter');
-  if (!select) return;
-  var current = select.value;
+  var menu = document.getElementById('proposal-filter-menu');
+  if (!menu) return;
+  var checked = {};
+  menu.querySelectorAll('input.proposal-cb:checked').forEach(function(cb) {
+    checked[cb.value] = true;
+  });
   var seen = {};
   document.querySelectorAll('table[data-proposal]').forEach(function(t) {
     var p = t.getAttribute('data-proposal');
     if (p) seen[p] = true;
   });
-  select.length = 1;  // keep "All proposals", drop the rest
+  menu.querySelectorAll('.proposal-cb-row').forEach(function(el) { el.remove(); });
   Object.keys(seen).sort().forEach(function(p) {
-    var opt = document.createElement('option');
-    opt.value = p;
-    opt.textContent = p;
-    select.appendChild(opt);
+    var id = 'prop-cb-' + p.replace(/[^a-zA-Z0-9_-]/g, '_');
+    var row = document.createElement('div');
+    row.className = 'form-check proposal-cb-row';
+    row.innerHTML =
+      '<input class="form-check-input proposal-cb" type="checkbox" id="' + id + '" value="' + p + '">' +
+      '<label class="form-check-label" for="' + id + '">' + p + '</label>';
+    menu.appendChild(row);
+    if (checked[p]) row.querySelector('input').checked = true;
   });
-  select.value = seen[current] ? current : 'all';
-  filterByProposal(select.value);
+  applyProposalFilter();
 }
-function filterByProposal(value) {
+function applyProposalFilter() {
+  var menu = document.getElementById('proposal-filter-menu');
+  var btn = document.getElementById('proposal-filter-btn');
+  var selected = Array.prototype.map.call(
+    menu.querySelectorAll('input.proposal-cb:checked'), function(cb) { return cb.value; });
+  var set = new Set(selected);
   document.querySelectorAll('table[data-proposal]').forEach(function(t) {
-    if (value === 'all') {
-      t.style.display = '';  // revert to CSS default (pessto/dlt40 stay hidden)
+    if (set.size === 0) {
+      t.style.display = '';
     } else {
-      t.style.display = (t.getAttribute('data-proposal') === value) ? 'block' : 'none';
+      t.style.display = set.has(t.getAttribute('data-proposal')) ? 'block' : 'none';
     }
   });
+  if (set.size === 0) btn.textContent = 'All proposals';
+  else if (set.size === 1) btn.textContent = selected[0];
+  else btn.textContent = set.size + ' proposals';
   fitTables();
 }
+$("body").on("change", "input.proposal-cb", applyProposalFilter);
+$("body").on("click", "#proposal-filter-menu", function(e) { e.stopPropagation(); });
+$("body").on("click", "#proposal-filter-clear", function(e) {
+  e.preventDefault();
+  document.querySelectorAll('input.proposal-cb').forEach(function(cb) { cb.checked = false; });
+  applyProposalFilter();
+});
 document.addEventListener('DOMContentLoaded', buildProposalFilter);
 function loadUpcomingReminders() {
   document.getElementById("load-upcoming-reminders-btn").innerHTML = "Loading...";
@@ -146,7 +187,7 @@ function loadUpcomingReminders() {
     obs_ids.push({{ q.id }});
   {% endfor %}
   {% endwith %}
-  $.ajaxSetup({traditional: true}); // Without this, ajax puts [] after dict keys
+  $.ajaxSetup({traditional: true}); 
   $.ajax({
     url: '{% url "load-upcoming-reminders" %}',
     data: {'obs_ids': JSON.stringify(obs_ids)},
@@ -155,7 +196,7 @@ function loadUpcomingReminders() {
       var upcomingRow = document.getElementById("load-upcoming-reminders");
       upcomingRow.insertAdjacentHTML('afterend', response['html_from_view']);
       document.getElementById("load-upcoming-reminders-btn").style.display = "none";
-      buildProposalFilter();  // include newly injected tables in the dropdown
+      buildProposalFilter();
       fitTables();
       {% with pagenumber=request.GET.urlencode %}
       {% for q in filter.qs|filter_upcoming_reminders:pagenumber %}

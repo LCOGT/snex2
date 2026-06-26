@@ -12,14 +12,40 @@
 #id_reminder {
     width: 50px;
 }
-.exposure-row {
-    width: 325px;
-}
 .exposure-row input[type=number] {
-    width: 68px;
+    width: 60px;
 }
+.phot-exposures .exposure-row {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.phot-exposures .exposure-row > span:first-child {
+    flex: 0 0 auto;
+    width: 1.8em;
+    margin-right: 6px;
+    text-align: right;
+}
+.phot-exposures .exposure-row input[type=number] {
+    flex: 0 0 auto;
+    margin: 0;
+    box-sizing: border-box;
+}
+.phot-exposures .exposure-row input[type=number]:nth-of-type(1) { width: 92px; }
+.phot-exposures .exposure-row input[type=number]:nth-of-type(2) { width: 72px; }
+.phot-exposures .exposure-row input[type=number]:nth-of-type(3) { width: 64px; }
+.phot-exposures .exposure-header span {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    text-align: center;
+    font-weight: bold;
+}
+.phot-exposures .exposure-header .lead { width: 1.8em; margin-right: 6px; }
+.phot-exposures .exposure-header .c1   { width: 92px; }
+.phot-exposures .exposure-header .c2   { width: 72px; }
+.phot-exposures .exposure-header .c3   { width: 64px; }
 .btn {
-    width: 100%;
+    width: 90%;
 }
 .pessto-table {
     display: none;
@@ -89,12 +115,9 @@ input[type=number]::-webkit-outer-spin-button {
 	</td>
 	<td>{{ form.ipp_value }}</td>
 	<td>{{ form.max_airmass }}</td>
-	<td rowspan="3" class="col-md-12">
-    <div class="exposure-row" style="display: flex;">
-      {% if parameter.instrument == 'Muscat' %} <span style="visibility: hidden; min-width: 85px;">Spacer</span> {% endif %}
-      <div style="flex-grow: 1;">
-        Exposure Time&nbsp;&nbsp; Exposures&nbsp;&nbsp; {% if parameter.instrument != 'Muscat' %} Block No. {% endif %}
-      </div>
+	<td rowspan="3" class="col-md-12 phot-exposures">
+    <div class="exposure-row exposure-header">
+      <span class="lead"></span><span class="c1">Exposure Time</span><span class="c2">Exposures</span>{% if parameter.instrument != 'Muscat' %}<span class="c3">Block No.</span>{% endif %}
     </div>
     <div class="exposure-row" style="text-align:center;"><span>{{ form.U.label }}</span> {{ form.U }}</div>
 	  <div class="exposure-row" style="text-align:center;"><span>{{ form.B.label }}</span> {{ form.B }}</div>
