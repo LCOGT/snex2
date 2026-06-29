@@ -4,8 +4,15 @@
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
 <style>
-  .col-md-10 {
-      zoom: 0.65;
+  #scheduling-content {
+      flex: 0 0 100%;
+      max-width: 100%;
+  }
+  #scheduling-content {
+      overflow-x: hidden;
+  }
+  #scheduling-content table.table {
+      transform-origin: top left;
   }
 </style>
 {% endblock %}
@@ -19,7 +26,7 @@
   </div>
 </nav>
 <div class="row">
-  <div class="col-md-10">
+  <div class="col-md-10" id="scheduling-content">
     <div class="row">
       <div class="col-md-6">
         {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
@@ -90,7 +97,25 @@ function showTable(groupname) {
       sequences[i].style.display = 'none';
     }
   }
+  fitTables();
 }
+function fitTables() {
+  var container = document.getElementById('scheduling-content');
+  if (!container) return;
+  document.querySelectorAll('#scheduling-content table.table').forEach(function(t) {
+    if (t.offsetParent === null) return
+    t.style.zoom = 1;
+    var avail = t.parentElement.clientWidth;
+    var natural = t.scrollWidth;
+    t.style.zoom = natural > avail ? (avail / natural) : 1;
+  });
+}
+var _fitTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(_fitTimer);
+  _fitTimer = setTimeout(fitTables, 150);
+});
+window.addEventListener('load', fitTables);
 function modify_sequence(clickedId) {
   var button = document.getElementById(clickedId);
   var oldval = button.value;
