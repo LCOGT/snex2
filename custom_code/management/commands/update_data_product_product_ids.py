@@ -1,6 +1,9 @@
 from django.core.management.base import BaseCommand
 from custom_code.scripts.sync_databases import get_spec_row_from_filename
 from tom_dataproducts.models import DataProduct
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     
@@ -16,14 +19,19 @@ class Command(BaseCommand):
             filename = dp.data.name.split('/')[-1].replace('.ascii','.fits')
             spec_row = get_spec_row_from_filename(filename)
             if spec_row:
-                bname = spec_row.original.split('.')[0]
-                spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
-                dp.product_id = bname
-                dp.data.name = spec_filepath
-                batch.append(dp)
+                if spec_row.original:
+                    bname = spec_row.original.split('.')[0]
+                    spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
+                    dp.product_id = bname
+                    dp.data.name = spec_filepath
+                    batch.append(dp)
+                else:
+                    logger.info(f'No basename in spec table: {spec_row.id}')
             if len(batch) >= BATCH_SIZE:
                 DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
                 batch.clear()
+                logger.info(f'Batch updated {len(batch)}')
+                
 
         if batch:
             DataProduct.objects.bulk_update(batch, ['product_id', 'data'])

@@ -32,7 +32,7 @@ def _chunked(iterable, n):
 
 
 class Command(BaseCommand):
-    help = "Propagate target group object-perms onto RD/RDE/DP (idempotent, resumable, memory-safe)."
+    help = "Propagate target group object-perms onto RD/RDE/DP"
 
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true')
