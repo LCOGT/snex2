@@ -38,6 +38,7 @@
   <div class="mb-3 d-inline-block">
     <button type="submit" name="download_format" value="ascii" class="btn btn-success">Download as ascii (.zip)</button>
   </div>
+</form>
   <table class="table table-striped" id="dataproductsTable">
     <thead>
       <tr>
@@ -46,6 +47,7 @@
         <th></th>
         <th>Filename</th>
         <th>Type</th>
+        <th>Date</th>
         <th>Update</th>
         <th>Delete</th>
       </tr>
@@ -78,6 +80,11 @@
             {{ product.get_type_display }}
           {% endif %}
         </td>
+        <td>
+          {% with rd=product.reduceddatum_set.first %}
+            {{ rd.timestamp|date:"Y-m-d" }}
+          {% endwith %}
+        </td>
         <td>{% dataproduct_update product %}</td>
         <td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>
       </tr>
@@ -86,7 +93,6 @@
     {% endfor %}
     </tbody>
   </table>
-</form>
 <script>
 (function () {
   if (window.__dataProductFiltersBound) { return; }
