@@ -20,16 +20,7 @@ from tom_targets.models import Target, TargetName
 import logging
 logger = logging.getLogger(__name__)
 
-_SNEX2_DB = 'postgresql://{}:{}@{}:{}/snex2'.format(
-    os.environ.get('SNEX2_DB_USER'),
-    os.getenv('SNEX2_DB_PASSWORD'),
-    os.getenv('SNEX2_DB_HOST', 'snex2-db'),
-    os.getenv('SNEX2_DB_PORT', 5432)
-)
-
 engine1 = create_engine(settings.SNEX1_DB_URL)
-engine2 = create_engine(_SNEX2_DB)
-
 
 @contextmanager
 def get_session(db_address=settings.SNEX1_DB_URL):
@@ -44,9 +35,7 @@ def get_session(db_address=settings.SNEX1_DB_URL):
     if db_address == settings.SNEX1_DB_URL:
         Base.metadata.bind = engine1
         db_session = sessionmaker(bind=engine1, autoflush=False, expire_on_commit=False)
-    else:
-        Base.metadata.bind = engine2
-        db_session = sessionmaker(bind=engine2, autoflush=False, expire_on_commit=False)
+
     session = db_session()
     try:
         yield session
@@ -127,6 +116,13 @@ def get_current_row(table, id_, db_address=settings.SNEX1_DB_URL):
     with get_session(db_address=db_address) as db_session:
         criteria = getattr(table, 'id') == id_
         record = db_session.query(table).filter(criteria).first()
+    return record
+
+
+def get_spec_row_from_filename(filename, db_address=settings.SNEX1_DB_URL):
+    with get_session(db_address=db_address) as db_session:
+            criteria = getattr(Spec, 'filename') == filename
+            record = db_session.query(Spec).filter(criteria).first()
     return record
 
 
@@ -311,6 +307,7 @@ def update_spec(action):
 
                 pipeline_id = spec_row.targetid
                 time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
+                spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')  #remove everything before 'WEB/floyds/date_tel', e.g.: 'WEB/floyds/20240325_2m0-01/SN2024ehs_20240325_redblu_104630.842.fits'
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
                 spec_groupid = spec_row.groupidcode
@@ -330,11 +327,11 @@ def update_spec(action):
                     #created True means new DataProduct was made, created False is object already existed, like just "get"
                     data_product, dp_created = DataProduct.objects.get_or_create(
                         target = target, 
-                        product_id = spec_row.filename.replace('.fits', '.ascii'),
+                        product_id = spec_row.original.replace('.fits',''),
                         data_product_type = 'spectroscopy')
                     
                     if dp_created:
-                        data_product.data = data_product_path(data_product, spec_row.filename.replace('.fits', '.ascii'))
+                        data_product.data = spec_filepath
                         data_product.created = time
                         data_product.modified = time
                         data_product.featured = False
@@ -381,7 +378,7 @@ def update_spec(action):
 
         
 
-def update_target(action, db_address=_SNEX2_DB):
+def update_target(action, db_address=settings.SNEX1_DB_URL):
     """
     Queries the Target table in the SNex2 db with any changes made to the Targets and Targetnames tables in the SNex1 db
 
@@ -479,5 +476,5 @@ def run():
         update_spec(action)
         logger.info('Done with spectra')
         if action != 'delete':
-            update_target(action, db_address = _SNEX2_DB)
+            update_target(action, db_address = settings.SNEX1_DB_URL)
             logger.info('Done with targets')

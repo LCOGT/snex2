@@ -106,9 +106,11 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
         # If the observation hasn't finished, do nothing
         if not last_obs.terminal:
             return
-
+        
         if last_obs.status == 'CANCELED':
-            logger.info(f'Observation {last_obs} was canceled, not resuming cadence')
+            self.dynamic_cadence.active = False
+            self.dynamic_cadence.save()
+            logger.info(f'Observation {last_obs} was canceled, stopping dynamic cadence')
             return
 
         # Boilerplate to get necessary properties for future calls
