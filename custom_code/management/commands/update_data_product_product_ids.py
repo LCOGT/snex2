@@ -21,24 +21,25 @@ class Command(BaseCommand):
         for dp in dps.iterator(chunk_size=BATCH_SIZE):
             filename = dp.data.name.split('/')[-1].replace('.ascii','.fits')
             spec_row = get_spec_row_from_filename(filename)
-            try:
-                if spec_row:
-                    if spec_row.original:
-                        bname = spec_row.original.split('.')[0]
-                        spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
-                        dp.product_id = bname
-                        dp.data.name = spec_filepath
-                        batch.append(dp)
-                    else:
-                        logger.info(f'No basename in spec table: {spec_row.id}')
-            except IntegrityError:
-                logger.error(f'Duplicate DataProduct with basename: {bname} {dp.data.name}')
+            if spec_row:
+                if spec_row.original:
+                    bname = spec_row.original.split('.')[0]
+                    spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
+                    dp.product_id = bname
+                    dp.data.name = spec_filepath
+                    batch.append(dp)
+                else:
+                    logger.info(f'No basename in spec table: {spec_row.id}')
+
             if len(batch) >= BATCH_SIZE:
-                DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
-                batch.clear()
                 total -= len(batch)
+                try:
+                    DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
+                except IntegrityError:
+                    logger.error(f'Duplicate DataProduct with basename: {bname} {dp.data.name}')
+                batch.clear()
                 logger.info(f'Batch updated, {total} remaining')
-                
+
 
         if batch:
             DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
