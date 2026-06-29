@@ -36,7 +36,7 @@ class Command(BaseCommand):
             if len(batch) >= BATCH_SIZE:
                 DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
                 batch.clear()
-                total -= batch
+                total -= len(batch)
                 logger.info(f'Batch updated, {total} remaining')
                 
 
