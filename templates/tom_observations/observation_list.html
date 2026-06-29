@@ -4,8 +4,50 @@
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
 <style>
-  .col-md-10 {
-      zoom: 0.65;
+  #scheduling-content {
+      flex: 0 0 100%;
+      max-width: 100%;
+  }
+  #scheduling-content {
+      overflow-x: hidden;
+  }
+  #scheduling-content table.table {
+      transform-origin: top left;
+  }
+  #proposal-filter-menu {
+      background: #fff !important;
+      border: 1px solid #ccc;
+  }
+  #proposal-filter-menu .form-check-label {
+      color: #212529 !important;
+  }
+  #proposal-filter-menu #proposal-filter-clear {
+      color: #164560 !important;
+  }
+  #proposal-filter-menu .form-check {
+      margin-bottom: 2px;
+  }
+  #proposal-filter-btn {
+      width: auto !important;
+      min-width: 170px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      white-space: nowrap;
+      padding: 0.3rem 0.75rem;
+      background: #fff;
+      border: 1px solid #164560;
+      border-radius: 0.25rem;
+      color: #164560;
+      vertical-align: middle;
+  }
+  #proposal-filter-btn:hover,
+  #proposal-filter-btn:focus {
+      background: #164560;
+      color: #fff;
+  }
+  #proposal-filter-btn::after {
+      margin-left: 0.5rem;
   }
 </style>
 {% endblock %}
@@ -19,7 +61,7 @@
   </div>
 </nav>
 <div class="row">
-  <div class="col-md-10">
+  <div class="col-md-10" id="scheduling-content">
     <div class="row">
       <div class="col-md-6">
         {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
@@ -45,6 +87,21 @@
       <div class="col-md-6">
         <input type="checkbox" id="checkbox-dlt40" onclick="showTable('dlt40')" value="Show DLT40 Sequences">
         <label for="checkbox-dlt40">Show DLT40 Sequences</label>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-md-6">
+        <label class="mr-2">Filter by proposal:</label>
+        <div class="dropdown d-inline-block">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                  id="proposal-filter-btn" data-toggle="dropdown"
+                  aria-haspopup="true" aria-expanded="false">All proposals</button>
+          <div class="dropdown-menu p-2" id="proposal-filter-menu"
+               aria-labelledby="proposal-filter-btn"
+               style="max-height: 320px; overflow-y: auto; min-width: 240px;">
+            <a href="#" id="proposal-filter-clear" class="small d-block mb-2">Clear selection</a>
+          </div>
+        </div>
       </div>
     </div>
     <div class="row">
@@ -74,7 +131,76 @@ function showTable(groupname) {
       sequences[i].style.display = 'none';
     }
   }
+  fitTables();
 }
+function fitTables() {
+  var container = document.getElementById('scheduling-content');
+  if (!container) return;
+  document.querySelectorAll('#scheduling-content table.table').forEach(function(t) {
+    if (t.offsetParent === null) return;
+    t.style.zoom = 1;
+    var avail = t.parentElement.clientWidth;
+    var natural = t.scrollWidth;
+    t.style.zoom = natural > avail ? (avail / natural) : 1;
+  });
+}
+var _fitTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(_fitTimer);
+  _fitTimer = setTimeout(fitTables, 150);
+});
+window.addEventListener('load', fitTables);
+function buildProposalFilter() {
+  var menu = document.getElementById('proposal-filter-menu');
+  if (!menu) return;
+  var checked = {};
+  menu.querySelectorAll('input.proposal-cb:checked').forEach(function(cb) {
+    checked[cb.value] = true;
+  });
+  var seen = {};
+  document.querySelectorAll('table[data-proposal]').forEach(function(t) {
+    var p = t.getAttribute('data-proposal');
+    if (p) seen[p] = true;
+  });
+  menu.querySelectorAll('.proposal-cb-row').forEach(function(el) { el.remove(); });
+  Object.keys(seen).sort().forEach(function(p) {
+    var id = 'prop-cb-' + p.replace(/[^a-zA-Z0-9_-]/g, '_');
+    var row = document.createElement('div');
+    row.className = 'form-check proposal-cb-row';
+    row.innerHTML =
+      '<input class="form-check-input proposal-cb" type="checkbox" id="' + id + '" value="' + p + '">' +
+      '<label class="form-check-label" for="' + id + '">' + p + '</label>';
+    menu.appendChild(row);
+    if (checked[p]) row.querySelector('input').checked = true;
+  });
+  applyProposalFilter();
+}
+function applyProposalFilter() {
+  var menu = document.getElementById('proposal-filter-menu');
+  var btn = document.getElementById('proposal-filter-btn');
+  var selected = Array.prototype.map.call(
+    menu.querySelectorAll('input.proposal-cb:checked'), function(cb) { return cb.value; });
+  var set = new Set(selected);
+  document.querySelectorAll('table[data-proposal]').forEach(function(t) {
+    if (set.size === 0) {
+      t.style.display = '';
+    } else {
+      t.style.display = set.has(t.getAttribute('data-proposal')) ? 'block' : 'none';
+    }
+  });
+  if (set.size === 0) btn.textContent = 'All proposals';
+  else if (set.size === 1) btn.textContent = selected[0];
+  else btn.textContent = set.size + ' proposals';
+  fitTables();
+}
+$("body").on("change", "input.proposal-cb", applyProposalFilter);
+$("body").on("click", "#proposal-filter-menu", function(e) { e.stopPropagation(); });
+$("body").on("click", "#proposal-filter-clear", function(e) {
+  e.preventDefault();
+  document.querySelectorAll('input.proposal-cb').forEach(function(cb) { cb.checked = false; });
+  applyProposalFilter();
+});
+document.addEventListener('DOMContentLoaded', buildProposalFilter);
 function loadUpcomingReminders() {
   document.getElementById("load-upcoming-reminders-btn").innerHTML = "Loading...";
   var obs_ids = [];
@@ -83,7 +209,7 @@ function loadUpcomingReminders() {
     obs_ids.push({{ q.id }});
   {% endfor %}
   {% endwith %}
-  $.ajaxSetup({traditional: true}); // Without this, ajax puts [] after dict keys
+  $.ajaxSetup({traditional: true});
   $.ajax({
     url: '{% url "load-upcoming-reminders" %}',
     data: {'obs_ids': JSON.stringify(obs_ids)},
@@ -92,6 +218,8 @@ function loadUpcomingReminders() {
       var upcomingRow = document.getElementById("load-upcoming-reminders");
       upcomingRow.insertAdjacentHTML('afterend', response['html_from_view']);
       document.getElementById("load-upcoming-reminders-btn").style.display = "none";
+      buildProposalFilter();
+      fitTables();
       {% with pagenumber=request.GET.urlencode %}
       {% for q in filter.qs|filter_upcoming_reminders:pagenumber %}
         $.ajax({
@@ -108,6 +236,7 @@ function loadUpcomingReminders() {
             $('#spectra-{{q.id}}').html(spectra_plot);
             var airmass_plot = response.airmass_plot;
             $('#airmass-{{q.id}}').html(airmass_plot);
+            if (window.fitTables) fitTables();
           }
         });
       {% endfor %}
