@@ -21,6 +21,7 @@ class Command(BaseCommand):
             if spec_row:
                 if spec_row.original:
                     bname = spec_row.original.split('.')[0]
+                    logger.info(f'dp name: {dp.data.name} bname: {bname}')
                     spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
                     dp.product_id = bname
                     dp.data.name = spec_filepath
