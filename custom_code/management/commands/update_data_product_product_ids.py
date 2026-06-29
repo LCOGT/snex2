@@ -12,13 +12,12 @@ class Command(BaseCommand):
         batch = []
         BATCH_SIZE = 500
 
-        for dp in dps.iterator(chunk_size=500):
+        for dp in dps.iterator(chunk_size=BATCH_SIZE):
             filename = dp.data.name.split('/')[-1].replace('.ascii','.fits')
             spec_row = get_spec_row_from_filename(filename)
             if spec_row:
-                bname = spec_row.original
+                bname = spec_row.original.split('.')[0]
                 spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
-                print(dp.product_id, dp.data.name)
                 dp.product_id = bname
                 dp.data.name = spec_filepath
                 batch.append(dp)
