@@ -16,7 +16,10 @@ class Command(BaseCommand):
 
         for dp in dps.iterator(chunk_size=BATCH_SIZE):
             filename = dp.data.name.split('/')[-1].replace('.ascii', '.fits')
-            snexid = dp.reduceddatumextra_set.first().value.get('snex_id')
+            if dp.reduceddatumextra_set.first():
+                snexid = dp.reduceddatumextra_set.first().value.get('snex_id')
+            else:
+                logger.info(f'no rde for dp.id {dp.pk}')
             if snexid:
                 spec_row = get_spec_row_from_id(snexid)
             else:
