@@ -30,9 +30,7 @@ class Command(BaseCommand):
                 dp.product_id = bname
                 dp.data.name = spec_filepath
                 batch.append(dp)
-            else:
-                logger.info(f'Spectrum not in pipeline database: {dp}')
-
+            
             if len(batch) >= BATCH_SIZE:
                 total -= len(batch)
                 try:
