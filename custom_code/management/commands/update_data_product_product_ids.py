@@ -13,7 +13,6 @@ class Command(BaseCommand):
         batch = []
         BATCH_SIZE = 500
         total = dps.count()
-        seen_ids = set(DataProduct.objects.exclude(product_id__isnull=True).values_list('product_id', flat=True))
 
         for dp in dps.iterator(chunk_size=BATCH_SIZE):
             filename = dp.data.name.split('/')[-1].replace('.ascii', '.fits')
@@ -29,11 +28,6 @@ class Command(BaseCommand):
                     bname = spec_row.filename
                 spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
 
-                if bname in seen_ids:
-                    logger.warning(f'Skipping duplicate product_id: basename={bname}, filename={spec_filepath}')
-                    continue
-
-                seen_ids.add(bname)
                 dp.product_id = bname
                 dp.data.name = spec_filepath
                 batch.append(dp)
