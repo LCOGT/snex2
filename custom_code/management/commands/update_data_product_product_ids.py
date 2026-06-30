@@ -24,22 +24,24 @@ class Command(BaseCommand):
             if spec_row:
                 if spec_row.original:
                     bname = spec_row.original.split('.')[0]
-                    spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
-                    dp.product_id = bname
-                    dp.data.name = spec_filepath
-                    batch.append(dp)
                 else:
-                    logger.info(f'No basename in spec table: {spec_row.id}')
+                    bname = spec_row.filename
+                spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
+                dp.product_id = bname
+                dp.data.name = spec_filepath
+                batch.append(dp)
+            else:
+                logger.info(f'Spectrum not in pipeline database: {filename}')
 
             if len(batch) >= BATCH_SIZE:
                 total -= len(batch)
                 try:
                     DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
+                    batch.clear()
+                    logger.info(f'Batch updated, {total} remaining')
+
                 except IntegrityError:
                     logger.error(f'Duplicate DataProduct with basename: {bname} {dp.data.name}')
-                batch.clear()
-                logger.info(f'Batch updated, {total} remaining')
-
 
         if batch:
             DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
