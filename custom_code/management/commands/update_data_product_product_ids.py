@@ -31,7 +31,7 @@ class Command(BaseCommand):
                 dp.data.name = spec_filepath
                 batch.append(dp)
             else:
-                logger.info(f'Spectrum not in pipeline database: {filename}')
+                logger.info(f'Spectrum not in pipeline database: {dp}')
 
             if len(batch) >= BATCH_SIZE:
                 total -= len(batch)
@@ -40,8 +40,8 @@ class Command(BaseCommand):
                     batch.clear()
                     logger.info(f'Batch updated, {total} remaining')
 
-                except IntegrityError:
-                    logger.error(f'Duplicate DataProduct with basename: {bname} {dp.data.name}')
+                except IntegrityError as e:
+                    logger.error(f'Duplicate DataProduct {e}')
 
         if batch:
             DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
