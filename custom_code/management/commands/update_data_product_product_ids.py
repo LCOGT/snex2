@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from custom_code.scripts.sync_databases import get_spec_row_from_filename
+from custom_code.scripts.sync_databases import get_spec_row_from_filename, get_spec_row_from_id
 from tom_dataproducts.models import DataProduct
 
 import logging
@@ -12,17 +12,21 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         dps = DataProduct.objects.filter(data_product_type='spectroscopy')
+        logger.info(f'Total DataProducts to convert: {dps.count()}')
 
         batch = []
         BATCH_SIZE = 500
-        logger.info(f'Total DataProducts to convert: {dps.count()}')
         total = dps.count()
         for dp in dps.iterator(chunk_size=BATCH_SIZE):
             filename = dp.data.name.split('/')[-1].replace('.ascii','.fits')
-            spec_row = get_spec_row_from_filename(filename)
+            snexid = dp.reduceddatumextra_set.first().value.get('snex_id')
+            if snexid:
+                spec_row = get_spec_row_from_id(snexid)
+            else:
+                spec_row = get_spec_row_from_filename(filename)
             if spec_row:
                 if spec_row.original:
-                    bname = spec_row.original.split('.')[0]
+                    bname = spec_row.original.replace('.fits','')
                 else:
                     bname = spec_row.filename
                 spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
@@ -34,7 +38,6 @@ class Command(BaseCommand):
                 DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
                 batch.clear()
                 logger.info(f'Batch updated, {total} remaining')
-            
 
         if batch:
             DataProduct.objects.bulk_update(batch, ['product_id', 'data'])

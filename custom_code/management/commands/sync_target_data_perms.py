@@ -52,7 +52,6 @@ class Command(BaseCommand):
         if not target_cts:
             self.stderr.write('No target content types found.'); return
 
-        # Pre-resolve row content types once (not per target)
         row_cts = {mname: _ct(app, mname) for _, _, app, mname in MODELS}
 
         def source_perms(pk):
@@ -87,7 +86,6 @@ class Command(BaseCommand):
             made_change = False
             for model, fk, app, mname in MODELS:
                 ct = row_cts[mname]
-                # Stream row pks; never materialize the whole target's rows at once.
                 row_pks = model.objects.filter(**{fk: t}).values_list('pk', flat=True)
                 for batch in _chunked(row_pks.iterator(chunk_size=chunk), chunk):
                     strs = [str(p) for p in batch]
@@ -104,12 +102,12 @@ class Command(BaseCommand):
                             if not missing:
                                 continue
                             if not dry:
-                                with transaction.atomic():   # one txn per (chunk, group, action)
+                                with transaction.atomic():
                                     assign_perm(f'{app}.{codename}', group,
                                                 model.objects.filter(pk__in=missing))
                             grand[f'{app}.{codename}'] += len(missing)
                             made_change = True
-                    del existing  # release before next chunk
+                    del existing
 
             if made_change:
                 processed += 1

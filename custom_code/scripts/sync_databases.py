@@ -121,10 +121,15 @@ def get_current_row(table, id_, db_address=settings.SNEX1_DB_URL):
 
 def get_spec_row_from_filename(filename, db_address=settings.SNEX1_DB_URL):
     with get_session(db_address=db_address) as db_session:
-            criteria = getattr(Spec, 'filename') == filename
-            record = db_session.query(Spec).filter(criteria).first()
+        criteria = getattr(Spec, 'filename') == filename
+        record = db_session.query(Spec).filter(criteria).first()
     return record
 
+def get_spec_row_from_id(id_, db_address=settings.SNEX1_DB_URL):
+    with get_session(db_address=db_address) as db_session:
+        criteria = getattr(Spec, 'id') == id_
+        record = db_session.query(Spec).filter(criteria).first()
+    return record
 
 def delete_row(table, id_, db_address=settings.SNEX1_DB_URL):
     """
