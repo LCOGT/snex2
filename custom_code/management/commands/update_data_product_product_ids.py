@@ -36,7 +36,6 @@ class Command(BaseCommand):
                 seen_ids.add(bname)
                 dp.product_id = bname
                 dp.data.name = spec_filepath
-                logger.info(f'product id: {bname}, file name: {spec_filepath}')
                 batch.append(dp)
 
             if len(batch) >= BATCH_SIZE:
