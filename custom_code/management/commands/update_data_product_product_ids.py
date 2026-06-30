@@ -18,23 +18,26 @@ class Command(BaseCommand):
         logger.info(f'Total DataProducts to convert: {dps.count()}')
         total = dps.count()
         for dp in dps.iterator(chunk_size=BATCH_SIZE):
-            filename = dp.data.name.split('/')[-1].replace('.ascii','.fits')
-            spec_row = get_spec_row_from_filename(filename)
-            if spec_row:
-                if spec_row.original:
-                    bname = spec_row.original.split('.')[0]
-                else:
-                    bname = spec_row.filename
-                spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
-                dp.product_id = bname
-                dp.data.name = spec_filepath
-                batch.append(dp)
-            
+            try:
+                filename = dp.data.name.split('/')[-1].replace('.ascii','.fits')
+                spec_row = get_spec_row_from_filename(filename)
+                if spec_row:
+                    if spec_row.original:
+                        bname = spec_row.original.split('.')[0]
+                    else:
+                        bname = spec_row.filename
+                    spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
+                    dp.product_id = bname
+                    dp.data.name = spec_filepath
+                    batch.append(dp)
+            except Exception as e:
+                logger.error(f'Skipping dp {dp.id} due to {e}')
             if len(batch) >= BATCH_SIZE:
                 total -= len(batch)
                 DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
                 batch.clear()
                 logger.info(f'Batch updated, {total} remaining')
+            
 
         if batch:
             DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
