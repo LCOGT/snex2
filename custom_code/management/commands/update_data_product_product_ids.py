@@ -1,7 +1,6 @@
 from django.core.management.base import BaseCommand
 from custom_code.scripts.sync_databases import get_spec_row_from_filename
 from tom_dataproducts.models import DataProduct
-from django.db import IntegrityError
 
 import logging
 
@@ -33,13 +32,9 @@ class Command(BaseCommand):
             
             if len(batch) >= BATCH_SIZE:
                 total -= len(batch)
-                try:
-                    DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
-                    batch.clear()
-                    logger.info(f'Batch updated, {total} remaining')
-
-                except IntegrityError as e:
-                    logger.error(f'Duplicate DataProduct {e}')
+                DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
+                batch.clear()
+                logger.info(f'Batch updated, {total} remaining')
 
         if batch:
             DataProduct.objects.bulk_update(batch, ['product_id', 'data'])
