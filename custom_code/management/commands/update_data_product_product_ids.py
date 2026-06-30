@@ -11,7 +11,7 @@ class Command(BaseCommand):
     help = 'Update the DataProduct table to have basenames as the product_id'
 
     def handle(self, *args, **kwargs):
-        dps = DataProduct.objects.only('id', 'product_id').filter(data_product_type='spectroscopy')
+        dps = DataProduct.objects.only('id', 'product_id', 'data').filter(data_product_type='spectroscopy')
 
         batch = []
         BATCH_SIZE = 500
