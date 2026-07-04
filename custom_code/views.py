@@ -1670,15 +1670,12 @@ class BulkDownloadView(LoginRequiredMixin, View):
         target_name = request.POST.get('target_name', 'snextarget')
         clean_target_name = target_name.replace(' ', '_')
         download_format = request.POST.get('download_format', 'fits')
-
         if not product_ids:
             return HttpResponse('No items selected.', status=400)
-
         allowed = get_objects_for_user(
             request.user, 'tom_dataproducts.view_dataproduct',
             klass=DataProduct.objects.filter(id__in=product_ids),
         )
-
         zip_buffer = BytesIO()
         written = 0
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -1686,24 +1683,29 @@ class BulkDownloadView(LoginRequiredMixin, View):
                 if not product.data:
                     continue
                 file_name = product.get_file_name()
+                fits_path = product.data.path
+                ascii_path = os.path.splitext(fits_path)[0] + '.ascii'
 
-                if download_format == 'ascii':
-                    src_path = os.path.splitext(product.data.path)[0] + '.ascii'
-                    if not os.path.exists(src_path):
+                if download_format == 'any':
+                    if os.path.exists(fits_path):
+                        src_path, arc_name = fits_path, file_name
+                    elif os.path.exists(ascii_path):
+                        src_path, arc_name = ascii_path, os.path.splitext(file_name)[0] + '.ascii'
+                    else:
                         continue
-                    arc_name = os.path.splitext(file_name)[0] + '.ascii'
+                elif download_format == 'ascii':
+                    if not os.path.exists(ascii_path):
+                        continue
+                    src_path, arc_name = ascii_path, os.path.splitext(file_name)[0] + '.ascii'
                 else:
-                    src_path = product.data.path
-                    if not os.path.exists(src_path):
+                    if not os.path.exists(fits_path):
                         continue
-                    arc_name = file_name
+                    src_path, arc_name = fits_path, file_name
 
                 zip_file.write(src_path, arcname=arc_name)
                 written += 1
-
         if written == 0:
-            return JsonResponse({'error': 'No downloadable files found for selection.'}, status=404)
-
+            return JsonResponse({'error': f'File with "{download_format}" extension does not exist.'}, status=404)
         zip_buffer.seek(0)
         response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename={clean_target_name}_{download_format}.zip'

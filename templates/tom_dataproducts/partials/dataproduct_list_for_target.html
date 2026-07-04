@@ -33,16 +33,18 @@
   {% csrf_token %}
   <input type="hidden" name="target_name" value="{{ target.name }}">
   <div class="mb-3 d-inline-block">
-    <button type="submit" name="download_format" value="fits" class="btn btn-success">Download as fits (.zip)</button>
+    <select name="download_format" class="form-control d-inline-block w-auto">
+      <option value="any">Any (default fits)</option>
+      <option value="fits">fits</option>
+      <option value="ascii">ascii</option>
+    </select>
+    <button type="submit" class="btn btn-success">Download</button>
   </div>
-  <div class="mb-3 d-inline-block">
-    <button type="submit" name="download_format" value="ascii" class="btn btn-success">Download as ascii (.zip)</button>
-  </div>
-</form>
+  <span class="text-muted ml-2">Download spectra as a filetype if available</span>
   <table class="table table-striped" id="dataproductsTable">
     <thead>
       <tr>
-        <th><input type="checkbox" id="selectAll"></th>
+        <th><input type="checkbox" id="selectAll" checked></th>
         <th></th>
         <th></th>
         <th>Filename</th>
@@ -61,7 +63,7 @@
           data-telescope="{{ extra.value.telescope|default:'' }}"
           data-instrument="{{ extra.value.instrument|default:'' }}">
         <td>
-          <input type="checkbox" name="selected_products" value="{{ product.id }}" class="product-checkbox">
+          <input type="checkbox" name="selected_products" value="{{ product.id }}" class="product-checkbox" checked>
         </td>
         {% if not product.featured %}
         <td><a href="{% url 'tom_dataproducts:feature' pk=product.id %}?target_id={{ target.id }}" title="Make Featured Image" class="btn btn-primary">Feature</a></td>
@@ -93,6 +95,7 @@
     {% endfor %}
     </tbody>
   </table>
+</form>
 <script>
 (function () {
   if (window.__dataProductFiltersBound) { return; }
@@ -149,8 +152,6 @@
       return;
     }
     const formData = new FormData(form);
-    const fmt = ev.submitter ? ev.submitter.value : 'fits';
-    formData.set('download_format', fmt);
     fetch(form.action, {
       method: 'POST',
       body: formData,
