@@ -1665,6 +1665,18 @@ def download_fits_view(request):
 
 
 class BulkDownloadView(LoginRequiredMixin, View):
+    def _generate_ascii(self, product, arc_name):
+        """Build ascii content from ReducedDatum spectrum data. Returns bytes or None."""
+        rd = product.reduceddatum_set.first()
+        if not rd or not isinstance(rd.value, dict):
+            return None
+        wavelength = rd.value.get('wavelength')
+        flux = rd.value.get('flux')
+        if not wavelength or not flux or len(wavelength) != len(flux):
+            return None
+        lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
+        return ('\n'.join(lines)).encode('utf-8')
+
     def post(self, request, *args, **kwargs):
         product_ids = request.POST.getlist('selected_products')
         target_name = request.POST.get('target_name', 'snextarget')
@@ -1685,27 +1697,35 @@ class BulkDownloadView(LoginRequiredMixin, View):
                 file_name = product.get_file_name()
                 fits_path = product.data.path
                 ascii_path = os.path.splitext(fits_path)[0] + '.ascii'
+                ascii_arc_name = os.path.splitext(file_name)[0] + '.ascii'
 
                 if download_format == 'any':
                     if os.path.exists(fits_path):
-                        src_path, arc_name = fits_path, file_name
+                        zip_file.write(fits_path, arcname=file_name)
+                        written += 1
                     elif os.path.exists(ascii_path):
-                        src_path, arc_name = ascii_path, os.path.splitext(file_name)[0] + '.ascii'
+                        zip_file.write(ascii_path, arcname=ascii_arc_name)
+                        written += 1
                     else:
-                        continue
+                        content = self._generate_ascii(product, ascii_arc_name)
+                        if content:
+                            zip_file.writestr(ascii_arc_name, content)
+                            written += 1
                 elif download_format == 'ascii':
-                    if not os.path.exists(ascii_path):
-                        continue
-                    src_path, arc_name = ascii_path, os.path.splitext(file_name)[0] + '.ascii'
+                    if os.path.exists(ascii_path):
+                        zip_file.write(ascii_path, arcname=ascii_arc_name)
+                        written += 1
+                    else:
+                        content = self._generate_ascii(product, ascii_arc_name)
+                        if content:
+                            zip_file.writestr(ascii_arc_name, content)
+                            written += 1
                 else:
-                    if not os.path.exists(fits_path):
-                        continue
-                    src_path, arc_name = fits_path, file_name
-
-                zip_file.write(src_path, arcname=arc_name)
-                written += 1
+                    if os.path.exists(fits_path):
+                        zip_file.write(fits_path, arcname=file_name)
+                        written += 1
         if written == 0:
-            return JsonResponse({'error': f'File with "{download_format}" extension does not exist.'}, status=404)
+            return JsonResponse({'error': f'The file with a "{download_format}" extension does not exist.'}, status=404)
         zip_buffer.seek(0)
         response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename={clean_target_name}_{download_format}.zip'
