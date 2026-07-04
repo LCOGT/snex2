@@ -1665,7 +1665,7 @@ def download_fits_view(request):
 
 
 class BulkDownloadView(LoginRequiredMixin, View):
-    def _generate_ascii(self, product, arc_name):
+    def _generate_ascii(self, product):
         """Build ascii content from ReducedDatum spectrum data. Returns bytes or None."""
         rd = product.reduceddatum_set.first()
         if not rd or not isinstance(rd.value, dict):
@@ -1697,28 +1697,28 @@ class BulkDownloadView(LoginRequiredMixin, View):
                 file_name = product.get_file_name()
                 fits_path = product.data.path
                 ascii_path = os.path.splitext(fits_path)[0] + '.ascii'
-                ascii_arc_name = os.path.splitext(file_name)[0] + '.ascii'
+                ascii_name = os.path.splitext(file_name)[0] + '.ascii'
 
                 if download_format == 'any':
                     if os.path.exists(fits_path):
                         zip_file.write(fits_path, arcname=file_name)
                         written += 1
                     elif os.path.exists(ascii_path):
-                        zip_file.write(ascii_path, arcname=ascii_arc_name)
+                        zip_file.write(ascii_path, arcname=ascii_name)
                         written += 1
                     else:
-                        content = self._generate_ascii(product, ascii_arc_name)
+                        content = self._generate_ascii(product)
                         if content:
-                            zip_file.writestr(ascii_arc_name, content)
+                            zip_file.writestr(ascii_name, content)
                             written += 1
                 elif download_format == 'ascii':
                     if os.path.exists(ascii_path):
-                        zip_file.write(ascii_path, arcname=ascii_arc_name)
+                        zip_file.write(ascii_path, arcname=ascii_name)
                         written += 1
                     else:
-                        content = self._generate_ascii(product, ascii_arc_name)
+                        content = self._generate_ascii(product)
                         if content:
-                            zip_file.writestr(ascii_arc_name, content)
+                            zip_file.writestr(ascii_name, content)
                             written += 1
                 else:
                     if os.path.exists(fits_path):
