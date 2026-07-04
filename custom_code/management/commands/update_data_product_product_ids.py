@@ -15,6 +15,7 @@ class Command(BaseCommand):
         total = dps.count()
 
         for dp in dps.iterator(chunk_size=BATCH_SIZE):
+            file_name = dp.get_file_name().replace('.ascii', '.fits')
             filename = dp.data.name.split('/')[-1].replace('.ascii', '.fits')
             if dp.reduceddatumextra_set.first():
                 snexid = dp.reduceddatumextra_set.first().value.get('snex_id')
@@ -29,7 +30,7 @@ class Command(BaseCommand):
                     bname = spec_row.original.replace('.fits', '')
                 else:
                     bname = spec_row.filename
-                spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')
+                spec_filepath = "/".join(spec_row.filepath.split('/')[4:]) + spec_row.filename.replace('ascii', 'fits')
 
                 dp.product_id = bname
                 dp.data.name = spec_filepath
