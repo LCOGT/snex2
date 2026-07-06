@@ -173,7 +173,7 @@ def _continue_sequence(obs_group, data):
     for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
         if key in data.keys() and key in obs.parameters.keys():
             if data[key] != obs.parameters[key]:
-                return {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
+                return {'failure': f'Sequence parameter {key} for form: {data[key]} and observation record: {obs.parameters[key]} were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
 
     obs.parameters['reminder'] = data['reminder']
     now = timezone.now()
