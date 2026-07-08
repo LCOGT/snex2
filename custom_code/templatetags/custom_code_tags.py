@@ -17,6 +17,7 @@ from tom_observations import utils, facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
+from tom_observations.facility import get_service_class
 from tom_common.hooks import run_hook
 
 from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
@@ -1139,6 +1140,8 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         comment_str = '{}: {}'.format(comment.user.first_name, comment.comment)
     
     parameter = observation.parameters
+    facility_class = get_service_class(observation.facility)()
+    prop_choices = dict(facility_class.get_form(parameter.get('observation_type')).proposal_choices(facility_class))
     if parameter.get('observation_type', '') == 'IMAGING':
 
         observation_type = 'Phot'
@@ -1214,6 +1217,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                            'names': target_names,
                            'facility': facility,
                            'proposal': parameter.get('proposal', ''),
+                           'proposal_name': prop_choices.get(parameter.get('proposal')),
                            'observation_type': observation_type,
                            'cadence_strategy': cadence_strat,
                            'instrument': instrument,
@@ -1284,6 +1288,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                            'names': target_names,
                            'facility': facility,
                            'proposal':  parameter.get('proposal', ''),
+                           'proposal_name': prop_choices.get(parameter.get('proposal')),
                            'observation_type': observation_type,
                            'cadence_strategy': cadence_strat,
                            'instrument': instrument,
