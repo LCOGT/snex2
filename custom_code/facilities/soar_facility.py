@@ -111,7 +111,7 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
             'exposure_time': 450.0,
             'max_airmass': 1.6,
             'exposure_count': 2,
-            'readout': 'GHTS_B_400m2_2x2',
+            'readout': 'GHTS_B_400m1_2x2',
             'rotator_angle': 0.0,
         },
         'SOAR_TRIPLESPEC': {
@@ -130,7 +130,7 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         ],
         'SOAR_GHTS_BLUECAM': [
             ('GHTS_B_400m1_2x2', 'GHTS_B_400m1_2x2'),
-            ('GHTS_B_400m2_2x2', 'GHTS_B_400m2_2x2'),
+            ('GHTS_B_400m1_2x2_slit1p5', 'GHTS_B_400m1_2x2_slit1p5'),
         ],
         'SOAR_TRIPLESPEC': [
             ('fowler16_coadds1', 'fowler16_coadds1'),
@@ -617,11 +617,3 @@ class SOARFacility(BaseSOARFacility):
             headers=self._portal_headers()
         )
         return [r['id'] for r in response.json()['requests']]
-
-'''
-There was a problem authenticating with SOAR: b'{"requests":[{"configurations":[{"non_field_errors":["Readout mode GHTS_B_400m2_2x2 is not available for instrument type SOAR_GHTS_BLUECAM"]},{"non_field_errors":["Readout mode GHTS_B_400m2_2x2 is not available for instrument type SOAR_GHTS_BLUECAM"]},{"non_field_errors":["Readout mode GHTS_B_400m2_2x2 is not available for instrument type SOAR_GHTS_BLUECAM"]}]}]}'. Please check that you have the correct credentials in the corresponding settings variable. https://tom-toolkit.readthedocs.io/en/stable/common/customsettings.html
-
-for triplespec, 200s is default for target, 65s for standard, have 2 configs, one standard, one target
-standard has fowler 8, target is 16.
-
-'''
