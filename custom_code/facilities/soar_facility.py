@@ -1,7 +1,6 @@
 import copy
 import json
 import logging
-from datetime import timedelta, timezone as datetime_timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
@@ -9,7 +8,6 @@ from crispy_forms.bootstrap import PrependedText
 from crispy_forms.layout import Column, Div, HTML, Layout, Row
 from django import forms
 from django.conf import settings
-from django.utils import timezone
 from tom_common.exceptions import ImproperCredentialsException
 from tom_observations.facilities.lco import LCOSpectroscopyObservationForm
 from tom_observations.facilities.soar import (
@@ -58,8 +56,6 @@ def user_can_access_soar(user):
 
 
 class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObservationForm):
-    window = forms.FloatField(initial=1.0, required=False, widget=forms.HiddenInput())
-    browser_timezone = forms.CharField(required=False, widget=forms.HiddenInput())
     ipp_value = forms.FloatField(initial=1.0, label='', min_value=0.5, max_value=2.0)
     max_airmass = forms.FloatField(initial=1.6, min_value=1.0, max_value=5.0, required=False, label='')
     min_lunar_distance = forms.IntegerField(initial=20, min_value=0, required=False, label='')
@@ -85,18 +81,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
     grating = forms.CharField(required=False, widget=forms.HiddenInput())
     filter = forms.CharField(required=False, widget=forms.HiddenInput())
     readout = forms.ChoiceField(choices=(), required=False, label='')
-    start = forms.DateTimeField(
-        required=False,
-        label='',
-        input_formats=['%Y-%m-%dT%H:%M', '%Y-%m-%d %H:%M:%S'],
-        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M')
-    )
-    end = forms.DateTimeField(
-        required=False,
-        label='',
-        input_formats=['%Y-%m-%dT%H:%M', '%Y-%m-%d %H:%M:%S'],
-        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}, format='%Y-%m-%dT%H:%M')
-    )
     name = forms.CharField(required=False, widget=forms.HiddenInput())
 
     INSTRUMENT_DEFAULTS = {
@@ -142,8 +126,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         'facility',
         'target_id',
         'observation_type',
-        'browser_timezone',
-        'window',
         'rotator_angle',
         'observation_mode',
         'grating',
@@ -184,7 +166,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
                 'ipp_value',
                 'proposal',
                 'observation_mode',
-                'browser_timezone',
                 'start',
                 'end',
             ):
@@ -230,12 +211,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
             data.getlist('c_1_ic_1_exposure_time')
         )
         return data
-
-    def clean_start(self):
-        return self.cleaned_data.get('start')
-
-    def clean_end(self):
-        return self.cleaned_data.get('end')
 
     def _field_value(self, name, aliases=(), default=None, include_initial=True):
         candidate_keys = (name, *aliases)
@@ -331,21 +306,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
             default=20
         )
 
-    def _selected_browser_timezone(self):
-        browser_timezone = self._field_value(
-            'browser_timezone',
-            default='',
-            include_initial=False
-        )
-        if not browser_timezone:
-            return timezone.get_current_timezone()
-
-        try:
-            return ZoneInfo(browser_timezone)
-        except ZoneInfoNotFoundError:
-            logger.warning('Unknown SOAR browser timezone %s; using current timezone instead.', browser_timezone)
-            return timezone.get_current_timezone()
-
     def clean(self):
         cleaned_data = super().clean()
         target_id = cleaned_data.get('target_id')
@@ -353,8 +313,12 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         defaults = self.INSTRUMENT_DEFAULTS.get(instrument_type, self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM'])
 
         if target_id:
-            target = Target.objects.get(pk=target_id)
-            cleaned_data['name'] = target.name
+            try:
+                target = Target.objects.get(pk=target_id)
+                cleaned_data['name'] = target.name
+            except Target.DoesNotExist:
+                self.add_error(None, 'Selected target no longer exists.')
+                return cleaned_data
 
         max_airmass = cleaned_data.get('max_airmass')
         min_lunar_distance = cleaned_data.get('min_lunar_distance')
@@ -362,33 +326,17 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         exposure_count = cleaned_data.get('exposure_count')
         readout = cleaned_data.get('readout')
 
-        cleaned_data['window'] = 1.0
         cleaned_data['observation_mode'] = 'NORMAL'
         cleaned_data['max_airmass'] = defaults['max_airmass'] if max_airmass in (None, '') else max_airmass
         cleaned_data['min_lunar_distance'] = 20 if min_lunar_distance in (None, '') else min_lunar_distance
         cleaned_data['rotator_angle'] = defaults['rotator_angle']
         cleaned_data['exposure_time'] = defaults['exposure_time'] if exposure_time in (None, '') else exposure_time
         cleaned_data['exposure_count'] = defaults['exposure_count'] if exposure_count in (None, '') else exposure_count
-        cleaned_data['readout'] = defaults['readout'] if readout in (None, '') else readout
+        allowed_readouts = {choice[0] for choice in self.READOUT_CHOICES_BY_INSTRUMENT.get(instrument_type, [])}
+        cleaned_data['readout'] = readout if readout in allowed_readouts else defaults['readout']
         cleaned_data['grating'] = ''
         cleaned_data['filter'] = ''
 
-        now = timezone.now()
-        start_time = cleaned_data.get('start') or now
-        end_time = cleaned_data.get('end') or (start_time + timedelta(days=cleaned_data['window']))
-        selected_timezone = self._selected_browser_timezone()
-
-        if timezone.is_naive(start_time):
-            start_time = timezone.make_aware(start_time, selected_timezone)
-        if timezone.is_naive(end_time):
-            end_time = timezone.make_aware(end_time, selected_timezone)
-
-        if end_time <= start_time:
-            self.add_error('end', 'End time must be after start time.')
-            return cleaned_data
-
-        cleaned_data['start'] = start_time.astimezone(datetime_timezone.utc).isoformat()
-        cleaned_data['end'] = end_time.astimezone(datetime_timezone.utc).isoformat()
         return cleaned_data
 
     def _constraints(self):
@@ -522,12 +470,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         self.fields['max_airmass'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['max_airmass']
         self.fields['min_lunar_distance'].initial = 20
         self.fields['readout'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['readout']
-        self.fields['start'].initial = ''
-        self.fields['end'].initial = ''
-        self.fields['start'].required = False
-        self.fields['end'].required = False
-        self.fields['start'].label = False
-        self.fields['end'].label = False
 
         for field_name in self.HIDDEN_FIELDS:
             if field_name in self.fields:
@@ -540,8 +482,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         self.fields['max_airmass'].required = False
         self.fields['min_lunar_distance'].required = False
         self.fields['readout'].required = False
-        self.fields['start'].required = False
-        self.fields['end'].required = False
         self.fields['observation_mode'].initial = 'NORMAL'
         self.fields['instrument_type'].widget.attrs.pop('required', None)
         self.fields['instrument_type'].widget.is_required = False
@@ -553,25 +493,24 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         hidden_layout = [field_name for field_name in self.HIDDEN_FIELDS if field_name in self.fields]
         if 'groups' in self.fields:
             hidden_layout.append('groups')
-
         self.helper.layout = Layout(
             *hidden_layout,
             Div(
                 HTML('<p>One-time SOAR submission using the default portal setup for each instrument.</p>'),
-                HTML('<p class="text-muted small" data-soar-timezone-note>Start and end are shown in your local browser timezone.</p>'),
                 Row(
                     Column(PrependedText('instrument_type', 'Instrument'), css_class='col-md-6'),
                     Column(PrependedText('readout', 'Readout'), css_class='col-md-6'),
                 ),
-                Row(
-                    Column(
-                        PrependedText('start', 'Start (Local)'),
-                        css_class='col-md-6'
+                Div(
+                    Div(
+                        'start',
+                        css_class='col'
                     ),
-                    Column(
-                        PrependedText('end', 'End (Local)'),
-                        css_class='col-md-6'
+                    Div(
+                        'end',
+                        css_class='col'
                     ),
+                    css_class='form-row'
                 ),
                 Row(
                     Column(PrependedText('exposure_time', 'Exposure Time'), css_class='col-md-6'),
