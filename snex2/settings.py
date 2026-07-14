@@ -312,7 +312,7 @@ FACILITIES = {
     'SOAR': {
         'portal_url': 'https://observe.lco.global',
         'api_key': os.environ.get('LCO_APIKEY', 'setyourapikey!'),
-        'access_group_name': os.environ.get('SOAR_ACCESS_GROUP_NAME', 'passta'),
+        'access_group_name': os.environ.get('SOAR_ACCESS_GROUP_NAME', 'PASSTA'),
     },
     'GEM': {
         'portal_url': {
