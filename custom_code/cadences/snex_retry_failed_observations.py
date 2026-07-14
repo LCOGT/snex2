@@ -25,7 +25,7 @@ def email_obs_update(obs):
         base_url = f'https://{current_domain}'
         link_to_target = f'{base_url}/targets/{obs.target.id}'
         link_to_observationgroup = (
-            f'{base_url}/observationgroup/{obs.observationgroup_set.first().id}'
+            f'{base_url}/snex2/observationgroup/{obs.observationgroup_set.first().id}/'
         )
         username = obs.parameters.get('start_user', 'snex_secure')
         user = User.objects.get(username=username)
@@ -52,7 +52,7 @@ def send_slack_notification(obs):
     base_url = f'https://{current_domain}'
     link_to_target = f'{base_url}/targets/{obs.target.id}'
     link_to_observationgroup = (
-        f'{base_url}/observationgroup/{obs.observationgroup_set.first().id}'
+        f'{base_url}/snex2/observationgroup/{obs.observationgroup_set.first().id}/'
     )
     message = (
         f"{obs.parameters['observation_type']} observation of "

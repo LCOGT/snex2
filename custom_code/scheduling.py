@@ -174,7 +174,7 @@ def _continue_sequence(obs_group, data):
     for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
         if key in data.keys() and key in obs.parameters.keys():
             if data[key] != obs.parameters[key]:
-                return {'failure': 'Sequence parameters were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
+                return {'failure': f'Sequence parameter {key} for form: {data[key]} and observation record: {obs.parameters[key]} were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
 
     obs.parameters['reminder'] = data['reminder']
     now = timezone.now()
@@ -213,7 +213,7 @@ def _modify_sequence(obs_group, user, data):
     new_params['cadence_frequency'] = data['cadence_frequency_days'] * 24
     new_params['start_user'] = user.username
     
-    delay = data.get('delay_start', 0.0)
+    delay = data.get('delay_start', 0)
     now = timezone.now()
 
     start_time = now + timedelta(days=delay)
@@ -224,6 +224,8 @@ def _modify_sequence(obs_group, user, data):
     new_params['reminder_date'] = (now + timedelta(days=delay + data['reminder'])).isoformat()
     new_params['start'] = start_time.isoformat()
     new_params['end'] = (start_time + timedelta(hours=window_length_hours)).isoformat()
+    new_params['delay_start'] = False
+    new_params['delay_amount'] = 0
     
     # Update filters
     filters = ['U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']

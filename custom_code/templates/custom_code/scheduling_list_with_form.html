@@ -1,7 +1,7 @@
 {% load bootstrap4 targets_extras custom_code_tags %}
 <style>
-#id_cadence_frequency {
-    width: 50px;
+.cadence-input {
+    width: 100px;
 }
 #id_ipp_value {
     width: 50px;
@@ -12,9 +12,40 @@
 #id_reminder {
     width: 50px;
 }
-.exposure-row {
-    width: 325px;
+.exposure-row input[type=number] {
+    width: 150px;
 }
+.phot-exposures .exposure-row {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+.phot-exposures .exposure-row > span:first-child {
+    flex: 0.5 0 auto;
+    width: 1.8em;
+    margin-right: 6px;
+    text-align: right;
+}
+.phot-exposures .exposure-row input[type=number] {
+    flex: 0 0 auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    box-sizing: border-box;
+}
+.phot-exposures .exposure-row input[type=number]:nth-of-type(1) { width: 120px !important; margin-right: 10px !important; }
+.phot-exposures .exposure-row input[type=number]:nth-of-type(2) { width: 84px !important; margin-right: 10px !important; }
+.phot-exposures .exposure-row input[type=number]:nth-of-type(3) { width: 78px !important; }
+.phot-exposures .exposure-header span {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    text-align: left;
+    font-weight: bold;
+    white-space: nowrap;
+}
+.phot-exposures .exposure-header .lead { width: 1.8em; margin-right: 6px; }
+.phot-exposures .exposure-header .c1   { width: 120px; margin-right: 10px; }
+.phot-exposures .exposure-header .c2   { width: 84px;  margin-right: 10px; }
+.phot-exposures .exposure-header .c3   { width: 78px; }
 .btn {
     width: 90%;
 }
@@ -40,11 +71,11 @@ input[type=number]::-webkit-outer-spin-button {
 {% bootstrap_form form exclude='cadence_frequency_days,ipp_value,max_airmass,exposure_time,reminder,delay_start' %}
 {% endif %}
 {% if 'SUPA202' in parameter.proposal %}
-<table class="table pessto-table">
+<table class="table pessto-table" data-proposal="{{ parameter.proposal_name }}">
 {% elif parameter.proposal == 'LCO2022A-013' %}
-<table class="table dlt40-table">
+<table class="table dlt40-table" data-proposal="{{ parameter.proposal_name }}">
 {% else %}
-<table class="table">
+<table class="table" data-proposal="{{ parameter.proposal_name }}">
 {% endif %}
   <thead>
     <tr>
@@ -83,19 +114,12 @@ input[type=number]::-webkit-outer-spin-button {
       {% if parameter.observation_type == "Phot" %}
 	<td>
 	  <div class="row">{{ form.cadence_frequency_days }}</div>
-	  <!--div class="row" style="width: 100px;">
-	    <input type="checkbox" id="delay-start-{{ parameter.observation_id }}">
-	    <label for="delay-start-{{ parameter.observation_id }}">Delay Start By</label>
-	  </div-->
 	</td>
 	<td>{{ form.ipp_value }}</td>
 	<td>{{ form.max_airmass }}</td>
-	<td rowspan="3" class="col-md-12">
-    <div class="exposure-row" style="display: flex;">
-      {% if parameter.instrument == 'Muscat' %} <span style="visibility: hidden; min-width: 85px;">Spacer</span> {% endif %}
-      <div style="flex-grow: 1;">
-        Exposure Time&nbsp;&nbsp; Exposures&nbsp;&nbsp; {% if parameter.instrument != 'Muscat' %} Block No. {% endif %}
-      </div>
+	<td rowspan="3" class="col-md-12 phot-exposures">
+    <div class="exposure-row exposure-header">
+      <span class="lead"></span><span class="c1">Exposure Time</span><span class="c2">Exposures</span>{% if parameter.instrument != 'Muscat' %}<span class="c3">Block No.</span>{% endif %}
     </div>
     <div class="exposure-row" style="text-align:center;"><span>{{ form.U.label }}</span> {{ form.U }}</div>
 	  <div class="exposure-row" style="text-align:center;"><span>{{ form.B.label }}</span> {{ form.B }}</div>
@@ -147,7 +171,7 @@ input[type=number]::-webkit-outer-spin-button {
 	<div class="row">{{ parameter.start }}</div>
 	<div class="row">{{ parameter.comment }}</div>
       </td>
-      <td>{{ parameter.reminder_date }}</td>
+      <td style="overflow-wrap: anywhere; word-break: break-word;">{{ parameter.reminder_date }}</td>
     </tr>
       <td colspan=10 style="border-top:none;">
         <div class="collapse show" id="show-both-{{parameter.target.name|cut:" "}}">
@@ -171,6 +195,7 @@ input[type=number]::-webkit-outer-spin-button {
             $('#spectra-{{parameter.observation_id}}').html(spectra_plot);
             var airmass_plot = response.airmass_plot;
             $('#airmass-{{parameter.observation_id}}').html(airmass_plot);
+            if (window.fitTables) fitTables();
           }
         });
       });

@@ -3,6 +3,7 @@ import json
 import os
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
+import zipfile
 import requests
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -13,6 +14,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import Group, User
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.core.cache import cache
@@ -20,7 +22,7 @@ from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F,
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
 from django.views.decorators.http import require_POST, require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
@@ -1214,7 +1216,19 @@ def load_manage_data_tab_view(request):
         # Get the template tag contexts
         upload_context = custom_code_tags.custom_upload_dataproduct(context_dict, target) if request.user.is_authenticated else None
         dataproduct_context = dataproduct_list_for_target(context_dict, target)
-        
+        telescopes, instruments = set(), set()
+        for p in dataproduct_context['products']:
+            rde = p.reduceddatumextra_set.first()
+            if rde and rde.value:
+                t = rde.value.get('telescope')
+                i = rde.value.get('instrument')
+                if t:
+                    telescopes.add(t)
+                if i:
+                    instruments.add(i)
+        dataproduct_context['telescopes'] = sorted(telescopes)
+        dataproduct_context['instruments'] = sorted(instruments)
+
         # Render the components
         upload_html = render_to_string('custom_code/custom_upload_dataproduct.html', upload_context, request=request) if upload_context else ''
         dataproduct_html = render_to_string('tom_dataproducts/partials/dataproduct_list_for_target.html', dataproduct_context, request=request)
@@ -1231,7 +1245,6 @@ def load_manage_data_tab_view(request):
         )
         return JsonResponse({'html': html}, safe=False)
     return JsonResponse({'html': '<div>Error loading manage data</div>'}, safe=False)
-
 
 
 def load_observing_runs_tab_view(request):
@@ -1661,6 +1674,16 @@ def make_thumbnail_view(request):
 
     return HttpResponse(json.dumps(content_response), content_type='application/json')
 
+def download_data_product_view(request, pk):
+    dp = get_object_or_404(DataProduct, pk=pk)
+    if not request.user.has_perm('tom_dataproducts.view_dataproduct', dp):
+        return HttpResponseForbidden('Not authorized')
+    if not dp.data or not os.path.exists(dp.data.path):
+        raise Http404('File not found on disk')
+    return FileResponse(open(dp.data.path, 'rb'),
+                        as_attachment=True,
+                        filename=os.path.basename(dp.data.name))
+
 def download_fits_view(request):
     token = settings.FACILITIES['LCO']['api_key']
     url = settings.FACILITIES['LCO']['archive_url']
@@ -1674,6 +1697,75 @@ def download_fits_view(request):
     data = requests.get(results[0]["url"]).content
 
     return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
+
+
+class BulkDownloadView(LoginRequiredMixin, View):
+    def _generate_ascii(self, product):
+        """Build ascii content from ReducedDatum spectrum data. Returns bytes or None."""
+        rd = product.reduceddatum_set.first()
+        if not rd or not isinstance(rd.value, dict):
+            return None
+        wavelength = rd.value.get('wavelength')
+        flux = rd.value.get('flux')
+        if not wavelength or not flux or len(wavelength) != len(flux):
+            return None
+        lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
+        return ('\n'.join(lines)).encode('utf-8')
+
+    def post(self, request, *args, **kwargs):
+        product_ids = request.POST.getlist('selected_products')
+        target_name = request.POST.get('target_name', 'snextarget')
+        clean_target_name = target_name.replace(' ', '_')
+        download_format = request.POST.get('download_format', 'fits')
+        if not product_ids:
+            return HttpResponse('No items selected.', status=400)
+        allowed = get_objects_for_user(
+            request.user, 'tom_dataproducts.view_dataproduct',
+            klass=DataProduct.objects.filter(id__in=product_ids),
+        )
+        zip_buffer = BytesIO()
+        written = 0
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for product in allowed:
+                if not product.data:
+                    continue
+                file_name = product.get_file_name()
+                fits_path = product.data.path
+                ascii_path = os.path.splitext(fits_path)[0] + '.ascii'
+                ascii_name = os.path.splitext(file_name)[0] + '.ascii'
+
+                if download_format == 'any':
+                    if os.path.exists(fits_path):
+                        zip_file.write(fits_path, arcname=file_name)
+                        written += 1
+                    elif os.path.exists(ascii_path):
+                        zip_file.write(ascii_path, arcname=ascii_name)
+                        written += 1
+                    else:
+                        content = self._generate_ascii(product)
+                        if content:
+                            zip_file.writestr(ascii_name, content)
+                            written += 1
+                elif download_format == 'ascii':
+                    if os.path.exists(ascii_path):
+                        zip_file.write(ascii_path, arcname=ascii_name)
+                        written += 1
+                    else:
+                        content = self._generate_ascii(product)
+                        if content:
+                            zip_file.writestr(ascii_name, content)
+                            written += 1
+                else:
+                    if os.path.exists(fits_path):
+                        zip_file.write(fits_path, arcname=file_name)
+                        written += 1
+        if written == 0:
+            return JsonResponse({'error': f'The file with a "{download_format}" extension does not exist.'}, status=404)
+        zip_buffer.seek(0)
+        response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename={clean_target_name}_{download_format}.zip'
+        return response
+
 
 @require_GET
 def get_frame_ids_view(request):
