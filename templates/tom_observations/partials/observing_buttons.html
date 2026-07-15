@@ -1,6 +1,14 @@
-{% for facility in facilities %}
+{% for facility, facility_class in facilities.items %}
 {% if facility != 'LCO' %}
-<a href="{% url 'tom_observations:create' facility=facility %}?target_id={{ target.id }}&observation_type=IMAGING" class="btn btn-outline-primary">{{ facility }} Photometry</a>
-<a href="{% url 'tom_observations:create' facility=facility %}?target_id={{ target.id }}&observation_type=SPECTRA" class="btn btn-outline-primary">{{ facility }} Spectra</a>
+  <a
+  {% if facility_class.is_redirect %}
+    href="{% url 'tom_observations:redirect' facility=facility %}?target_id={{ target.id }}"
+  {% else %}
+    href="{% url 'tom_observations:create' facility=facility %}?target_id={{ target.id }}"
+  {% endif %}
+    class="btn btn-outline-primary"
+    title="{{ facility_class.get_button_tooltip }}">
+      {{ facility_class.get_button_label }}
+  </a>
 {% endif %}
 {% endfor %}

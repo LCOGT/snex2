@@ -42,121 +42,90 @@
     </div>
 </div>
 <script>
-var facility = '{{ form.facility.value }}';
-if (facility === 'SOAR') {
-  var cameraSelect = document.getElementById('id_instrument_type');
-  var readoutSelect = document.getElementById('id_readout');
-  var exposureField = document.getElementById('id_exposure_time');
-  var exposureCountField = document.getElementById('id_exposure_count');
-  var maxAirmassField = document.getElementById('id_max_airmass');
-  var minLunarDistanceField = document.getElementById('id_min_lunar_distance');
-  var startField = document.getElementById('id_start');
-  var endField = document.getElementById('id_end');
-  var browserTimezoneField = document.getElementById('id_browser_timezone');
-  var timezoneNotes = document.querySelectorAll('[data-soar-timezone-note]');
-  var soarReadoutOptions = {
+$(function () {
+  const $soarInstrument = $("#id_instrument_type");
+  const $soarExposure = $("#id_exposure_time");
+  const $soarExposureCount = $("#id_exposure_count");
+  const $soarReadout = $("#id_readout");
+  const $soarMaxAirmass = $("#id_max_airmass");
+  const $soarMinLunarDistance = $("#id_min_lunar_distance");
+  const soarReadoutOptions = {
     'SOAR_GHTS_REDCAM': [
       { value: 'GHTS_R_400m1_2x2', label: 'GHTS_R_400m1_2x2' },
-      { value: 'GHTS_R_400m2_2x2', label: 'GHTS_R_400m2_2x2' }
+      { value: 'GHTS_R_400m2_2x2', label: 'GHTS_R_400m2_2x2' },
+      { value: 'GHTS_R_400m1_2x2_slit1p5', label: 'GHTS_R_400m1_2x2_slit1p5' },
+      { value: 'GHTS_R_2100_5000A_1x2_slit1p0', label: 'GHTS_R_2100_5000A_1x2_slit1p0' }
     ],
     'SOAR_GHTS_BLUECAM': [
       { value: 'GHTS_B_400m1_2x2', label: 'GHTS_B_400m1_2x2' },
-      { value: 'GHTS_B_400m2_2x2', label: 'GHTS_B_400m2_2x2' }
+      { value: 'GHTS_B_400m1_2x2_slit1p5', label: 'GHTS_B_400m1_2x2_slit1p5' }
     ],
     'SOAR_TRIPLESPEC': [
+      { value: 'fowler1_coadds1', label: 'fowler1_coadds1' },
+      { value: 'fowler1_coadds2', label: 'fowler1_coadds2' },
+      { value: 'fowler4_coadds1', label: 'fowler4_coadds1' },
+      { value: 'fowler8_coadds1', label: 'fowler8_coadds1' },
       { value: 'fowler16_coadds1', label: 'fowler16_coadds1' }
     ]
   };
-  var soarDefaults = {
+  const soarDefaults = {
     'SOAR_GHTS_REDCAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_R_400m2_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
-    'SOAR_GHTS_BLUECAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_B_400m2_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
+    'SOAR_GHTS_BLUECAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_B_400m1_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
     'SOAR_TRIPLESPEC': { exposureTime: '200', exposureCount: '6', readout: 'fowler16_coadds1', maxAirmass: '1.6', minLunarDistance: '20' }
   };
-  var lastSoarDefaults = soarDefaults[cameraSelect && cameraSelect.value] || soarDefaults['SOAR_GHTS_REDCAM'];
-
-  function formatLocalDateTime(date) {
-    var year = date.getFullYear();
-    var month = String(date.getMonth() + 1).padStart(2, '0');
-    var day = String(date.getDate()).padStart(2, '0');
-    var hours = String(date.getHours()).padStart(2, '0');
-    var minutes = String(date.getMinutes()).padStart(2, '0');
-    return year + '-' + month + '-' + day + 'T' + hours + ':' + minutes;
-  }
-
-  function updateSoarTimeWindowDefaults() {
-    var browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    if (browserTimezoneField) {
-      browserTimezoneField.value = browserTimezone;
-    }
-    timezoneNotes.forEach(function(note) {
-      note.textContent = browserTimezone
-        ? 'Start and end are shown in your local browser timezone (' + browserTimezone + ').'
-        : 'Start and end are shown in your local browser timezone.';
-    });
-    if (startField && !(startField.value || '').trim()) {
-      startField.value = formatLocalDateTime(new Date());
-    }
-    if (endField && !(endField.value || '').trim()) {
-      var defaultEnd = new Date();
-      defaultEnd.setDate(defaultEnd.getDate() + 1);
-      endField.value = formatLocalDateTime(defaultEnd);
-    }
-  }
+  let lastSoarDefaults = soarDefaults[$soarInstrument.val()] || soarDefaults['SOAR_GHTS_REDCAM'];
 
   function updateSoarDefaults() {
-    if (!cameraSelect || !readoutSelect) {
+    if (
+      !$soarInstrument.length
+      || !$soarExposure.length
+      || !$soarExposureCount.length
+      || !$soarReadout.length
+      || !$soarMaxAirmass.length
+      || !$soarMinLunarDistance.length
+    ) {
       return;
     }
+    const nextDefaults = soarDefaults[$soarInstrument.val()] || soarDefaults['SOAR_GHTS_REDCAM'];
+    const currentExposureTime = ($soarExposure.val() || '').trim();
+    const currentExposureCount = ($soarExposureCount.val() || '').trim();
+    const currentReadout = ($soarReadout.val() || '').trim();
+    const currentMaxAirmass = ($soarMaxAirmass.val() || '').trim();
+    const currentMinLunarDistance = ($soarMinLunarDistance.val() || '').trim();
+    const nextReadoutOptions = soarReadoutOptions[$soarInstrument.val()] || [];
+    const nextReadoutValues = nextReadoutOptions.map(option => option.value);
 
-    var nextDefaults = soarDefaults[cameraSelect.value] || soarDefaults['SOAR_GHTS_REDCAM'];
-    var currentExposureTime = exposureField ? (exposureField.value || '').trim() : '';
-    var currentExposureCount = exposureCountField ? (exposureCountField.value || '').trim() : '';
-    var currentReadout = (readoutSelect.value || '').trim();
-    var currentMaxAirmass = maxAirmassField ? (maxAirmassField.value || '').trim() : '';
-    var currentMinLunarDistance = minLunarDistanceField ? (minLunarDistanceField.value || '').trim() : '';
-    var nextReadoutOptions = soarReadoutOptions[cameraSelect.value] || [];
-    var nextReadoutValues = nextReadoutOptions.map(function(option) { return option.value; });
-
-    if (exposureField && (!currentExposureTime || currentExposureTime === lastSoarDefaults.exposureTime)) {
-      exposureField.value = nextDefaults.exposureTime;
+    if (!currentExposureTime || currentExposureTime === lastSoarDefaults.exposureTime) {
+      $soarExposure.val(nextDefaults.exposureTime);
     }
-    if (exposureCountField && (!currentExposureCount || currentExposureCount === lastSoarDefaults.exposureCount)) {
-      exposureCountField.value = nextDefaults.exposureCount;
+    if (!currentExposureCount || currentExposureCount === lastSoarDefaults.exposureCount) {
+      $soarExposureCount.val(nextDefaults.exposureCount);
     }
-
-    readoutSelect.innerHTML = '';
+    $soarReadout.empty();
     nextReadoutOptions.forEach(function(option) {
-      readoutSelect.add(new Option(option.label, option.value));
+      $soarReadout.append(new Option(option.label, option.value));
     });
-    if (!currentReadout || currentReadout === lastSoarDefaults.readout || nextReadoutValues.indexOf(currentReadout) === -1) {
-      readoutSelect.value = nextDefaults.readout;
+    if (!currentReadout || currentReadout === lastSoarDefaults.readout || !nextReadoutValues.includes(currentReadout)) {
+      $soarReadout.val(nextDefaults.readout);
     } else {
-      readoutSelect.value = currentReadout;
+      $soarReadout.val(currentReadout);
     }
-
-    if (maxAirmassField && (!currentMaxAirmass || currentMaxAirmass === lastSoarDefaults.maxAirmass)) {
-      maxAirmassField.value = nextDefaults.maxAirmass;
+    if (!currentMaxAirmass || currentMaxAirmass === lastSoarDefaults.maxAirmass) {
+      $soarMaxAirmass.val(nextDefaults.maxAirmass);
     }
-    if (minLunarDistanceField && (!currentMinLunarDistance || currentMinLunarDistance === lastSoarDefaults.minLunarDistance)) {
-      minLunarDistanceField.value = nextDefaults.minLunarDistance;
+    if (!currentMinLunarDistance || currentMinLunarDistance === lastSoarDefaults.minLunarDistance) {
+      $soarMinLunarDistance.val(nextDefaults.minLunarDistance);
     }
 
     lastSoarDefaults = nextDefaults;
   }
 
-  if (cameraSelect) {
-    cameraSelect.addEventListener('change', updateSoarDefaults);
-  }
-  updateSoarTimeWindowDefaults();
+  $soarInstrument.on("change", updateSoarDefaults);
   updateSoarDefaults();
-}
-$("#id_delay_start").click(function() {
-  var delayAmount = document.getElementById("div_id_delay_amount");
-  if (delayAmount.style.display === "block") {
-    delayAmount.style.display = "none";
-  } else {
-    delayAmount.style.display = "block";
-  }
-})
+  updateDelayVisibility("phot");
+  updateDelayVisibility("spec");
+  updateRetryVisibility("phot");
+  updateRetryVisibility("spec");
+});
 </script>
 {% endblock %}
