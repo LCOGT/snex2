@@ -34,12 +34,14 @@ from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
+from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
 from custom_code.thumbnails import make_thumb
 import base64
 import logging
 import os
 
 logger = logging.getLogger(__name__)
+TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED'}
 
 register = template.Library()
 
@@ -378,7 +380,7 @@ def moon_vis(target):
     )
     
     obj_pos = SkyCoord(target.ra, target.dec, unit=u.deg)
-    moon_pos = get_body("moon",times)
+    moon_pos = get_body("moon", times)
 
     separations = moon_pos.separation(obj_pos).deg
     phases = moon_illumination(times)
@@ -649,8 +651,9 @@ def custom_upload_dataproduct(context, obj):
     return {'data_product_form': form}
 
 
-@register.inclusion_tag('custom_code/submit_lco_observations.html')
-def submit_lco_observations(target):
+@register.inclusion_tag('custom_code/submit_lco_observations.html', takes_context=True)
+def submit_lco_observations(context, target):
+    user = context.get('user') or getattr(context.get('request'), 'user', None)
     phot_initial = {'target_id': target.id,
                     'facility': 'LCO',
                     'observation_type': 'IMAGING',
@@ -663,12 +666,25 @@ def submit_lco_observations(target):
     spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
     phot_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
     spec_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
+
+    soar_form = None
+    if user_can_access_soar(user):
+        soar_initial = {'target_id': target.id,
+                        'facility': 'SOAR',
+                        'observation_type': 'SPECTRA',
+                        'name': get_best_name(target)}
+        soar_form = SOARObservationForm(initial=soar_initial, auto_id='soar_%s')
+        soar_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'SOAR'})
+
     if not settings.TARGET_PERMISSIONS_ONLY:
         phot_form.fields['groups'].queryset = Group.objects.all()
         spec_form.fields['groups'].queryset = Group.objects.all()
+        if soar_form and 'groups' in soar_form.fields:
+            soar_form.fields['groups'].queryset = Group.objects.all()
     return {'object': target,
             'phot_form': phot_form,
-            'spec_form': spec_form}
+            'spec_form': spec_form,
+            'soar_form': soar_form}
 
 @register.inclusion_tag('custom_code/dash_lightcurve.html', takes_context=True)
 def dash_lightcurve(context, target, width, height):
@@ -886,13 +902,14 @@ def custom_observation_plan(target, facility, length=1, interval=30, airmass_lim
     }
 
 def format_lco_summary(obs, group, is_active):
-    params = obs.parameters
+    params = obs.parameters or {}
     summary = []
+    facility_name = params.get('facility') or obs.facility
 
     summary_dict = {
         'observation': obs.id,
         'group': group.id,
-        'title': 'LCO Sequence',
+        'title': 'SOAR Sequence' if facility_name == 'SOAR' else 'LCO Sequence',
         'summary': '',
         'comments': []
     }
@@ -931,8 +948,12 @@ def format_lco_summary(obs, group, is_active):
 
     elif obs_type == 'spectra':
         exp = params.get('exposure_time')
+        exp_count = params.get('exposure_count')
         if exp:
-            summary.append(f"{exp}s")
+            if exp_count:
+                summary.append(f"{exp}s x {exp_count}")
+            else:
+                summary.append(f"{exp}s")
 
     mode = params.get('observation_mode')
     if mode == 'TIME_CRITICAL':
@@ -947,6 +968,9 @@ def format_lco_summary(obs, group, is_active):
         '2M0-SPECTRAL-AG': 'Spectral',
         '0M4-SCICAM-SBIG': 'SBIG',
         '0M4-SCICAM-QHY600': 'QHY',
+        'SOAR_GHTS_REDCAM': 'Goodman RedCam',
+        'SOAR_GHTS_BLUECAM': 'Goodman BlueCam',
+        'SOAR_TRIPLESPEC': 'TripleSpec',
     }
 
     inst = instrument_dict.get(params.get('instrument_type'))
@@ -1023,14 +1047,24 @@ def format_gemini_summary(obs, group):
 
 def call_facility_formats(obs, group, time_type):
     params = obs.parameters or {}
-    facility = params.get('facility', '')
+    facility = params.get('facility') or obs.facility or ''
 
-    if facility == 'LCO':
+    if facility in {'LCO', 'SOAR'}:
         return format_lco_summary(obs, group, time_type)
     elif facility == 'Gemini':
         return format_gemini_summary(obs, group)
 
     return None
+
+
+def _group_belongs_in_summary(group, is_active):
+    if group.dynamiccadence_set.exists():
+        return group.dynamiccadence_set.filter(active=is_active).exists()
+
+    has_non_terminal_records = group.observation_records.exclude(
+        status__in=TERMINAL_OBSERVING_STATES
+    ).exists()
+    return has_non_terminal_records if is_active else not has_non_terminal_records
 
 @register.inclusion_tag('custom_code/observation_summary.html', takes_context=True)
 def observation_summary(context, target = None, is_active = False):
@@ -1044,19 +1078,26 @@ def observation_summary(context, target = None, is_active = False):
     else:
         obs_records = ObservationRecord.objects.all()
 
-    obs_groups = ObservationGroup.objects.filter(observation_records__in=obs_records, dynamiccadence__active=is_active).distinct().order_by('-modified')
+    obs_groups = ObservationGroup.objects.filter(
+        observation_records__in=obs_records
+    ).distinct().order_by('-modified')
 
     parameters_summary = []
     obs_records_active = []
     content_type_obs_group = ContentType.objects.get_for_model(ObservationGroup)
 
     for group in obs_groups:
+        if not _group_belongs_in_summary(group, is_active):
+            continue
+
         obs = group.observation_records.order_by('id').first()
         if not obs:
             continue
-        obs_records_active.append(obs)
     
         summary_dict = call_facility_formats(obs, group, is_active)
+        if summary_dict is None:
+            continue
+        obs_records_active.append(obs)
         
         comments = Comment.objects.filter(object_pk = group.id, content_type = content_type_obs_group)
         summary_dict['comments'] = [f"{c.user.first_name}: {c.comment}" for c in comments]
