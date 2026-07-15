@@ -38,21 +38,11 @@ def make_request(*args, **kwargs):
     response.raise_for_status()
     return response
 
-
-def log_payload(action, payload):
-    logger.warning(
-        'SOAR %s payload:\n%s',
-        action,
-        json.dumps(payload, indent=2, sort_keys=True, default=str)
-    )
-
-
 def user_can_access_soar(user):
     return bool(
         getattr(user, 'is_authenticated', False)
         and user.groups.filter(name=SOAR_GROUP_NAME).exists()
     )
-
 
 class SOARObservationForm(SOARSpectroscopyObservationForm):
     max_airmass = forms.FloatField(initial=1.6, min_value=0, required=False, label='Max Airmass')
@@ -199,13 +189,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
             for alias_name in alias_names:
                 data.setlist(alias_name, [canonical_value])
 
-        logger.warning(
-            'SOAR bound values: instrument_type=%s alias_instrument_type=%s exposure_time=%s alias_exposure_time=%s',
-            data.getlist('instrument_type'),
-            data.getlist('c_1_instrument_type'),
-            data.getlist('exposure_time'),
-            data.getlist('c_1_ic_1_exposure_time')
-        )
         return data
 
     def _field_value(self, name, aliases=(), default=None, include_initial=True):
@@ -569,7 +552,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
         self._configure_required_fields()
         self._configure_start_end_fields()
         self._configure_layout()
-    
 
 class SOARFacility(BaseSOARFacility):
     observation_types = [('SPECTRA', 'Spectra')]
@@ -579,7 +561,6 @@ class SOARFacility(BaseSOARFacility):
         return SOARObservationForm
 
     def validate_observation(self, observation_payload):
-        log_payload('validate', observation_payload)
         response = make_request(
             'POST',
             PORTAL_URL + '/api/requestgroups/validate/',
@@ -589,7 +570,6 @@ class SOARFacility(BaseSOARFacility):
         return response.json()['errors']
 
     def submit_observation(self, observation_payload):
-        log_payload('submit', observation_payload)
         response = make_request(
             'POST',
             PORTAL_URL + '/api/requestgroups/',
