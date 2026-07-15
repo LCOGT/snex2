@@ -435,12 +435,10 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             self.initial['cadence_strategy'] = 'SnexRetryUntilDeadlineStrategy'
             self.initial['retry_until_obtained'] = True
 
-        self.fields['instrument_type'] = forms.ChoiceField(
-            choices=self.instrument_choices(),
-            required=False,
-            initial='2M0-FLOYDS-SCICAM',
-            widget=forms.HiddenInput()
-        )
+        self.fields['instrument_type'] = forms.ChoiceField(choices=self.instrument_choices(),
+                                                           required=False,
+                                                           initial='2M0-FLOYDS-SCICAM')
+        self.fields['instrument_type'].widget = forms.HiddenInput()
 
         self.fields['start'] = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}))
         self.fields['end'] = forms.CharField(widget=forms.TextInput(attrs={'type': 'date'}))
@@ -497,6 +495,9 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             self.layout(),
             self.button_layout()
         )
+
+    def instrument_choices(self):
+        return [('2M0-FLOYDS-SCICAM', '2.0 meter FLOYDS')]
 
     def clean(self):
         cadence_value = self.cleaned_data.get('cadence_frequency_value')

@@ -111,6 +111,7 @@ def cancel_observation(obs_group):
     pending_observations = obs_group.observation_records.filter(status='PENDING')
     logger.info(f'Found {pending_observations.count()} PENDING observation(s) in group {obs_group.id}')
     
+    dynamic_cadence = None
     try:
         dynamic_cadence = DynamicCadence.objects.get(observation_group=obs_group)
         logger.info(f'Current cadence status: {dynamic_cadence.active}')
@@ -119,7 +120,6 @@ def cancel_observation(obs_group):
         logger.info(f'Dynamic Cadence turned off')
     except DynamicCadence.DoesNotExist:
         logger.warning(f"No dynamic cadence found for group {obs_group.id}")
-        return False
 
     all_canceled = True
     for obs_to_cancel in pending_observations:
@@ -138,9 +138,10 @@ def cancel_observation(obs_group):
             all_canceled = False
     
     if not all_canceled:
-        logger.error(f'One or more cancellations failed, re-activating cadence')
-        dynamic_cadence.active = True
-        dynamic_cadence.save()
+        if dynamic_cadence is not None:
+            logger.error(f'One or more cancellations failed, re-activating cadence')
+            dynamic_cadence.active = True
+            dynamic_cadence.save()
         return False
     
     first_obs = obs_group.observation_records.order_by('created').first()

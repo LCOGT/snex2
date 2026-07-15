@@ -42,64 +42,90 @@
     </div>
 </div>
 <script>
-var facility = '{{ form.facility.value }}';
-if (facility === 'SOAR') {
-  var cameraSelect = document.getElementById('id_instrument_type');
-  var readoutSelect = document.getElementById('id_readout');
-  var filterDiv = document.getElementById('div_id_filter');
-  var gratingDiv = document.getElementById('div_id_grating');
-  cameraSelect.addEventListener("change", function () {
-    var camera = cameraSelect.value;
-    if (camera.includes('BLUE')) {
-      readoutSelect.value = 'GHTS_B_400m1_2x2';
-      filterDiv.style.visibility = 'visible';
-      gratingDiv.style.visibility = 'visible';
-      for (i = 0; i < readoutSelect.length; i++) {
-	var readout = readoutSelect[i];
-	if (readout.value.includes('GHTS_R')) {
-	  readout.style.visibility = 'hidden';
-        } else if (readout.value.includes('fowler')) {
-          readout.style.visibility = 'hidden';
-	} else {
-	  readout.style.visibility = 'visible';
-        }
-      }
-    } else if (camera.includes('RED')) {
-      readoutSelect.value = 'GHTS_R_400m1_2x2';
-      filterDiv.style.visibility = 'visible';
-      gratingDiv.style.visibility = 'visible';
-      for (i = 0; i < readoutSelect.length; i++) {
-	var readout = readoutSelect[i];
-	if (readout.value.includes('GHTS_B')) {
-	  readout.style.visibility = 'hidden';
-        } else if (readout.value.includes('fowler')) {
-          readout.style.visibility = 'hidden';
-	} else {
-	  readout.style.visibility = 'visible';
-	}
-      }
-    } else {
-      readoutSelect.value = 'fowler1_coadds2';
-      gratingDiv.style.visibility = 'hidden';
-      filterDiv.style.visibility = 'hidden';
-      for (i = 0; i < readoutSelect.length; i++) {
-	var readout = readoutSelect[i];
-	if (readout.value.includes('fowler')) {
-          readout.style.visibility = 'visible';
-        } else {
-          readout.style.visibility = 'hidden';
-	}
-      }
+$(function () {
+  const $soarInstrument = $("#id_instrument_type");
+  const $soarExposure = $("#id_exposure_time");
+  const $soarExposureCount = $("#id_exposure_count");
+  const $soarReadout = $("#id_readout");
+  const $soarMaxAirmass = $("#id_max_airmass");
+  const $soarMinLunarDistance = $("#id_min_lunar_distance");
+  const soarReadoutOptions = {
+    'SOAR_GHTS_REDCAM': [
+      { value: 'GHTS_R_400m1_2x2', label: 'GHTS_R_400m1_2x2' },
+      { value: 'GHTS_R_400m2_2x2', label: 'GHTS_R_400m2_2x2' },
+      { value: 'GHTS_R_400m1_2x2_slit1p5', label: 'GHTS_R_400m1_2x2_slit1p5' },
+      { value: 'GHTS_R_2100_5000A_1x2_slit1p0', label: 'GHTS_R_2100_5000A_1x2_slit1p0' }
+    ],
+    'SOAR_GHTS_BLUECAM': [
+      { value: 'GHTS_B_400m1_2x2', label: 'GHTS_B_400m1_2x2' },
+      { value: 'GHTS_B_400m1_2x2_slit1p5', label: 'GHTS_B_400m1_2x2_slit1p5' }
+    ],
+    'SOAR_TRIPLESPEC': [
+      { value: 'fowler1_coadds1', label: 'fowler1_coadds1' },
+      { value: 'fowler1_coadds2', label: 'fowler1_coadds2' },
+      { value: 'fowler4_coadds1', label: 'fowler4_coadds1' },
+      { value: 'fowler8_coadds1', label: 'fowler8_coadds1' },
+      { value: 'fowler16_coadds1', label: 'fowler16_coadds1' }
+    ]
+  };
+  const soarDefaults = {
+    'SOAR_GHTS_REDCAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_R_400m2_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
+    'SOAR_GHTS_BLUECAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_B_400m1_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
+    'SOAR_TRIPLESPEC': { exposureTime: '200', exposureCount: '6', readout: 'fowler16_coadds1', maxAirmass: '1.6', minLunarDistance: '20' }
+  };
+  let lastSoarDefaults = soarDefaults[$soarInstrument.val()] || soarDefaults['SOAR_GHTS_REDCAM'];
+
+  function updateSoarDefaults() {
+    if (
+      !$soarInstrument.length
+      || !$soarExposure.length
+      || !$soarExposureCount.length
+      || !$soarReadout.length
+      || !$soarMaxAirmass.length
+      || !$soarMinLunarDistance.length
+    ) {
+      return;
     }
-  });
-}
-$("#id_delay_start").click(function() {
-  var delayAmount = document.getElementById("div_id_delay_amount");
-  if (delayAmount.style.display === "block") {
-    delayAmount.style.display = "none";
-  } else {
-    delayAmount.style.display = "block";
+    const nextDefaults = soarDefaults[$soarInstrument.val()] || soarDefaults['SOAR_GHTS_REDCAM'];
+    const currentExposureTime = ($soarExposure.val() || '').trim();
+    const currentExposureCount = ($soarExposureCount.val() || '').trim();
+    const currentReadout = ($soarReadout.val() || '').trim();
+    const currentMaxAirmass = ($soarMaxAirmass.val() || '').trim();
+    const currentMinLunarDistance = ($soarMinLunarDistance.val() || '').trim();
+    const nextReadoutOptions = soarReadoutOptions[$soarInstrument.val()] || [];
+    const nextReadoutValues = nextReadoutOptions.map(option => option.value);
+
+    if (!currentExposureTime || currentExposureTime === lastSoarDefaults.exposureTime) {
+      $soarExposure.val(nextDefaults.exposureTime);
+    }
+    if (!currentExposureCount || currentExposureCount === lastSoarDefaults.exposureCount) {
+      $soarExposureCount.val(nextDefaults.exposureCount);
+    }
+    $soarReadout.empty();
+    nextReadoutOptions.forEach(function(option) {
+      $soarReadout.append(new Option(option.label, option.value));
+    });
+    if (!currentReadout || currentReadout === lastSoarDefaults.readout || !nextReadoutValues.includes(currentReadout)) {
+      $soarReadout.val(nextDefaults.readout);
+    } else {
+      $soarReadout.val(currentReadout);
+    }
+    if (!currentMaxAirmass || currentMaxAirmass === lastSoarDefaults.maxAirmass) {
+      $soarMaxAirmass.val(nextDefaults.maxAirmass);
+    }
+    if (!currentMinLunarDistance || currentMinLunarDistance === lastSoarDefaults.minLunarDistance) {
+      $soarMinLunarDistance.val(nextDefaults.minLunarDistance);
+    }
+
+    lastSoarDefaults = nextDefaults;
   }
-})
+
+  $soarInstrument.on("change", updateSoarDefaults);
+  updateSoarDefaults();
+  updateDelayVisibility("phot");
+  updateDelayVisibility("spec");
+  updateRetryVisibility("phot");
+  updateRetryVisibility("spec");
+});
 </script>
 {% endblock %}

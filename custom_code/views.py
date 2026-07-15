@@ -59,6 +59,7 @@ from tom_registration.registration_flows.approval_required.views import Approval
 from tom_targets.models import Target, TargetList, TargetName
 from tom_targets.templatetags.targets_extras import target_groups
 from tom_targets.views import TargetCreateView
+from custom_code.facilities.soar_facility import user_can_access_soar
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unreduced_spectra
@@ -946,6 +947,11 @@ class ObservationListExtrasView(ListView):
 
 
 class CustomObservationCreateView(ObservationCreateView):
+    def dispatch(self, request, *args, **kwargs):
+        if kwargs.get('facility') == 'SOAR' and not user_can_access_soar(request.user):
+            return HttpResponseForbidden('You do not have permission to submit SOAR observations.')
+        return super().dispatch(request, *args, **kwargs)
+
     def get_form(self):
         """
         Gets an instance of the form appropriate for the request.
@@ -953,17 +959,44 @@ class CustomObservationCreateView(ObservationCreateView):
         :rtype: subclass of GenericObservationForm
         """
         form = super().get_form()
-        if not settings.TARGET_PERMISSIONS_ONLY:
+        if not settings.TARGET_PERMISSIONS_ONLY and 'groups' in form.fields:
             form.fields['groups'].queryset = Group.objects.all()
         form.helper.form_action = reverse(
-            'submit-lco-obs', kwargs={'facility': 'LCO'}
+            'submit-lco-obs', kwargs={'facility': self.kwargs['facility']}
         )
         return form
     def form_valid(self, form):
         form.cleaned_data['start_user'] = self.request.user.username
+        target = self.get_target()
+        existing_record_ids = set(
+            ObservationRecord.objects.filter(target=target).values_list('id', flat=True)
+        )
         response = super().form_valid(form)
+        new_records = list(
+            ObservationRecord.objects.filter(target=target)
+            .exclude(id__in=existing_record_ids)
+            .order_by('created', 'id')
+        )
+        obsgroup = None
+
+        for record in new_records:
+            obsgroup = record.observationgroup_set.first()
+            if obsgroup:
+                break
+
+        if self.kwargs.get('facility') == 'SOAR' and new_records and obsgroup is None:
+            obsgroup_name = form.cleaned_data.get('name') or f'{target.name} at {self.kwargs["facility"]}'
+            obsgroup = ObservationGroup.objects.create(name=obsgroup_name)
+            obsgroup.observation_records.add(*new_records)
+            assign_perm('tom_observations.view_observationgroup', self.request.user, obsgroup)
+            assign_perm('tom_observations.change_observationgroup', self.request.user, obsgroup)
+            assign_perm('tom_observations.delete_observationgroup', self.request.user, obsgroup)
+            for record in new_records:
+                assign_perm('tom_observations.view_observationrecord', self.request.user, record)
+                assign_perm('tom_observations.change_observationrecord', self.request.user, record)
+                assign_perm('tom_observations.delete_observationrecord', self.request.user, record)
+
         if not settings.TARGET_PERMISSIONS_ONLY:
-            target = self.get_target()
             groups = form.cleaned_data.get('groups')
             if not groups:
                 target_ct = ContentType.objects.get_for_model(Target)
@@ -973,19 +1006,21 @@ class CustomObservationCreateView(ObservationCreateView):
                 ).values_list('group_id', flat=True).distinct()
                 groups = Group.objects.filter(id__in=target_group_ids)
             if groups:
-                latest_record = ObservationRecord.objects.filter(
-                    target=target
-                ).order_by('-created').first()
-                if latest_record:
-                    obsgroup = latest_record.observationgroup_set.first()
+                if not new_records:
+                    new_records = list(
+                        ObservationRecord.objects.filter(target=target).order_by('-created')[:1]
+                    )
+                if obsgroup is None and new_records:
+                    obsgroup = new_records[0].observationgroup_set.first()
+                for group in groups:
                     if obsgroup:
-                        for group in groups:
-                            assign_perm('tom_observations.view_observationgroup', group, obsgroup)
-                            assign_perm('tom_observations.change_observationgroup', group, obsgroup)
-                            assign_perm('tom_observations.delete_observationgroup', group, obsgroup)
-                            assign_perm('tom_observations.view_observationrecord', group, latest_record)
-                            assign_perm('tom_observations.change_observationrecord', group, latest_record)
-                            assign_perm('tom_observations.delete_observationrecord', group, latest_record)
+                        assign_perm('tom_observations.view_observationgroup', group, obsgroup)
+                        assign_perm('tom_observations.change_observationgroup', group, obsgroup)
+                        assign_perm('tom_observations.delete_observationgroup', group, obsgroup)
+                    for record in new_records:
+                        assign_perm('tom_observations.view_observationrecord', group, record)
+                        assign_perm('tom_observations.change_observationrecord', group, record)
+                        assign_perm('tom_observations.delete_observationrecord', group, record)
         return response
 
 def make_tns_request_view(request):
@@ -1148,7 +1183,7 @@ def load_observations_tab_view(request):
         observing_buttons_context = observing_buttons(target)
         previous_obs_context = custom_code_tags.observation_summary(context_dict, target, is_active = False)
         ongoing_obs_context = custom_code_tags.observation_summary(context_dict, target, is_active = True)
-        submit_obs_context = custom_code_tags.submit_lco_observations(target)
+        submit_obs_context = custom_code_tags.submit_lco_observations(context_dict, target)
         
         # Combine all contexts
         combined_context = {
