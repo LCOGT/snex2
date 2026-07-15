@@ -99,12 +99,18 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
         'SOAR_GHTS_REDCAM': [
             ('GHTS_R_400m1_2x2', 'GHTS_R_400m1_2x2'),
             ('GHTS_R_400m2_2x2', 'GHTS_R_400m2_2x2'),
+            ('GHTS_R_400m1_2x2_slit1p5', 'GHTS_R_400m1_2x2_slit1p5'),
+            ('GHTS_R_2100_5000A_1x2_slit1p0', 'GHTS_R_2100_5000A_1x2_slit1p0'),
         ],
         'SOAR_GHTS_BLUECAM': [
             ('GHTS_B_400m1_2x2', 'GHTS_B_400m1_2x2'),
             ('GHTS_B_400m1_2x2_slit1p5', 'GHTS_B_400m1_2x2_slit1p5'),
         ],
         'SOAR_TRIPLESPEC': [
+            ('fowler1_coadds1', 'fowler1_coadds1'),
+            ('fowler1_coadds2', 'fowler1_coadds2'),
+            ('fowler4_coadds1', 'fowler4_coadds1'),
+            ('fowler8_coadds1', 'fowler8_coadds1'),
             ('fowler16_coadds1', 'fowler16_coadds1'),
         ],
     }
