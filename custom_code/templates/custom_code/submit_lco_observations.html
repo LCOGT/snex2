@@ -185,7 +185,7 @@ $(function () {
     ],
     'SOAR_GHTS_BLUECAM': [
       { value: 'GHTS_B_400m1_2x2', label: 'GHTS_B_400m1_2x2' },
-      { value: 'GHTS_B_400m2_2x2', label: 'GHTS_B_400m2_2x2' }
+      { value: 'GHTS_B_400m1_2x2_slit1p5', label: 'GHTS_B_400m1_2x2_slit1p5' }
     ],
     'SOAR_TRIPLESPEC': [
       { value: 'fowler16_coadds1', label: 'fowler16_coadds1' }
@@ -193,7 +193,7 @@ $(function () {
   };
   const soarDefaults = {
     'SOAR_GHTS_REDCAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_R_400m2_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
-    'SOAR_GHTS_BLUECAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_B_400m2_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
+    'SOAR_GHTS_BLUECAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_B_400m1_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
     'SOAR_TRIPLESPEC': { exposureTime: '200', exposureCount: '6', readout: 'fowler16_coadds1', maxAirmass: '1.6', minLunarDistance: '20' }
   };
   let lastSoarDefaults = soarDefaults[$soarInstrument.val()] || soarDefaults['SOAR_GHTS_REDCAM'];

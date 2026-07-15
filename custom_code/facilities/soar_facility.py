@@ -1,7 +1,7 @@
 import copy
 import json
 import logging
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from datetime import timedelta, datetime
 
 import requests
 from crispy_forms.bootstrap import PrependedText
@@ -9,7 +9,6 @@ from crispy_forms.layout import Column, Div, HTML, Layout, Row
 from django import forms
 from django.conf import settings
 from tom_common.exceptions import ImproperCredentialsException
-from tom_observations.facilities.lco import LCOSpectroscopyObservationForm
 from tom_observations.facilities.soar import (
     SOARFacility as BaseSOARFacility,
     SOARSpectroscopyObservationForm,
@@ -55,8 +54,7 @@ def user_can_access_soar(user):
     )
 
 
-class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObservationForm):
-    ipp_value = forms.FloatField(initial=1.0, label='', min_value=0.5, max_value=2.0)
+class SOARObservationForm(SOARSpectroscopyObservationForm):
     max_airmass = forms.FloatField(initial=1.6, min_value=1.0, max_value=5.0, required=False, label='')
     min_lunar_distance = forms.IntegerField(initial=20, min_value=0, required=False, label='')
     rotator_angle = forms.FloatField(initial=0.0, required=False, widget=forms.HiddenInput())
@@ -85,25 +83,25 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
 
     INSTRUMENT_DEFAULTS = {
         'SOAR_GHTS_REDCAM': {
-            'exposure_time': 450.0,
+            'exposure_time': 450,
             'max_airmass': 1.6,
             'exposure_count': 2,
             'readout': 'GHTS_R_400m2_2x2',
-            'rotator_angle': 0.0,
+            'rotator_angle': 0,
         },
         'SOAR_GHTS_BLUECAM': {
-            'exposure_time': 450.0,
+            'exposure_time': 450,
             'max_airmass': 1.6,
             'exposure_count': 2,
             'readout': 'GHTS_B_400m1_2x2',
-            'rotator_angle': 0.0,
+            'rotator_angle': 0,
         },
         'SOAR_TRIPLESPEC': {
-            'exposure_time': 200.0,
+            'exposure_time': 200,
             'max_airmass': 1.6,
             'exposure_count': 6,
             'readout': 'fowler16_coadds1',
-            'rotator_angle': 90.0,
+            'rotator_angle': 90,
         },
     }
 
@@ -142,12 +140,10 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         'min_lunar_distance': ('c_1_min_lunar_distance',),
     }
 
-    @staticmethod
-    def instrument_choices():
+    def instrument_choices(self):
         return [
-            ('SOAR_GHTS_REDCAM', 'Goodman RedCam'),
-            ('SOAR_GHTS_BLUECAM', 'Goodman BlueCam'),
-            ('SOAR_TRIPLESPEC', 'TripleSpec'),
+            (code, instrument["name"])
+            for code, instrument in self.get_instruments().items()
         ]
 
     @staticmethod
@@ -280,10 +276,16 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
 
     @classmethod
     def readout_choices(cls):
-        flattened_choices = []
-        for instrument_choices in cls.READOUT_CHOICES_BY_INSTRUMENT.values():
-            flattened_choices.extend(instrument_choices)
-        return flattened_choices
+        seen = set()
+        choices = []
+
+        for instrument in cls.READOUT_CHOICES_BY_INSTRUMENT.values():
+            for choice in instrument:
+                if choice[0] not in seen:
+                    choices.append(choice)
+                    seen.add(choice[0])
+
+        return choices
 
     def _selected_rotator_angle(self):
         return self._field_value(
@@ -336,7 +338,7 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
         cleaned_data['readout'] = readout if readout in allowed_readouts else defaults['readout']
         cleaned_data['grating'] = ''
         cleaned_data['filter'] = ''
-
+        logger.info(f'instrument Bcam? {self.get_instruments()["SOAR_GHTS_BLUECAM"]}')
         return cleaned_data
 
     def _constraints(self):
@@ -412,9 +414,11 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
             if target.get('epoch') is None:
                 target['epoch'] = 2000.0
             if target.get('proper_motion_ra') is None:
-                target.pop('proper_motion_ra', None)
+                target['proper_motion_ra'] = 0.0
             if target.get('proper_motion_dec') is None:
-                target.pop('proper_motion_dec', None)
+                target['proper_motion_dec'] = 0.0
+            if target.get('parallax') is None:
+                target['parallax'] = 0.0
 
         science_config = request_group['configurations'][0]
         instrument_type = self._selected_instrument_type()
@@ -440,73 +444,95 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
 
         return payload
 
-    def __init__(self, *args, **kwargs):
-        kwargs = self._prepare_form_kwargs(kwargs)
-        super().__init__(*args, **kwargs)
-
-        if self.is_bound and hasattr(self.data, 'copy'):
-            synchronized_data = self.data.copy()
-            self._synchronize_primary_and_alias_data(synchronized_data)
-            self.data = synchronized_data
-
+    def _configure_proposal_field(self):
         proposal_choices = [
-            choice for choice in self.proposal_choices()
-            if 'SOAR' in choice[0] or 'SOAR' in choice[1]
+            choice
+            for choice in self.proposal_choices()
+            if "SOAR" in str(choice[0]) or "SOAR" in str(choice[1])
         ]
+
         if not proposal_choices:
             proposal_choices = self.proposal_choices()
 
-        initial_proposal = proposal_choices[0][0] if proposal_choices else None
-        self.fields['proposal'] = forms.ChoiceField(choices=proposal_choices, initial=initial_proposal)
-        self.fields['instrument_type'] = forms.ChoiceField(
-            choices=self.instrument_choices(),
-            initial='SOAR_GHTS_REDCAM',
-            required=False,
-            label=''
+        self.fields["proposal"] = forms.ChoiceField(
+            choices=proposal_choices,
+            initial=proposal_choices[0][0] if proposal_choices else None,
         )
-        self.fields['readout'].choices = self.readout_choices()
-        self.fields['exposure_time'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['exposure_time']
-        self.fields['exposure_count'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['exposure_count']
-        self.fields['max_airmass'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['max_airmass']
-        self.fields['min_lunar_distance'].initial = 20
-        self.fields['readout'].initial = self.INSTRUMENT_DEFAULTS['SOAR_GHTS_REDCAM']['readout']
+    
+    def _configure_instrument_fields(self):
+        defaults = self.INSTRUMENT_DEFAULTS["SOAR_GHTS_REDCAM"]
 
+        self.fields["instrument_type"] = forms.ChoiceField(
+            choices=self.instrument_choices(),
+            initial="SOAR_GHTS_REDCAM",
+            required=False,
+            label="",
+        )
+
+        self.fields["readout"].choices = self.readout_choices()
+
+        self.fields["exposure_time"].initial = defaults["exposure_time"]
+        self.fields["exposure_count"].initial = defaults["exposure_count"]
+        self.fields["max_airmass"].initial = defaults["max_airmass"]
+        self.fields["min_lunar_distance"].initial = 20
+        self.fields["readout"].initial = defaults["readout"]
+        self.fields["observation_mode"].initial = "NORMAL"
+
+        self.fields["instrument_type"].widget.attrs.pop("required", None)
+        self.fields["instrument_type"].widget.is_required = False
+
+    def _configure_hidden_fields(self):
         for field_name in self.HIDDEN_FIELDS:
-            if field_name in self.fields:
-                self.fields[field_name].widget = forms.HiddenInput()
-                self.fields[field_name].required = False
+            field = self.fields.get(field_name)
+            if field:
+                field.widget = forms.HiddenInput()
+                field.required = False
 
-        self.fields['name'].required = False
-        self.fields['exposure_time'].required = False
-        self.fields['exposure_count'].required = False
-        self.fields['max_airmass'].required = False
-        self.fields['min_lunar_distance'].required = False
-        self.fields['readout'].required = False
-        self.fields['observation_mode'].initial = 'NORMAL'
-        self.fields['instrument_type'].widget.attrs.pop('required', None)
-        self.fields['instrument_type'].widget.is_required = False
+        if "groups" in self.fields:
+            self.fields["groups"].widget = forms.HiddenInput()
 
-        if 'groups' in self.fields:
-            self.fields['groups'].widget = forms.HiddenInput()
+    def _configure_required_fields(self):
+        for field_name in (
+            "name",
+            "exposure_time",
+            "exposure_count",
+            "max_airmass",
+            "min_lunar_distance",
+            "readout",
+        ):
+            self.fields[field_name].required = False
 
+    def _configure_start_end_fields(self):
+        now = datetime.now()
+        self.fields['start'].initial = now
+        self.fields['end'].initial = now + timedelta(hours=24)
+
+    def _configure_layout(self):
         self.helper.render_unmentioned_fields = False
-        hidden_layout = [field_name for field_name in self.HIDDEN_FIELDS if field_name in self.fields]
-        if 'groups' in self.fields:
-            hidden_layout.append('groups')
+
+        hidden_layout = [
+            field
+            for field in self.HIDDEN_FIELDS
+            if field in self.fields
+        ]
+
+        if "groups" in self.fields:
+            hidden_layout.append("groups")
+
         self.helper.layout = Layout(
             *hidden_layout,
             Div(
                 HTML('<p>One-time SOAR submission using the default portal setup for each instrument.</p>'),
                 Row(
-                    Column(PrependedText('instrument_type', 'Instrument'), css_class='col-md-6'),
-                    Column(PrependedText('readout', 'Readout'), css_class='col-md-6'),
+                    Column('instrument_type', css_class='col-md-6'),
+                    Column('readout', css_class='col-md-6'),
                 ),
-                Div(
-                    Div(
+                Row(
+                    Column(
                         'start',
                         css_class='col'
                     ),
-                    Div(
+                    Column(
                         'end',
                         css_class='col'
                     ),
@@ -529,6 +555,22 @@ class SOARObservationForm(SOARSpectroscopyObservationForm, LCOSpectroscopyObserv
             self.button_layout()
         )
 
+    def __init__(self, *args, **kwargs):
+        kwargs = self._prepare_form_kwargs(kwargs)
+        super().__init__(*args, **kwargs)
+
+        if self.is_bound and hasattr(self.data, "copy"):
+            data = self.data.copy()
+            self._synchronize_primary_and_alias_data(data)
+            self.data = data
+
+        self._configure_proposal_field()
+        self._configure_instrument_fields()
+        self._configure_hidden_fields()
+        self._configure_required_fields()
+        self._configure_start_end_fields()
+        self._configure_layout()
+    
 
 class SOARFacility(BaseSOARFacility):
     observation_types = [('SPECTRA', 'Spectra')]
