@@ -55,8 +55,8 @@ def user_can_access_soar(user):
 
 
 class SOARObservationForm(SOARSpectroscopyObservationForm):
-    max_airmass = forms.FloatField(initial=1.6, min_value=1.0, max_value=5.0, required=False, label='')
-    min_lunar_distance = forms.IntegerField(initial=20, min_value=0, required=False, label='')
+    max_airmass = forms.FloatField(initial=1.6, min_value=0, required=False, label='Max Airmass')
+    min_lunar_distance = forms.IntegerField(initial=20, min_value=0, required=False, label='Minimum Lunar Distance')
     rotator_angle = forms.FloatField(initial=0.0, required=False, widget=forms.HiddenInput())
     exposure_count = forms.IntegerField(
         initial=2,
@@ -78,7 +78,7 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
     )
     grating = forms.CharField(required=False, widget=forms.HiddenInput())
     filter = forms.CharField(required=False, widget=forms.HiddenInput())
-    readout = forms.ChoiceField(choices=(), required=False, label='')
+    readout = forms.ChoiceField(choices=(), required=False, label='Readout')
     name = forms.CharField(required=False, widget=forms.HiddenInput())
 
     INSTRUMENT_DEFAULTS = {
@@ -338,7 +338,6 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
         cleaned_data['readout'] = readout if readout in allowed_readouts else defaults['readout']
         cleaned_data['grating'] = ''
         cleaned_data['filter'] = ''
-        logger.info(f'instrument Bcam? {self.get_instruments()["SOAR_GHTS_BLUECAM"]}')
         return cleaned_data
 
     def _constraints(self):
@@ -466,7 +465,7 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
             choices=self.instrument_choices(),
             initial="SOAR_GHTS_REDCAM",
             required=False,
-            label="",
+            label="Instrument",
         )
 
         self.fields["readout"].choices = self.readout_choices()
@@ -543,11 +542,11 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
                     Column(PrependedText('exposure_count', 'Exposure Count'), css_class='col-md-6'),
                 ),
                 Row(
-                    Column(PrependedText('max_airmass', 'Airmass <'), css_class='col-md-6'),
-                    Column(PrependedText('min_lunar_distance', 'Lunar Distance >'), css_class='col-md-6'),
+                    Column(PrependedText('max_airmass', '<'), css_class='col-md-6'),
+                    Column(PrependedText('min_lunar_distance', '>'), css_class='col-md-6'),
                 ),
                 Row(
-                    Column(PrependedText('ipp_value', 'IPP'), css_class='col-md-6'),
+                    Column('ipp_value', css_class='col-md-6'),
                     Column('proposal', css_class='col-md-6'),
                 ),
                 css_class='col-12'

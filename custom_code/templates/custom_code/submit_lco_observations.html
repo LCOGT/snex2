@@ -174,8 +174,6 @@ $(function () {
   const $soarReadout = $("#soar_readout");
   const $soarMaxAirmass = $("#soar_max_airmass");
   const $soarMinLunarDistance = $("#soar_min_lunar_distance");
-  const $soarStart = $("#soar_start");
-  const $soarEnd = $("#soar_end");
   const $soarBrowserTimezone = $("#soar_browser_timezone");
   const soarTimezoneNotes = document.querySelectorAll("[data-soar-timezone-note]");
   const soarReadoutOptions = {
@@ -197,41 +195,6 @@ $(function () {
     'SOAR_TRIPLESPEC': { exposureTime: '200', exposureCount: '6', readout: 'fowler16_coadds1', maxAirmass: '1.6', minLunarDistance: '20' }
   };
   let lastSoarDefaults = soarDefaults[$soarInstrument.val()] || soarDefaults['SOAR_GHTS_REDCAM'];
-
-  function formatLocalDateTime(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  }
-
-  function updateSoarTimeWindowDefaults() {
-    if (!$soarStart.length || !$soarEnd.length) {
-      return;
-    }
-
-    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    if ($soarBrowserTimezone.length) {
-      $soarBrowserTimezone.val(browserTimezone);
-    }
-
-    soarTimezoneNotes.forEach(function(note) {
-      note.textContent = browserTimezone
-        ? `Start and end are shown in your local browser timezone (${browserTimezone}).`
-        : "Start and end are shown in your local browser timezone.";
-    });
-
-    if (!($soarStart.val() || "").trim()) {
-      $soarStart.val(formatLocalDateTime(new Date()));
-    }
-    if (!($soarEnd.val() || "").trim()) {
-      const defaultEnd = new Date();
-      defaultEnd.setDate(defaultEnd.getDate() + 1);
-      $soarEnd.val(formatLocalDateTime(defaultEnd));
-    }
-  }
 
   function updateSoarDefaults() {
     if (
@@ -279,9 +242,7 @@ $(function () {
   }
 
   $soarInstrument.on("change", updateSoarDefaults);
-  updateSoarTimeWindowDefaults();
   updateSoarDefaults();
-
   updateDelayVisibility("phot");
   updateDelayVisibility("spec");
   updateRetryVisibility("phot");

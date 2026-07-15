@@ -429,7 +429,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             required=False,
             label=''
         )
-        logger.info(f'instrument choices {self.instrument_choices()}, type {type(self.instrument_choices())} and dir {dir(self.instrument_choices())}')
         initial_strategy = self.initial.get('cadence_strategy')
 
         if initial_strategy == 'SnexRetryFailedObservationsStrategy':
