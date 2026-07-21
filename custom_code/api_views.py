@@ -216,7 +216,8 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 if observation_group is not None:
                     observation_group.observation_records.add(*serializer.instance)
             except ValidationError as ve:
-                observation_group.delete()
+                if observation_group is not None:
+                    observation_group.delete()
                 logger.error(f'Failed to create ObservationRecord due to exception {ve}')
                 raise ValidationError(f'''Observation submission successful, but failed to create a corresponding
                                           ObservationRecord due to exception {ve}.''')

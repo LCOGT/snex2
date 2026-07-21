@@ -59,16 +59,19 @@ class Command(BaseCommand):
 
         for cadence in DynamicCadence.objects.filter(active=True).select_related('observation_group'):
             last_obs = cadence.observation_group.observation_records.order_by('-created').first()
-            if not last_obs or last_obs.parameters.get('proposal') != options['oldid']:
+            if not last_obs:
+                continue
+            candidates = {last_obs.id: last_obs}
+            for pending in cadence.observation_group.observation_records.filter(status='PENDING'):
+                candidates[pending.id] = pending
+            matching = [r for r in candidates.values() if r.parameters.get('proposal') == options['oldid']]
+            if not matching:
                 continue
             if semester_start:
                 window_start = self.next_window_start(cadence, last_obs, now)
                 if window_start is None or window_start < semester_start:
                     continue
-            record_ids_to_update.add(last_obs.id)
-            for pending in cadence.observation_group.observation_records.filter(status='PENDING'):
-                if pending.parameters.get('proposal') == options['oldid']:
-                    record_ids_to_update.add(pending.id)
+            record_ids_to_update.update(r.id for r in matching)
 
         records_to_update = ObservationRecord.objects.filter(id__in=record_ids_to_update)
 
