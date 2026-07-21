@@ -264,14 +264,11 @@ def _modify_sequence(obs_group, user, data):
         logger.error(f'Modify validation failed for group {obs_group.id}: {format_form_errors(form.errors)}')
         return {'failure': f'New parameters invalid for {obs.facility}: {format_form_errors(form.errors)}'}
 
-    result = _stop_sequence(obs_group, user, data)
-    if 'failure' in result:
-        return result
-
     observation_ids = facility.submit_observation(form.observation_payload())
 
     if not observation_ids:
-        raise Exception("Facility did not return any observation IDs")
+        logger.error(f'Facility returned no observation IDs for group {obs_group.id}; original sequence left untouched')
+        return {'failure': f'{obs.facility} did not return any observation IDs. The existing sequence was not changed.'}
 
     new_obs_group = ObservationGroup.objects.create(name=data['name'])
     
@@ -308,5 +305,16 @@ def _modify_sequence(obs_group, user, data):
         logger.info(f'Permissions synced to target for new group {new_obs_group.id}')
     except Exception as e:
         logger.error(f'Failed to sync permissions: {e}', exc_info=True)
+
+    result = _stop_sequence(obs_group, user, data)
+    if 'failure' in result:
+        logger.error(
+            f'MANUAL INTERVENTION REQUIRED: new sequence submitted as {observation_ids} in group '
+            f'{new_obs_group.id}, but the previous sequence in group {obs_group.id} could not be '
+            f'canceled at {obs.facility}. Both sequences are currently active.'
+        )
+        return {'failure': f'The new sequence was submitted as {", ".join(str(i) for i in observation_ids)}, '
+                           f'but the previous sequence could not be canceled and is still active. '
+                           f'Please stop it manually.'}
 
     return {'success': 'Modified'}
