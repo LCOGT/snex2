@@ -74,7 +74,15 @@
       <h4>Upcoming Reminders</h4>
     </div>
     <div class="row" id="load-upcoming-reminders">
-      <button id="load-upcoming-reminders-btn" class="btn" style="background-color: white; color: #174460; border-color: #174460;" onclick="loadUpcomingReminders()">Load Upcoming Reminders</button>
+      <button id="load-upcoming-reminders-btn" class="btn" style="background-color: white; color: #174460; border-color: #174460;"
+        hx-get="{% url 'load-upcoming-reminders' %}"
+        hx-vals='{"obs_ids": "[{% for q in filter.qs|filter_upcoming_reminders:pagenumber %}{{ q.id }}{% if not forloop.last %},{% endif %}{% endfor %}]"}'
+        hx-target="#load-upcoming-reminders"
+        hx-swap="outerHTML"
+        hx-trigger="click once"
+        hx-disabled-elt="this">Load Upcoming Reminders
+        <span class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      </button>
     </div>
     {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
     {% endwith %}
@@ -112,27 +120,5 @@ $("body").on("input change", ".delay-start-input", function() {
   var reminder = row.querySelector('input[name="reminder"]');
   reminder.value = 2 * cadence + delay + 0.7;
 });
-
-function loadUpcomingReminders() {
-  document.getElementById("load-upcoming-reminders-btn").innerHTML = "Loading...";
-  var obs_ids = [];
-  {% with pagenumber=request.GET.page %}
-  {% for q in filter.qs|filter_upcoming_reminders:pagenumber %}
-    obs_ids.push({{ q.id }});
-  {% endfor %}
-  {% endwith %}
-  $.ajaxSetup({traditional: true});
-  $.ajax({
-    url: '{% url "load-upcoming-reminders" %}',
-    data: {'obs_ids': JSON.stringify(obs_ids)},
-    dataType: 'json',
-    success: function(response) {
-      var upcomingRow = document.getElementById("load-upcoming-reminders");
-      upcomingRow.insertAdjacentHTML('afterend', response['html_from_view']);
-      document.getElementById("load-upcoming-reminders-btn").style.display = "none";
-      htmx.process(upcomingRow.parentElement);
-    }
-  });
-}
 </script>
 {% endblock %}

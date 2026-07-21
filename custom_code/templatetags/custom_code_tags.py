@@ -13,7 +13,7 @@ from django.core.cache import cache
 from django.core.paginator import Paginator
 
 from tom_targets.models import Target, TargetList
-from tom_observations import utils, facility
+from tom_observations import facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
 from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target

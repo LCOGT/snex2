@@ -15,24 +15,20 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import Group, User
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.core.cache import cache
 from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
-from django.views.decorators.http import require_POST, require_GET
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
+from django.views.decorators.http import require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView
 from django.views.generic.detail import DetailView
 from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
-from django.template.context import RequestContext
-from django.template.loader import render_to_string
-from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django.views.generic.base import RedirectView, TemplateView
@@ -49,15 +45,12 @@ from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct, ReducedDatum
-from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
-from tom_dataproducts.views import DataProductDeleteView, DataProductUploadView
+from tom_dataproducts.views import DataProductUploadView
 from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
-from tom_observations.templatetags.observation_extras import observing_buttons
 from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
 from tom_targets.models import Target, TargetList, TargetName
 from tom_targets.permissions import targets_for_user
-from tom_targets.templatetags.targets_extras import target_groups
 from tom_targets.views import TargetCreateView
 from custom_code.facilities.soar_facility import user_can_access_soar
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
@@ -778,9 +771,7 @@ def async_scheduling_page_view(request):
             request=request
         )
 
-    data_dict = {'html_from_view': all_html}
-
-    return JsonResponse(data=data_dict, safe=False)
+    return HttpResponse(all_html)
 
 
 def add_target_to_group_view(request):
@@ -1079,71 +1070,59 @@ def _target_for_user(request, pk):
     return target
 
 
-def _tag_context(request, target):
-    return {'request': request, 'user': request.user, 'object': target}
+def _render_target_partial(request, pk, template):
+    target = _target_for_user(request, pk)
+    return render(request, template, {'target': target, 'object': target})
 
 
 def load_details_tab_view(request, pk):
-    target = _target_for_user(request, pk)
-    context = custom_code_tags.target_details(_tag_context(request, target), target)
-    return render(request, 'custom_code/target_details.html', context)
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_details.html')
 
 
 def load_observations_tab_view(request, pk):
-    target = _target_for_user(request, pk)
-    return render(request, 'custom_code/partials/target/tab_observations.html', {'target': target, 'object': target})
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_observations.html')
 
 
 def load_manage_data_tab_view(request, pk):
-    target = _target_for_user(request, pk)
-    return render(request, 'custom_code/partials/target/tab_manage_data.html', {'target': target, 'object': target})
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_data.html')
 
 
 def load_observing_runs_tab_view(request, pk):
-    target = _target_for_user(request, pk)
-    return render(request, 'tom_targets/partials/target_groups.html', target_groups(target))
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_observing_runs.html')
 
 
 def load_images_tab_view(request, pk):
-    target = _target_for_user(request, pk)
-    context = custom_code_tags.image_slideshow(_tag_context(request, target), target)
-    return render(request, 'custom_code/image_slideshow.html', context)
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_images.html')
 
 
 def load_photometry_tab_view(request, pk):
-    target = _target_for_user(request, pk)
-    return render(request, 'custom_code/partials/target/tab_photometry.html', {'target': target, 'object': target})
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_photometry.html')
 
 
 def load_spectroscopy_tab_view(request, pk):
-    target = _target_for_user(request, pk)
-    return render(request, 'custom_code/partials/target/tab_spectroscopy.html', {'target': target, 'object': target})
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_spectroscopy.html')
 
 
 def load_dash_lightcurve_view(request, pk):
     target = _target_for_user(request, pk)
-    width = int(request.GET.get('width', 600))
-    height = int(request.GET.get('height', 400))
-    context = custom_code_tags.dash_lightcurve(_tag_context(request, target), target, width, height)
-    return render(request, 'custom_code/dash_lightcurve.html', context)
+    return render(request, 'custom_code/partials/target/overview_lightcurve.html', {
+        'target': target,
+        'object': target,
+        'width': int(request.GET.get('width', 600)),
+        'height': int(request.GET.get('height', 400)),
+    })
 
 
 def load_spectra_plot_view(request, pk):
-    target = _target_for_user(request, pk)
-    context = custom_code_tags.spectra_plot(_tag_context(request, target), target)
-    return render(request, 'custom_code/spectra.html', context)
+    return _render_target_partial(request, pk, 'custom_code/partials/target/overview_spectra.html')
 
 
 def load_thumbnail_view(request, pk):
-    target = _target_for_user(request, pk)
-    context = custom_code_tags.display_thumbnails(_tag_context(request, target), target)
-    return render(request, 'custom_code/thumbnail.html', context)
+    return _render_target_partial(request, pk, 'custom_code/partials/target/overview_thumbnail.html')
 
 
 def load_airmass_plot_view(request, pk):
-    target = _target_for_user(request, pk)
-    context = custom_code_tags.airmass_plot({'object': target})
-    return render(request, 'custom_code/airmass.html', context)
+    return _render_target_partial(request, pk, 'custom_code/partials/target/overview_airmass.html')
 
 
 def load_single_spectrum_view(request, pk, spectrum_id):
@@ -1687,19 +1666,8 @@ def download_photometry_view(request, targetid):
 
 
 def get_target_standards_view(request):
-
-    pipeline_id = request.GET.get('pipeline_id', '')
-
-    standard_info = get_standards_from_snex1(pipeline_id)
-    
-    html = render_to_string(
-        template_name='custom_code/partials/get_target_standards.html',
-        context={'standards': standard_info}
-    )
-
-    data_dict = {"html_from_view": html}
-
-    return JsonResponse(data=data_dict, safe=False)
+    standard_info = get_standards_from_snex1(request.GET.get('pipeline_id', ''))
+    return render(request, 'custom_code/partials/get_target_standards.html', {'standards': standard_info})
 
 
 class TargetFilterForm(forms.Form):
