@@ -95,7 +95,7 @@ $(function () {
     'SOAR_GHTS_BLUECAM': { exposureTime: '450', exposureCount: '2', readout: 'GHTS_B_400m1_2x2', maxAirmass: '1.6', minLunarDistance: '20' },
     'SOAR_TRIPLESPEC': { exposureTime: '200', exposureCount: '6', readout: 'fowler16_coadds1', maxAirmass: '1.6', minLunarDistance: '20' }
   };
-  let lastSoarDefaults = soarDefaults['SOAR_GHTS_REDCAM'];
+  let lastSoarDefaults = null;
 
   function updateVisibility(applyDefaults) {
     const $instType = $("#phot_instrument_type");
@@ -199,6 +199,9 @@ $(function () {
       return;
     }
     const nextDefaults = soarDefaults[$soarInstrument.val()] || soarDefaults['SOAR_GHTS_REDCAM'];
+    if (lastSoarDefaults === null) {
+      lastSoarDefaults = nextDefaults;
+    }
     const nextReadoutOptions = soarReadoutOptions[$soarInstrument.val()] || [];
     const nextReadoutValues = nextReadoutOptions.map(option => option.value);
     const currentReadout = ($soarReadout.val() || '').trim();
@@ -245,8 +248,8 @@ $(function () {
   function initObsForms(applyDefaults) {
     updateVisibility(applyDefaults);
     updateSoarDefaults(applyDefaults);
-    updateDelayVisibility("phot", false);
-    updateDelayVisibility("spec", false);
+    updateDelayVisibility("phot", applyDefaults);
+    updateDelayVisibility("spec", applyDefaults);
     updateRetryVisibility("phot");
     updateRetryVisibility("spec");
   }
