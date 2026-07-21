@@ -1395,7 +1395,7 @@ def get_scheduling_row_context(observation, viewer_user_id):
     return get_scheduling_form(observation, viewer_user_id, start, requested_str)
 
 
-@register.inclusion_tag('custom_code/partials/scheduling_row_placeholder.html')
+@register.inclusion_tag('custom_code/partials/scheduling/scheduling_row_placeholder.html')
 def scheduling_list_with_form(observation):
     if observation.facility != 'LCO':
         return {'observation': None}

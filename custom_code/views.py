@@ -632,7 +632,7 @@ def scheduling_row_view(request, observation_id):
     if context is None:
         return HttpResponse('')
     context['user'] = request.user
-    return render(request, 'custom_code/partials/scheduling_row.html', context)
+    return render(request, 'custom_code/partials/scheduling/scheduling_row.html', context)
 
 def scheduling_action_view(request, observation_id, action):
     obs = get_object_or_404(ObservationRecord, id=observation_id)
@@ -660,9 +660,9 @@ def scheduling_action_view(request, observation_id, action):
         if 'failure' in result:
             error = result['failure']
         else:
-            return render(request, 'custom_code/partials/scheduling_action_result.html', {'message': result.get('success', 'Done')})
+            return render(request, 'custom_code/partials/scheduling/scheduling_action_result.html', {'message': result.get('success', 'Done')})
 
-    return render(request, 'custom_code/partials/scheduling_buttons.html', {
+    return render(request, 'custom_code/partials/scheduling/scheduling_buttons.html', {
         'parameter': {'observation_id': observation_id},
         'form': form,
         'error': error
@@ -766,7 +766,7 @@ def async_scheduling_page_view(request):
         if request.user not in get_users_with_perms(obs):
             continue
         all_html += render_to_string(
-            template_name='custom_code/partials/scheduling_row_placeholder.html',
+            template_name='custom_code/partials/scheduling/scheduling_row_placeholder.html',
             context=custom_code_tags.scheduling_list_with_form(obs),
             request=request
         )
@@ -1667,7 +1667,7 @@ def download_photometry_view(request, targetid):
 
 def get_target_standards_view(request):
     standard_info = get_standards_from_snex1(request.GET.get('pipeline_id', ''))
-    return render(request, 'custom_code/partials/get_target_standards.html', {'standards': standard_info})
+    return render(request, 'custom_code/partials/target/get_target_standards.html', {'standards': standard_info})
 
 
 class TargetFilterForm(forms.Form):

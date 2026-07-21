@@ -4,8 +4,8 @@
 <tr valign="top" id="spectrum-row-{{ entry.spectrum.id }}">
   <td width=200>
     <div class="row">
-      <input type="checkbox" class="spectrum-row" id="spectrum-row-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
-      <label class="form-check-label" for="spectrum-row-{{ entry.spectrum.id }}">Share</label>
+      <input type="checkbox" class="spectrum-row" id="share-box-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
+      <label class="form-check-label" for="share-box-{{ entry.spectrum.id }}">Share</label>
     </div>
         <div class="row"><b>{{ entry.time }}</b></div>
     <div class="row">Telescope: {{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</div>

@@ -20,7 +20,7 @@
       {% csrf_token %}
       {% crispy form %}
       <div id="scheduling-actions-{{ parameter.observation_id }}">
-        {% include 'custom_code/partials/scheduling_buttons.html' %}
+        {% include 'custom_code/partials/scheduling/scheduling_buttons.html' %}
       </div>
     </form>
     <div class="row mt-3 text-muted">
