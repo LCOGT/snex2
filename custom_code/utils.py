@@ -3,9 +3,22 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.automap import automap_base
 from contextlib import contextmanager
 
-from guardian.shortcuts import assign_perm
+from guardian.models import GroupObjectPermission
+from guardian.shortcuts import assign_perm, remove_perm
 from django.contrib.auth.models import Group
+from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
+from django.core.exceptions import NON_FIELD_ERRORS
+
+def format_form_errors(errors):
+    lines = []
+    for field, messages in errors.items():
+        for message in messages:
+            if field == NON_FIELD_ERRORS:
+                lines.append(str(message))
+            else:
+                lines.append(f'{field}: {message}')
+    return '; '.join(lines)
 
 def powers_of_two(num):
     powers = []
@@ -53,6 +66,59 @@ def update_permissions(groupid, permission, obj, snex1_groups):
         if g_id in target_groups:
             snex2_group = Group.objects.filter(name=g_name).first()
             assign_perm(permission, snex2_group, obj)
+
+TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target'))
+
+def get_target_permission_groups(target_id):
+    best = Group.objects.none()
+    for app_label, model in TARGET_CONTENT_TYPES:
+        content_type = ContentType.objects.filter(app_label=app_label, model=model).first()
+        if not content_type:
+            continue
+        group_ids = GroupObjectPermission.objects.filter(
+            object_pk=str(target_id),
+            content_type=content_type
+        ).values_list('group_id', flat=True).distinct()
+        groups = Group.objects.filter(id__in=group_ids)
+        if groups.count() > best.count():
+            best = groups
+    return best
+
+def sync_group_permissions_to_target(obs_group, records, target):
+    """
+    Sets the Group-level permissions on obs_group (if given) and each record in
+    records to exactly match the target's current permission groups, so that
+    anyone who can view the target can also view/change/delete its sequences.
+    """
+    if settings.TARGET_PERMISSIONS_ONLY:
+        return
+
+    target_groups = set(get_target_permission_groups(target.id))
+
+    objects = []
+    if obs_group is not None:
+        group_ct = ContentType.objects.get(app_label='tom_observations', model='observationgroup')
+        objects.append((obs_group, group_ct, 'observationgroup'))
+    record_ct = ContentType.objects.get(app_label='tom_observations', model='observationrecord')
+    for record in records:
+        objects.append((record, record_ct, 'observationrecord'))
+
+    for obj, content_type, codename_model in objects:
+        current_group_ids = set(GroupObjectPermission.objects.filter(
+            object_pk=str(obj.id),
+            content_type=content_type
+        ).values_list('group_id', flat=True).distinct())
+        target_group_ids = set(g.id for g in target_groups)
+
+        for group in Group.objects.filter(id__in=current_group_ids - target_group_ids):
+            remove_perm(f'tom_observations.view_{codename_model}', group, obj)
+            remove_perm(f'tom_observations.change_{codename_model}', group, obj)
+            remove_perm(f'tom_observations.delete_{codename_model}', group, obj)
+
+        for group in target_groups:
+            assign_perm(f'tom_observations.view_{codename_model}', group, obj)
+            assign_perm(f'tom_observations.change_{codename_model}', group, obj)
+            assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
 def _normalize_view_object_name(name: str) -> str:
     """

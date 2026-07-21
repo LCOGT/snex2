@@ -11,7 +11,7 @@ from tom_targets.models import Target, TargetName
 from tom_targets.api_views import TargetViewSet
 from custom_code.models import ReducedDatumExtra, Papers
 from custom_code.serializers import SNExTargetSerializer
-from custom_code.scheduling import sync_group_permissions_to_target
+from custom_code.utils import sync_group_permissions_to_target
 from .processors.data_processor import run_custom_data_processor
 import json
 

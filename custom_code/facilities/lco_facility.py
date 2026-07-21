@@ -18,7 +18,7 @@ from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
 import logging
 
-from custom_code.scheduling import get_target_permission_groups
+from custom_code.utils import get_target_permission_groups
 
 logger = logging.getLogger(__name__)
 

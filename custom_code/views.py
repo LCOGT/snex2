@@ -65,10 +65,10 @@ from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unr
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
-from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, format_form_errors, get_proposal_choices, get_target_permission_groups, save_comments
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups
 import logging
 from urllib.parse import quote_plus
 
@@ -622,6 +622,8 @@ def save_comments_view(request):
 def observation_sequence_cancel_view(request):
     obsr_id = int(float(request.GET['pk']))
     obsr = ObservationRecord.objects.get(id=obsr_id)
+    if request.user not in get_users_with_perms(obsr):
+        return HttpResponseForbidden('Not authorized')
     obs_group = obsr.observationgroup_set.first()
 
     try:

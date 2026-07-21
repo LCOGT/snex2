@@ -1,9 +1,4 @@
-from dateutil.parser import parse
-from django.core.exceptions import NON_FIELD_ERRORS
 from django.db import transaction
-from guardian.models import GroupObjectPermission
-from guardian.shortcuts import assign_perm, remove_perm
-from django.contrib.auth.models import Group
 from django.conf import settings
 from datetime import timedelta
 from django.utils import timezone
@@ -13,92 +8,11 @@ from tom_observations.models import ObservationRecord, ObservationGroup, Dynamic
 from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
 
+from custom_code.utils import format_form_errors, sync_group_permissions_to_target
+
 import logging
 
 logger = logging.getLogger(__name__)
-
-def format_form_errors(errors):
-    lines = []
-    for field, messages in errors.items():
-        for message in messages:
-            if field == NON_FIELD_ERRORS:
-                lines.append(str(message))
-            else:
-                lines.append(f'{field}: {message}')
-    return '; '.join(lines)
-
-def apply_proposal_rollover(observation_payload, start_keyword='start'):
-    rollovers = getattr(settings, 'PROPOSAL_ROLLOVERS', [])
-    if not rollovers:
-        return observation_payload
-    start_value = observation_payload.get(start_keyword)
-    if not start_value:
-        return observation_payload
-    start = parse(start_value) if isinstance(start_value, str) else start_value
-    if timezone.is_naive(start):
-        start = timezone.make_aware(start)
-    for rollover in rollovers:
-        if observation_payload.get('proposal') != rollover['old_id']:
-            continue
-        semester_start = parse(rollover['semester_start'])
-        if timezone.is_naive(semester_start):
-            semester_start = timezone.make_aware(semester_start)
-        if start >= semester_start:
-            logger.info(f"Rolling over proposal {rollover['old_id']} to {rollover['new_id']} for window starting {start_value}")
-            observation_payload['proposal'] = rollover['new_id']
-    return observation_payload
-
-TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target'))
-
-def get_target_permission_groups(target_id):
-    best = Group.objects.none()
-    for app_label, model in TARGET_CONTENT_TYPES:
-        content_type = ContentType.objects.filter(app_label=app_label, model=model).first()
-        if not content_type:
-            continue
-        group_ids = GroupObjectPermission.objects.filter(
-            object_pk=str(target_id),
-            content_type=content_type
-        ).values_list('group_id', flat=True).distinct()
-        groups = Group.objects.filter(id__in=group_ids)
-        if groups.count() > best.count():
-            best = groups
-    return best
-
-def sync_group_permissions_to_target(obs_group, records, target):
-    """
-    Sets the Group-level permissions on obs_group (if given) and each record in
-    records to exactly match the target's current permission groups, so that
-    anyone who can view the target can also view/change/delete its sequences.
-    """
-    if settings.TARGET_PERMISSIONS_ONLY:
-        return
-
-    target_groups = set(get_target_permission_groups(target.id))
-
-    objects = []
-    if obs_group is not None:
-        objects.append((obs_group, ContentType.objects.get_for_model(ObservationGroup), 'observationgroup'))
-    record_ct = ContentType.objects.get_for_model(ObservationRecord)
-    for record in records:
-        objects.append((record, record_ct, 'observationrecord'))
-
-    for obj, content_type, codename_model in objects:
-        current_group_ids = set(GroupObjectPermission.objects.filter(
-            object_pk=str(obj.id),
-            content_type=content_type
-        ).values_list('group_id', flat=True).distinct())
-        target_group_ids = set(g.id for g in target_groups)
-
-        for group in Group.objects.filter(id__in=current_group_ids - target_group_ids):
-            remove_perm(f'tom_observations.view_{codename_model}', group, obj)
-            remove_perm(f'tom_observations.change_{codename_model}', group, obj)
-            remove_perm(f'tom_observations.delete_{codename_model}', group, obj)
-
-        for group in target_groups:
-            assign_perm(f'tom_observations.view_{codename_model}', group, obj)
-            assign_perm(f'tom_observations.change_{codename_model}', group, obj)
-            assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
 def get_proposal_choices(facility, observation_type, current_proposal=None):
     facility_class = get_service_class(facility)()
