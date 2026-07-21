@@ -13,7 +13,7 @@ from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra, Papers
 import logging
 from django.templatetags.static import static
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from astropy.time import Time
 from dash import no_update
 from guardian.shortcuts import get_objects_for_user
@@ -27,7 +27,9 @@ reducer_groups = []
 papers_used_in = []
 app.layout = html.Div([
     dcc.Graph(
-        id='lightcurve-plot'
+        id='lightcurve-plot',
+        style={'width': '100%'},
+        config={'responsive': True}
     ),
     dcc.Input(
         id='target_id',
@@ -38,11 +40,6 @@ app.layout = html.Div([
         id='user_id',
         type='hidden',
         value=0
-    ),
-    dcc.Input(
-        id='plot-width',
-        type='hidden',
-        value=600
     ),
     dcc.Input(
         id='plot-height',
@@ -271,9 +268,8 @@ def update_template_value(selected_subtraction):
          Input('reducer-group-checklist', 'value'),
          Input('target_id', 'value'),
          Input('user_id', 'value'),
-         Input('plot-width', 'value'),
          Input('plot-height', 'value')])
-def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, target_id, user_id, width, height):
+def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, target_id, user_id, height):
     def get_color(filter_name, filter_translate):
         colors = {'U': 'rgb(59,0,113)',
             'u': 'rgb(59,0,113)',
@@ -285,6 +281,10 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             'g_ZTF': 'rgb(0,204,255)',
             'r_ZTF': 'rgb(255,124,0)',
             'i_ZTF': 'rgb(144,0,43)',
+            'R': 'rgb(224,27,27)',
+            'I': 'rgb(125,10,60)',
+            'zs': 'rgb(101,42,42)',
+            'w': 'rgb(120,120,120)',
             'UVW2': '#FE0683',
             'UVM2': '#BF01BC',
             'UVW1': '#8B06FF',
@@ -295,8 +295,9 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
 
     logger.info('Plotting dash lightcurve for target %s', target_id)
 
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
+    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V', 'R': 'R', 'I': 'I',
         'up': 'u', 'u': 'u', 'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
+        'zs': 'zs', 'z': 'zs', 'w': 'w',
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2',
         'UVW1': 'UVW1'}
     photometry_data = {}
@@ -380,7 +381,8 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             if value.get('background_subtracted', '') == True:
                 if value.get('subtraction_algorithm', '') in selected_algorithm and value.get('template_source', '') in selected_template and reduction_type == 'manual':
                     
-                    subtracted_filt = filter_translate.get(value.get('filter', ''), '')
+                    raw_filter = value.get('filter', '')
+                    subtracted_filt = filter_translate.get(raw_filter, raw_filter or 'other')
 
                     subtracted_photometry_data.setdefault(subtracted_filt, {})
                     subtracted_photometry_data[subtracted_filt].setdefault('time', []).append(rd.timestamp)
@@ -388,7 +390,8 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                     subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(value.get('error', None))
             elif value.get('reduction_type', '') == reduction_type or reduction_type == 'all':
 
-                filt = filter_translate.get(value.get('filter', ''), '')
+                raw_filter = value.get('filter', '')
+                filt = filter_translate.get(raw_filter, raw_filter or 'other')
 
                 photometry_data.setdefault(filt, {})
                 photometry_data[filt].setdefault('time', []).append(rd.timestamp)
@@ -408,7 +411,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             marker=dict(color=get_color(filter_name, filter_translate),
                         line=dict(color='black', width=1)
             ),
-            name=filter_translate.get(filter_name, ''),
+            name=filter_translate.get(filter_name, filter_name or 'other'),
             error_y=dict(
                 type='data',
                 array=filter_values['error'],
@@ -454,9 +457,9 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         xaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         yaxis2=yaxis2,
-        margin=dict(l=40, r=50, b=40, t=40),
-        legend=dict(x=1.075, y=1.0, bgcolor='rgba(0,0,0,0)'),
-        width=width,
+        margin=dict(l=40, r=120, b=40, t=40),
+        legend=dict(x=1.02, xanchor='left', y=1.0, bgcolor='rgba(0,0,0,0)'),
+        autosize=True,
         height=height,
         hovermode='closest',
         plot_bgcolor='white',

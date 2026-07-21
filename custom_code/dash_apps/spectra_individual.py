@@ -1,6 +1,5 @@
 import dash
 from dash.dependencies import Input, Output, State
-import dash_table
 import dash_bootstrap_components as dbc
 import dash_core_components as dcc
 import dash_html_components as html
@@ -15,10 +14,11 @@ from statistics import median
 from django_plotly_dash import DjangoDash
 from tom_dataproducts.models import ReducedDatum
 from tom_targets.models import Target
-from custom_code.templatetags.custom_code_tags import bin_spectra
+from custom_code.templatetags.custom_code_tags import bin_spectra, extract_spectrum_arrays
+from django.contrib.auth.models import User
 from django.db.models import Q
+from guardian.shortcuts import get_objects_for_user
 from django.templatetags.static import static
-import matplotlib.pyplot as plt
 import logging
 from custom_code.dash_apps.spectra_utils import elements, calculate_flux_range
 
@@ -58,6 +58,7 @@ app.layout = html.Div([
     ),
     html.Div([
         dcc.Input(id='spectrum_id', type='hidden', value=0),
+        dcc.Input(id='user_id', type='hidden', value=0),
         dcc.Input(id='target_redshift', type='hidden', value=0),
         dcc.Input(id='min-flux', type='hidden', value=0),
         dcc.Input(id='max-flux', type='hidden', value=0),
@@ -132,23 +133,23 @@ app.layout = html.Div([
      State('spectra-compare-dropdown', 'value')])
 def get_target_list(value, existing, *args, **kwargs):
     if existing:
-        target_match_list = Target.objects.filter(name=existing)
-        if not target_match_list.first():
-            target_match_list = Target.objects.filter(aliases__name__icontains=existing)
-            names = []
-            for target in target_match_list:
-                names += [{'label': n, 'value': n} for n in target.names if n==existing]
-                return names
-        else:
-            return [{'label': target.name, 'value': target.name} for target in target_match_list]
-    
+        target_match_list = Target.objects.filter(
+            Q(name=existing) | Q(aliases__name=existing)).distinct()
     elif value:
-        target_match_list = Target.objects.filter(Q(name__icontains=value) | Q(aliases__name__icontains=value)).distinct()
+        target_match_list = Target.objects.filter(
+            Q(name__icontains=value) | Q(aliases__name__icontains=value)).distinct()
     else:
-        target_match_list = Target.objects.none()
-    names = [{'label': '', 'value': ''}]
+        return [{'label': '', 'value': ''}]
+
+    names = [] if existing else [{'label': '', 'value': ''}]
+    seen = set()
     for target in target_match_list:
-        names += [{'label': n, 'value': n} for n in target.names]
+        if target.name in seen:
+            continue
+        seen.add(target.name)
+        aliases = [n for n in target.names if n != target.name]
+        label = f'{target.name} ({", ".join(aliases)})' if aliases else target.name
+        names.append({'label': label, 'value': target.name})
     return names
 
 
@@ -404,6 +405,7 @@ def change_redshift(z, *args, **kwargs):
     Output('table-editing-simple-output', 'figure'),
     [Input('checked-rows', 'children'),
      Input('spectrum_id', 'value'),
+     Input('user_id', 'value'),
      Input('min-flux', 'value'),
      Input('max-flux', 'value'),
      Input('bin-factor', 'value'),
@@ -411,8 +413,8 @@ def change_redshift(z, *args, **kwargs):
      Input('mask-lines-checklist', 'value'),
      State('table-editing-simple-output', 'figure')])
 def display_output(selected_rows,
-                   #selected_row_ids, columns, 
-                   value, min_flux, max_flux, bin_factor, compare_target, mask_value, fig_data, *args, **kwargs):
+                   #selected_row_ids, columns,
+                   value, user_id, min_flux, max_flux, bin_factor, compare_target, mask_value, fig_data, *args, **kwargs):
     # Improvements:
     #   Fix dataproducts so they're correctly serialized
     #   Correctly display message when there are no spectra
@@ -437,33 +439,25 @@ def display_output(selected_rows,
 
             spectrum = ReducedDatum.objects.get(id=spectrum_id)
             target_first = Target.objects.get(pk=spectrum.target_id)
-            object_z = target_first.redshift
+            object_z = target_first.redshift or 0
 
             if not spectrum:
                 return 'No spectra yet'
                 
-            datum = spectrum.value
-            wavelength = []
-            flux = []
             name = str(spectrum.timestamp).split(' ')[0]
-            if datum.get('photon_flux'):
-                wavelength = datum.get('wavelength')
-                flux = datum.get('photon_flux')
-            elif datum.get('flux'):
-                wavelength = datum.get('wavelength')
-                flux = datum.get('flux')
-            else:
-                for key, value in datum.items():
-                    wavelength.append(float(value['wavelength']))
-                    flux.append(float(value['flux']))
+            wavelength, flux = extract_spectrum_arrays(spectrum)
                     
-            median_flux = [f / median(flux) for f in flux]
+            if not flux:
+                logger.warning('No flux values for spectrum %s, skipping comparison', spectrum_id)
+                return graph_data
+            flux_median = median(flux)
+            median_flux = [f / flux_median for f in flux] if flux_median else list(flux)
             if max(median_flux) > max_flux: max_flux = max(median_flux)
 
             if not bin_factor:
                 bin_factor = 1
             binned_wavelength, binned_flux = bin_spectra(wavelength, median_flux, int(bin_factor))
-            
+
             scatter_obj = go.Scatter(
                 x=binned_wavelength,
                 y=binned_flux,
@@ -472,27 +466,35 @@ def display_output(selected_rows,
             )
             graph_data['data'] = [scatter_obj]
 
-            target_compare = Target.objects.filter(Q(name__icontains=compare_target) | Q(aliases__name__icontains=compare_target)).first()
-            compare_z = target_compare.redshift 
+            target_compare = Target.objects.filter(
+                Q(name=compare_target) | Q(aliases__name=compare_target)).distinct().first()
+            if not target_compare:
+                target_compare = Target.objects.filter(
+                    Q(name__icontains=compare_target) | Q(aliases__name__icontains=compare_target)).distinct().first()
+            if not target_compare:
+                logger.warning('Compare target %s not found', compare_target)
+                return graph_data
+            compare_z = target_compare.redshift or 0
 
-            spectral_dataproducts = ReducedDatum.objects.filter(target=target_compare, data_type='spectroscopy').order_by('-timestamp')
+            spectral_dataproducts = ReducedDatum.objects.filter(
+                target=target_compare, data_type='spectroscopy').order_by('-timestamp')
+            if user_id:
+                compare_user = User.objects.filter(id=user_id).first()
+                if compare_user:
+                    spectral_dataproducts = get_objects_for_user(
+                        compare_user, 'tom_dataproducts.view_reduceddatum',
+                        klass=spectral_dataproducts)
+            if not spectral_dataproducts:
+                logger.info('No viewable spectra for compare target %s', target_compare)
+                return graph_data
             for spectrum in spectral_dataproducts:
-                datum = spectrum.value
-                wavelength = []
-                flux = []
                 name = target_compare.name + ' --- ' +  str(spectrum.timestamp).split(' ')[0]
-                if datum.get('photon_flux'):
-                    wavelength = datum.get('wavelength')
-                    flux = datum.get('photon_flux')
-                elif datum.get('flux'):
-                    wavelength = datum.get('wavelength')
-                    flux = datum.get('flux')
-                else:
-                    for key, value in datum.items():
-                        wavelength.append(float(value['wavelength']))
-                        flux.append(float(value['flux']))
+                wavelength, flux = extract_spectrum_arrays(spectrum)
+                if not flux:
+                    continue
                 shifted_wavelength = [w * (1+object_z) / (1+compare_z) for w in wavelength]
-                median_flux = [f / median(flux) for f in flux]
+                flux_median = median(flux)
+                median_flux = [f / flux_median for f in flux] if flux_median else list(flux)
                 if max(median_flux) > max_flux: max_flux = max(median_flux)
                 
                 if not bin_factor:
@@ -505,6 +507,11 @@ def display_output(selected_rows,
                     name=name
                 )
                 graph_data['data'].append(scatter_obj)
+
+            for axis in ('xaxis', 'yaxis'):
+                axis_layout = graph_data['layout'].setdefault(axis, {})
+                axis_layout.pop('range', None)
+                axis_layout['autorange'] = True
             return graph_data
         
     # Remove all the element lines so we can replot the selected ones later
@@ -520,20 +527,8 @@ def display_output(selected_rows,
         if not spectrum:
             return 'No spectra yet'
             
-        datum = spectrum.value
-        wavelength = []
-        flux = []
         name = str(spectrum.timestamp).split(' ')[0]
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(float(value['wavelength']))
-                flux.append(float(value['flux']))
+        wavelength, flux = extract_spectrum_arrays(spectrum)
         
         if not bin_factor:
             bin_factor = 1
@@ -558,20 +553,8 @@ def display_output(selected_rows,
         if not spectrum:
             return 'No spectra yet'
 
-        datum = spectrum.value
-        wavelength = []
-        flux = []
         name = str(spectrum.timestamp).split(' ')[0]
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(float(value['wavelength']))
-                flux.append(float(value['flux']))
+        wavelength, flux = extract_spectrum_arrays(spectrum)
 
         if 'mask' in mask_value:
             t = Target.objects.get(pk=spectrum.target_id)
@@ -595,10 +578,11 @@ def display_output(selected_rows,
             line_color='black'
         )
         graph_data['data'].append(scatter_obj)
-        graph_data['layout']['xaxis']['range'] = [min(binned_wavelength), max(binned_wavelength)]
-        graph_data['layout']['xaxis']['autorange'] = False
-        graph_data['layout']['yaxis']['range'] = [min(binned_flux), max(binned_flux)]
-        graph_data['layout']['yaxis']['autorange'] = False
+        if binned_wavelength and binned_flux:
+            graph_data['layout']['xaxis']['range'] = [min(binned_wavelength), max(binned_wavelength)]
+            graph_data['layout']['xaxis']['autorange'] = False
+            graph_data['layout']['yaxis']['range'] = [min(binned_flux), max(binned_flux)]
+            graph_data['layout']['yaxis']['autorange'] = False
     
     # Calculate actual min/max flux from spectrum data for element lines
     actual_min_flux, actual_max_flux = calculate_flux_range(graph_data, min_flux, max_flux)
@@ -622,8 +606,7 @@ def display_output(selected_rows,
         y = []
         
         if compare_target:
-            actual_max_flux = max([max(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
-            actual_min_flux = min([min(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
+            actual_min_flux, actual_max_flux = calculate_flux_range(graph_data)
         for lambduh in lambda_rest:
 
             lambda_observed = lambduh*((1+z)-v_over_c)

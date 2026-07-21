@@ -12,26 +12,27 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.core.paginator import Paginator
 
-from tom_targets.models import Target, TargetList, BaseTarget
-from tom_observations import utils, facility
+from tom_targets.models import Target, TargetList
+from tom_observations import facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
-from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
-from tom_observations.facility import get_service_class
+from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
+from tom_observations.models import ObservationRecord, ObservationGroup
 from tom_common.hooks import run_hook
 
-from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
+from astroplan import Observer, FixedTarget, time_grid_from_range, moon_illumination
 import datetime
 from django.utils import timezone
 import json
 from astropy.time import Time
 from astropy import units as u
-from astropy.coordinates import get_body, get_sun, SkyCoord, AltAz
+from astropy.coordinates import get_body, get_sun, SkyCoord
 import numpy as np
 import matplotlib.pyplot as plt
 
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
+from custom_code.scheduling import get_proposal_choices
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -42,6 +43,7 @@ import os
 
 logger = logging.getLogger(__name__)
 TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED'}
+LIGHTCURVE_CONTROLS_HEIGHT = 580
 
 register = template.Library()
 
@@ -62,13 +64,13 @@ def airmass_collapse(target):
         yaxis=dict(range=[airmass_limit,1.0],gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         margin=dict(l=20,r=10,b=30,t=40),
         hovermode='closest',
-        width=250,
-        height=200,
+        width=340,
+        height=280,
         showlegend=False,
         plot_bgcolor='white'
     )
     visibility_graph = offline.plot(
-            go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs='cdn'
+            go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs=False
     )
     return {
         'target': target,
@@ -137,7 +139,8 @@ def airmass_plot(context):
         plot_bgcolor='white'
     )
     visibility_graph = offline.plot(
-        go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False
+        go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False,
+        include_plotlyjs=False
     )
     return {
         'target': context['object'],
@@ -300,32 +303,6 @@ def generic_lightcurve_plot(target, user):
     return plot_data
 
 
-@register.inclusion_tag('custom_code/lightcurve.html', takes_context=True)
-def lightcurve(context, target):
-    
-    plot_data = generic_lightcurve_plot(target, context['request'].user)         
-
-    layout = go.Layout(
-        xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
-        yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
-        margin=dict(l=30, r=10, b=100, t=40),
-        hovermode='closest',
-        plot_bgcolor='white'
-        #height=500,
-        #width=500
-    )
-    if plot_data:
-      return {
-          'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
-      }
-    else:
-        return {
-            'target': target,
-            'plot': 'No photometry for this target yet.'
-        }
-
-
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_collapse(target, user):
     
@@ -341,8 +318,8 @@ def lightcurve_collapse(target, user):
         yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         margin=dict(l=30, r=10, b=30, t=40),
         hovermode='closest',
-        height=200,
-        width=250,
+        height=280,
+        width=340,
         showlegend=False,
         plot_bgcolor='white',
         shapes=[
@@ -361,7 +338,7 @@ def lightcurve_collapse(target, user):
     if plot_data:
         return {
             'target': target,
-            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs='cdn')
+            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs=False)
         }
     else:
         return {
@@ -421,20 +398,18 @@ def bin_spectra(waves, fluxes, b):
     """
     Bins spectra given list of wavelengths, fluxes, and binning factor
     """
+    try:
+        b = int(b)
+    except (TypeError, ValueError):
+        b = 1
+    if b < 1 or not fluxes or len(fluxes) < b:
+        return list(waves), list(fluxes)
+
     binned_waves = []
     binned_flux = []
-    newindex = 0
-    for index in range(0, len(fluxes), b):
-        if index + b - 1 <= len(fluxes) - 1:
-            sumx = 0
-            sumy = 0
-            for binindex in range(index, index+b, 1):
-                if binindex < len(fluxes):
-                    sumx += waves[binindex]
-                    sumy += fluxes[binindex]
-
-            sumx = sumx / b
-            sumy = sumy / b
+    for index in range(0, len(fluxes) - b + 1, b):
+        sumx = sum(waves[index:index + b]) / b
+        sumy = sum(fluxes[index:index + b]) / b
         if sumx > 0:
             binned_waves.append(sumx)
             binned_flux.append(sumy)
@@ -462,20 +437,10 @@ def spectra_plot(context, target, dataproduct=None):
     ) for color in colors]
 
     for spectrum in spectral_dataproducts:
-        datum = spectrum.value
-        wavelength = []
-        flux = []
         name = str(spectrum.timestamp).split(' ')[0]
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(float(value['wavelength']))
-                flux.append(float(value['flux']))
+        wavelength, flux = extract_spectrum_arrays(spectrum)
+        if not wavelength or not flux:
+            continue
 
         binned_wavelength, binned_flux = bin_spectra(wavelength, flux, 5)
         spectra.append((binned_wavelength, binned_flux, name))
@@ -512,7 +477,8 @@ def spectra_plot(context, target, dataproduct=None):
     if plot_data:
       return {
           'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                               show_link=False, include_plotlyjs=False)
       }
     else:
         return {
@@ -549,8 +515,8 @@ def spectra_collapse(target,user):
             y=spectrum[1]
         ) for spectrum in spectra]
     layout = go.Layout(
-        height=200,
-        width=250,
+        height=280,
+        width=340,
         margin=dict(l=30, r=10, b=30, t=40),
         showlegend=False,
         xaxis=dict(
@@ -571,7 +537,7 @@ def spectra_collapse(target,user):
     if plot_data:
       return {
           'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs='cdn')
+          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs=False)
       }
     else:
         return {
@@ -632,6 +598,24 @@ def registration_who_you_are(user):
     except (AttributeError, UserRegistrationInfo.DoesNotExist):
         return ''
 
+@register.inclusion_tag('tom_dataproducts/partials/dataproduct_list_for_target.html', takes_context=True)
+def snex_dataproduct_list(context, target):
+    dataproduct_context = dataproduct_list_for_target(context, target)
+    telescopes, instruments = set(), set()
+    for p in dataproduct_context['products']:
+        rde = p.reduceddatumextra_set.first()
+        if rde and rde.value:
+            t = rde.value.get('telescope')
+            i = rde.value.get('instrument')
+            if t:
+                telescopes.add(t)
+            if i:
+                instruments.add(i)
+    dataproduct_context['telescopes'] = sorted(telescopes)
+    dataproduct_context['instruments'] = sorted(instruments)
+    return dataproduct_context
+
+
 @register.inclusion_tag('custom_code/custom_upload_dataproduct.html', takes_context=True)
 def custom_upload_dataproduct(context, obj):
     user = context['user']
@@ -687,7 +671,7 @@ def submit_lco_observations(context, target):
             'soar_form': soar_form}
 
 @register.inclusion_tag('custom_code/dash_lightcurve.html', takes_context=True)
-def dash_lightcurve(context, target, width, height):
+def dash_lightcurve(context, target, height):
     request = context['request']
     # Get initial choices and values for some dash elements
     telescopes = ['LCO']
@@ -762,7 +746,6 @@ def dash_lightcurve(context, target, width, height):
 
     dash_context = {'target_id': {'value': target.id},
                     'user_id': {'value': user.id},
-                    'plot-width': {'value': width},
                     'plot-height': {'value': height},
                     'telescopes-checklist': {'options': [{'label': k, 'value': k} for k in telescopes]},
                     'reducer-group-checklist': {'options': reducer_group_options,
@@ -787,7 +770,13 @@ def dash_lightcurve(context, target, width, height):
         dash_context['subtracted-radio'] = {'value': 'Unsubtracted'}
 
 
+    try:
+        frame_height = f'{int(height) + LIGHTCURVE_CONTROLS_HEIGHT}px'
+    except (TypeError, ValueError):
+        frame_height = f'{400 + LIGHTCURVE_CONTROLS_HEIGHT}px'
+
     return {'dash_context': dash_context,
+            'frame_height': frame_height,
             'request': request}
 
 
@@ -1162,6 +1151,15 @@ def smart_name_list(target):
     return good_names
     
 
+def _format_scheduling_timestamp(value):
+    if not value:
+        return ''
+    text = str(value).split('.')[0].replace('T', ' ')
+    if '+' in text:
+        text = text.split('+')[0]
+    return text
+
+
 def get_scheduling_form(observation, user_id, start, requested_str):
     '''
     Used to get the initial parameters and form for scheduling current
@@ -1173,19 +1171,20 @@ def get_scheduling_form(observation, user_id, start, requested_str):
     target = Target.objects.get(pk=observation.target.id)
     target_names = smart_name_list(observation.target)
 
-    content_type_id = ContentType.objects.get(model='observationgroup').id
-    comment = Comment.objects.filter(object_pk=obsgroup.id, content_type_id=content_type_id).order_by('id').first()
+    content_type = ContentType.objects.get_for_model(ObservationGroup)
+    comment = Comment.objects.filter(
+        object_pk=obsgroup.id, content_type=content_type).order_by('id').select_related('user').first()
     if not comment:
         comment_str = ''
     else:
         comment_str = '{}: {}'.format(comment.user.first_name, comment.comment)
     
     parameter = observation.parameters
-    facility_class = get_service_class(observation.facility)()
-    prop_choices = dict(facility_class.get_form(parameter.get('observation_type')).proposal_choices(facility_class))
+    proposal_choices = get_proposal_choices(observation.facility, parameter.get('observation_type'), parameter.get('proposal'))
+    prop_choices = dict(proposal_choices)
     if parameter.get('observation_type', '') == 'IMAGING':
 
-        observation_type = 'Phot'
+        observation_type = 'Photometry'
         if '2M' in parameter.get('instrument_type', ''):
             instrument = 'Muscat'
         elif '1M' in parameter.get('instrument_type', ''):
@@ -1198,18 +1197,20 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
         cadence_frequency = cadence_frequency_days * 24
 
-        end = str(parameter.get('reminder_date', '')).replace('T', ' ')
+        end = _format_scheduling_timestamp(parameter.get('reminder_date', ''))
         if not end:
-            end = str(observation.modified).split('.')[0]
+            end = _format_scheduling_timestamp(observation.modified)
 
         cadence_strategy = parameter.get('cadence_strategy', '')
         if cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
-            cadence_strat = '(Repeating)'
+            cadence_strat = 'Repeating'
         elif cadence_strategy == 'SnexRetryFailedObservationsStrategy':
-            cadence_strat = '(Onetime, retry untill successful)'
+            cadence_strat = 'Onetime, retry until successful'
         elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
-            cadence_strat = '(Onetime)'
-        
+            cadence_strat = 'Onetime'
+        else:
+            cadence_strat = cadence_strategy or 'Unknown'
+
         reminder = parameter.get('reminder', 2 * cadence_frequency_days)
         observing_parameters = {
                    'instrument_type': parameter.get('instrument_type', ''),
@@ -1238,6 +1239,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'observing_parameters': json.dumps(observing_parameters),
                    'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
+                   'proposal': parameter.get('proposal', ''),
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
                    'reminder': reminder
@@ -1248,7 +1250,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
             if parameter.get(f, '') and parameter.get(f, '')[0] != 0.0:
                 initial[f] = parameter.get(f, '')
 
-        form = PhotSchedulingForm(initial=initial)
+        form = PhotSchedulingForm(initial=initial, proposal_choices=proposal_choices)
 
         parameters.append({'observation_id': observation.id,
                            'obsgroup_id': obsgroup.id,
@@ -1269,7 +1271,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                         })
     
     else: # For spectra observations
-        observation_type = 'Spec'
+        observation_type = 'Spectroscopy'
         instrument = 'Floyds'
         
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
@@ -1277,16 +1279,18 @@ def get_scheduling_form(observation, user_id, start, requested_str):
 
         cadence_strategy = parameter.get('cadence_strategy', '')
         if cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
-            cadence_strat = '(Repeating)'
+            cadence_strat = 'Repeating'
         elif cadence_strategy == 'SnexRetryFailedObservationsStrategy':
-            cadence_strat = '(Onetime, retry untill successful)'
+            cadence_strat = 'Onetime, retry until successful'
         elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
-            cadence_strat = '(Onetime)'
+            cadence_strat = 'Onetime'
+        else:
+            cadence_strat = cadence_strategy or 'Unknown'
 
-        end = str(parameter.get('reminder_date', '')).replace('T', ' ')
+        end = _format_scheduling_timestamp(parameter.get('reminder_date', ''))
         if not end:
-            end = str(observation.modified).split('.')[0]
-        
+            end = _format_scheduling_timestamp(observation.modified)
+
         reminder = parameter.get('reminder', 2 * cadence_frequency_days)
 
         observing_parameters = {
@@ -1316,12 +1320,13 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'observing_parameters': json.dumps(observing_parameters),
                    'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
+                   'proposal': parameter.get('proposal', ''),
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
                    'reminder': reminder,
                    'exposure_time': parameter.get('exposure_time', '')
             }
-        form = SpecSchedulingForm(initial=initial)
+        form = SpecSchedulingForm(initial=initial, proposal_choices=proposal_choices)
 
         parameters.append({'observation_id': observation.id,
                            'obsgroup_id': obsgroup.id,
@@ -1346,58 +1351,48 @@ def get_scheduling_form(observation, user_id, start, requested_str):
     }
 
 
-@register.inclusion_tag('custom_code/scheduling_list_with_form.html', takes_context=True)
-def scheduling_list_with_form(context, observation):
-    facility = observation.facility
-    
-    if facility != 'LCO':
-        return {'observations': observation,
-                'parameters': ''}
-         
+def get_scheduling_row_context(observation, viewer_user_id):
     obsgroup = observation.observationgroup_set.first()
-    first_obs = obsgroup.observation_records.order_by('created').first()
+    if not obsgroup:
+        return None
 
-    start_val = first_obs.parameters.get('start', 'Unknown')
-    start = str(start_val).replace('T', ' ')
+    first_obs = obsgroup.observation_records.order_by('created').first()
+    if not first_obs:
+        return None
+    start = _format_scheduling_timestamp(first_obs.created) or 'Unknown'
     username = first_obs.parameters.get('start_user', 'snex_secure')
-    user = User.objects.filter(username = username).first()
-    requested_str = f"{user.first_name} {user.last_name}".strip() or username
-    return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
+    user = User.objects.filter(username=username).first()
+    requested_str = f"{user.first_name} {user.last_name}".strip() or username if user else username
+    return get_scheduling_form(observation, viewer_user_id, start, requested_str)
+
+
+@register.inclusion_tag('custom_code/partials/scheduling/scheduling_row_placeholder.html')
+def scheduling_list_with_form(observation):
+    if observation.facility != 'LCO':
+        return {'observation': None}
+    return {'observation': observation}
 
 @register.filter
-def filter_current_reminders(_, pagenumber):
+def filter_current_reminders(qs, pagenumber):
     now = timezone.now()
-    queryset = ObservationRecord.objects.filter(
+    queryset = qs.filter(
         id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
         latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
         parameters__reminder_date__lte=now.isoformat()).order_by('parameters__reminder_date')
-    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
+    return Paginator(queryset, 25).get_page(pagenumber)
 
 @register.filter
-def filter_upcoming_reminders(_, pagenumber):
+def filter_upcoming_reminders(qs, pagenumber):
     now = timezone.now()
-    queryset = ObservationRecord.objects.filter(
+    queryset = qs.filter(
         id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
         latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
         parameters__reminder_date__gte=now.isoformat()).order_by('parameters__reminder_date')
-    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
+    return Paginator(queryset, 25).get_page(pagenumber)
 
-@register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
-def dash_spectra_page(context, target):
-    # Support both dict-style access (from views) and attribute access (from templates)
-    if isinstance(context, dict):
-        request = context['request']
-    else:
-        try:
-            request = context['request']
-        except (KeyError, TypeError):
-            request = context.request
-    try:
-        z = target.redshift
-    except:
-        z = 0
-
-    # Setup the data share form for this spectra page
+@register.inclusion_tag('custom_code/partials/target/spectra_container.html', takes_context=True)
+def spectra_list(context, target):
+    request = context['request']
     initial = {
         'submitter': request.user,
         'target': target,
@@ -1410,73 +1405,123 @@ def dash_spectra_page(context, target):
     sharing = getattr(settings, "DATA_SHARING", None)
     hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
 
-    ### Send the min and max flux values
-    user = User.objects.get(username=request.user)
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                 klass=ReducedDatum.objects.filter(
-                                                     target=target, data_type='spectroscopy')).order_by('timestamp')
-    
+    spectra = get_objects_for_user(
+        request.user, 'tom_dataproducts.view_reduceddatum',
+        klass=ReducedDatum.objects.filter(target=target, data_type='spectroscopy')).order_by('timestamp')
 
-    plot_list = []
-    for i in range(len(spectral_dataproducts)):
-    
-        max_flux = 0
-        min_flux = 0
-        
-        spectrum = spectral_dataproducts[i]
-        datum = spectrum.value
-        wavelength = []
-        flux = []
-        name = str(spectrum.timestamp).split(' ')[0]
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(value['wavelength'])
+    extras = {
+        row.data_product_id: row.value or {}
+        for row in ReducedDatumExtra.objects.filter(data_type='spectroscopy', target=target)
+        if row.data_product_id
+    }
+
+    spectra_metadata = []
+    for spectrum in spectra:
+        value = extras.get(spectrum.data_product_id, {})
+        spectra_metadata.append({
+            'spectrum_id': spectrum.id,
+            'time': str(spectrum.timestamp).split('+')[0],
+            'telescope': value.get('telescope', 'Unknown'),
+            'instrument': value.get('instrument', 'Unknown'),
+        })
+
+    return {
+        'target': target,
+        'spectra_metadata': spectra_metadata,
+        'target_data_share_form': form,
+        'sharing_destinations': form.fields['share_destination'].choices,
+        'hermes_sharing': hermes_sharing,
+        'request': request,
+        'user': request.user,
+    }
+
+
+def extract_spectrum_arrays(spectrum):
+    datum = spectrum.value or {}
+    wavelength = []
+    flux = []
+    if datum.get('photon_flux'):
+        wavelength = list(datum.get('wavelength') or [])
+        flux = list(datum.get('photon_flux'))
+    elif datum.get('flux'):
+        wavelength = list(datum.get('wavelength') or [])
+        flux = list(datum.get('flux'))
+    else:
+        for value in datum.values():
+            try:
+                wavelength.append(float(value['wavelength']))
                 flux.append(float(value['flux']))
-        if max(flux) > max_flux: max_flux = max(flux)
-        if min(flux) < min_flux: min_flux = min(flux)
+            except (KeyError, TypeError, ValueError):
+                continue
+    return wavelength, flux
 
-        # Query ReducedDatumExtra directly - no object-level permissions needed
-        # (user already has target access if they can view this page)
-        spec_extras_row = ReducedDatumExtra.objects.filter(
-            data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
-        spec_extras = {}
-        if spec_extras_row:
-            spec_extras = spec_extras_row.value
-            if spec_extras.get('instrument', '') == 'en06':
-                spec_extras['site'] = '(OGG 2m)'
-                spec_extras['instrument'] += ' (FLOYDS)'
-            elif spec_extras.get('instrument', '') == 'en12':
-                spec_extras['site'] = '(COJ 2m)'
-                spec_extras['instrument'] += ' (FLOYDS)'
 
-            content_type_id = ContentType.objects.get(model='reduceddatum').id
-            comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-            spec_extras['comments'] = comment_list
-        else:
-            spec_extras = {}
+def build_spectrum_plot(spectrum, bin_factor=5):
+    wavelength, flux = extract_spectrum_arrays(spectrum)
+    if not wavelength or not flux:
+        return ''
 
-        plot_list.append({'dash_context': {'spectrum_id': {'value': spectrum.id},
-                                           'target_redshift': {'value': z},
-                                           'min-flux': {'value': min_flux},
-                                           'max-flux': {'value': max_flux}
-                                        },
-                          'time': str(spectrum.timestamp).split('+')[0],
-                          'spec_extras': spec_extras,
-                          'spectrum': spectrum
-                        })
-    return {'plot_list': plot_list,
-            'target': target,
-            'target_data_share_form': form,
-            'sharing_destinations': form.fields['share_destination'].choices,
-            'hermes_sharing': hermes_sharing,
-            'request': request}
+    binned_wavelength, binned_flux = bin_spectra(wavelength, flux, bin_factor)
+    if not binned_wavelength:
+        return ''
+
+    layout = go.Layout(
+        height=350,
+        margin=dict(l=60, b=30, r=60, t=10),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(type='linear', tickformat='.1e'),
+        legend=dict(x=0.85, y=1.0),
+        hovermode='closest',
+    )
+    figure = go.Figure(
+        data=[go.Scatter(x=binned_wavelength, y=binned_flux,
+                         name=str(spectrum.timestamp).split(' ')[0], line_color='black')],
+        layout=layout)
+    return offline.plot(figure, output_type='div', show_link=False, include_plotlyjs=False)
+
+
+def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plot=True):
+    if redshift is None:
+        redshift = getattr(target, 'redshift', 0) or 0
+
+    _, flux = extract_spectrum_arrays(spectrum)
+
+    max_flux = max(flux) if flux else 0
+    min_flux = min(flux) if flux else 0
+
+    spec_extras_row = ReducedDatumExtra.objects.filter(
+        data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
+    spec_extras = {}
+    if spec_extras_row:
+        spec_extras = spec_extras_row.value or {}
+        if spec_extras.get('instrument', '') == 'en06':
+            spec_extras['site'] = '(OGG 2m)'
+            spec_extras['instrument'] += ' (FLOYDS)'
+        elif spec_extras.get('instrument', '') == 'en12':
+            spec_extras['site'] = '(COJ 2m)'
+            spec_extras['instrument'] += ' (FLOYDS)'
+
+        content_type = ContentType.objects.get_for_model(ReducedDatum)
+        comments = Comment.objects.filter(
+            object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
+        spec_extras['comments'] = comments
+        spec_extras['comments_list'] = [
+            '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+
+    return {
+        'dash_context': {
+            'spectrum_id': {'value': spectrum.id},
+            'user_id': {'value': getattr(user, 'id', 0) or 0},
+            'target_redshift': {'value': redshift},
+            'min-flux': {'value': min_flux},
+            'max-flux': {'value': max_flux},
+        },
+        'time': str(spectrum.timestamp).split('+')[0],
+        'spec_extras': spec_extras,
+        'spectrum': spectrum,
+        'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
+    }
+
 
 @register.filter
 def strip_trailing_zeros(value):
@@ -1615,14 +1660,6 @@ def past_observing_runs(targetlist):
     except Exception as e:
         print(e)
         return targetlist
-
-
-@register.filter
-def interesting_targets(targetlist):
-    for obj in targetlist:
-        if obj.name == 'Interesting Targets':
-            return obj
-    return []
 
 
 @register.filter
@@ -1839,7 +1876,8 @@ def lightcurve_fits(target, user, filt=False, days=None):
     elif filt and filt not in photometry_data.keys(): # No photometry for this filter
         return {
             'target': target,
-            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False),
+            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                                 show_link=False, include_plotlyjs=False),
             'max': '',
             'mag': '',
             'filt': ''
@@ -1906,7 +1944,8 @@ def lightcurve_fits(target, user, filt=False, days=None):
 
     return {
         'target': target,
-        'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False),
+        'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                             show_link=False, include_plotlyjs=False),
         'max': maximum,
         'mag': max_mag,
         'filt': filt
@@ -1968,7 +2007,8 @@ def lightcurve_with_extras(target, user):
     if plot_data:
       return {
           'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                               show_link=False, include_plotlyjs=False)
       }
     else:
         return {
@@ -2129,7 +2169,8 @@ def broker_target_lightcurve(target):
     if plot_data:
       return {
           'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                               show_link=False, include_plotlyjs=False)
       }
     else:
         return {

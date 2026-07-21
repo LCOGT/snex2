@@ -1,0 +1,7 @@
+{% load custom_code_tags %}
+{% snex2_get_photometry_data target %}
+<div align="center">
+  <u><span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:10pt; color:#ff9900;"><a href="{% url 'custom_code:download-photometry' target.id %}">Download Photometry for this Target</a></span></u><br>
+  <u><span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size: 10pt;"><div style="text-decoration: underline; cursor: pointer;" hx-get="{% url 'custom_code:get-target-standards' %}?pipeline_id={{ target.pipeline_id }}" hx-trigger="click once" hx-swap="outerHTML">View Standard Info for this Target</div></span></u>
+</div>
+{% dash_lightcurve target 600 %}

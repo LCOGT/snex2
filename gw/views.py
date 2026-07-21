@@ -22,6 +22,7 @@ from tom_targets.models import Target
 from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from custom_code.hooks import _return_session, _load_table
+from custom_code.utils import format_form_errors
 import logging
 
 logger = logging.getLogger(__name__)
@@ -292,7 +293,7 @@ def submit_galaxy_observations_view(request):
                         #raise Snex1ConnectionError(message='Observation portal returned errors {}'.format(observation_errors))
 
                 else:
-                    logger.error(msg=f'Unable to submit observation for {newtarget.name}: {form.errors}')
+                    logger.error(msg=f'Unable to submit observation for {newtarget.name}: {format_form_errors(form.errors)}')
                     failed_obs.append(newtarget.name)
                     continue
                     #response_data = {'failure': 'Unable to submit observation'}

@@ -1,0 +1,43 @@
+{% load crispy_forms_tags targets_extras custom_code_tags %}
+{% for parameter in parameters %}
+<div class="card scheduling-row mb-3{% if 'SUPA202' in parameter.proposal %} pessto-card{% elif parameter.proposal == 'LCO2022A-013' %} dlt40-card{% endif %}"{% if 'SUPA202' in parameter.proposal or parameter.proposal == 'LCO2022A-013' %} style="display: none;"{% endif %}>
+  <div class="card-header d-flex align-items-center flex-wrap">
+    <div style="flex: 1 1 0; min-width: 0;">
+      <a href="{% url 'tom_targets:detail' parameter.target.id %}" target="_blank" class="h5 mb-0">{{ parameter.names|join:", " }}</a>
+      <span class="text-muted ml-2">{{ parameter.target.classification }}{% if parameter.target.redshift %} &middot; z={{ parameter.target.redshift|strip_trailing_zeros }}{% endif %}</span>
+    </div>
+    <div class="text-center px-3">
+      <span class="badge {% if parameter.observation_type == 'Spectroscopy' %}badge-info{% else %}badge-primary{% endif %} px-3 py-2" style="font-size: 1rem;">{{ parameter.observation_type }}</span>
+      <span class="badge badge-dark px-3 py-2 ml-1" style="font-size: 1rem;">{{ parameter.instrument }}</span>
+      <span class="badge badge-secondary px-3 py-2 ml-1" style="font-size: 1rem;">{{ parameter.cadence_strategy }}</span>
+    </div>
+    <div class="text-right" style="flex: 1 1 0;">
+      <a class="btn btn-outline-success" style="font-size: 1rem;" href="{% url 'custom_code:observationgroup-detail' parameter.obsgroup_id %}" target="_blank">Details</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <form id="scheduling-form-{{ parameter.observation_id }}">
+      {% csrf_token %}
+      {% crispy form %}
+      <div id="scheduling-actions-{{ parameter.observation_id }}">
+        {% include 'custom_code/partials/scheduling/scheduling_buttons.html' %}
+      </div>
+    </form>
+    <div class="row mt-3 text-muted">
+      <div class="col-auto">Started: {{ parameter.start }}</div>
+      <div class="col-auto">Next reminder: {{ parameter.reminder_date }}</div>
+      {% if parameter.comment %}<div class="col-auto">{{ parameter.comment }}</div>{% endif %}
+    </div>
+    <div class="row mt-3 scheduling-plots">
+      <div class="col-auto">{% lightcurve_collapse parameter.target user %}</div>
+      <div class="col-auto">{% spectra_collapse parameter.target user %}</div>
+      <div class="col-auto">{% airmass_collapse parameter.target %}</div>
+    </div>
+  </div>
+</div>
+{% empty %}
+<div class="row">
+    No observations yet. You might want to create an observation from one of
+    <a href="{% url 'tom_targets:list' %}">your saved targets</a>.
+</div>
+{% endfor %}

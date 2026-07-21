@@ -11,6 +11,7 @@ from tom_targets.models import Target, TargetName
 from tom_targets.api_views import TargetViewSet
 from custom_code.models import ReducedDatumExtra, Papers
 from custom_code.serializers import SNExTargetSerializer
+from custom_code.utils import format_form_errors, sync_group_permissions_to_target
 from .processors.data_processor import run_custom_data_processor
 import json
 
@@ -25,8 +26,6 @@ from tom_observations.cadence import get_cadence_strategy
 from tom_observations.models import ObservationGroup, DynamicCadence
 from rest_framework.exceptions import ValidationError
 from django.db import transaction
-from urllib.parse import urlencode
-import requests
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 
 import logging
@@ -154,7 +153,7 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
             if observation_form.is_valid():
                 observation_ids = facility.submit_observation(observation_form.observation_payload())
             else:
-                logger.warning(f'Unable to submit observation due to errors: {observation_form.errors}')
+                logger.warning(f'Unable to submit observation due to errors: {format_form_errors(observation_form.errors)}')
                 raise ValidationError(observation_form.errors)
 
             # Normally related objects would be created in the serializer--however, because the ObservationRecordSerializer
@@ -215,10 +214,16 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 if observation_group is not None:
                     observation_group.observation_records.add(*serializer.instance)
             except ValidationError as ve:
-                observation_group.delete()
+                if observation_group is not None:
+                    observation_group.delete()
                 logger.error(f'Failed to create ObservationRecord due to exception {ve}')
                 raise ValidationError(f'''Observation submission successful, but failed to create a corresponding
                                           ObservationRecord due to exception {ve}.''')
+
+            try:
+                sync_group_permissions_to_target(observation_group, serializer.instance, target)
+            except Exception as e:
+                logger.error(f'Failed to sync permissions to target for new observation records: {e}', exc_info=True)
                 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)

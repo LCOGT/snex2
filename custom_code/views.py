@@ -15,24 +15,20 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import Group, User
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.core.cache import cache
 from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
-from django.views.decorators.http import require_POST, require_GET
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
+from django.views.decorators.http import require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView
 from django.views.generic.detail import DetailView
 from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
-from django.template.context import RequestContext
-from django.template.loader import render_to_string
-from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django.views.generic.base import RedirectView, TemplateView
@@ -46,18 +42,15 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
-from guardian.models import GroupObjectPermission
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct, ReducedDatum
-from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
-from tom_dataproducts.views import DataProductDeleteView, DataProductUploadView
+from tom_dataproducts.views import DataProductUploadView
 from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
-from tom_observations.templatetags.observation_extras import observing_buttons
 from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
 from tom_targets.models import Target, TargetList, TargetName
-from tom_targets.templatetags.targets_extras import target_groups
+from tom_targets.permissions import targets_for_user
 from tom_targets.views import TargetCreateView
 from custom_code.facilities.soar_facility import user_can_access_soar
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
@@ -66,10 +59,10 @@ from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unr
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
-from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups
 import logging
 from urllib.parse import quote_plus
 
@@ -585,44 +578,33 @@ class PaperDeleteView(View):
         return HttpResponseRedirect('/targets/{}/'.format(target_id))
     
 def delete_comment_view(request):
-    if request.method == "POST":
-        comment_id = request.POST.get("comment_id")
-        try:
-            comment = Comment.objects.get(id=comment_id)
-            if comment.user == request.user or request.user.is_staff:
-                comment.delete() # this triggers the receiver that syncs to snex1
-                return JsonResponse({'success': True})
-            else:
-                return JsonResponse({'error': 'Permission denied'}, status=403)
-        except Comment.DoesNotExist:
-            return JsonResponse({'error': 'Comment not found'}, status=404)
-    return JsonResponse({'error': 'Invalid method'}, status=400)
+    if request.method != 'POST':
+        return HttpResponseBadRequest('Invalid method')
+    comment = get_object_or_404(Comment, id=request.POST.get('comment_id'))
+    if comment.user != request.user and not request.user.is_staff:
+        return HttpResponseForbidden('Permission denied')
+    comment.delete()  # this triggers the receiver that syncs to snex1
+    return HttpResponse('')
 
 def save_comments_view(request):
-    comment = request.GET['comment']
-    object_id = int(request.GET['object_id'])
-    user_id = int(request.GET['user_id'])
-    tablename = request.GET['tablename']
+    comment_text = request.GET.get('comment', '').strip()
+    if not comment_text:
+        return HttpResponseBadRequest('Empty comment')
 
-    user = User.objects.get(id=user_id)
+    saved = save_comments(comment_text, int(request.GET['object_id']), request.user,
+                          model_name=request.GET['tablename'])
+    if not saved:
+        return HttpResponseBadRequest('Comment could not be saved')
 
-    saved = save_comments(comment, object_id, user, model_name=tablename)
-
-    if saved:
-        return JsonResponse({
-            "success": True,
-            "comment_id": saved.id,
-            "username": user.username,
-            "comment": comment,
-        })
-    
-    else:
-        return JsonResponse({"success": False})
+    return render(request, 'custom_code/partials/target/comment_row.html',
+                  {'comment': saved, 'user': request.user})
 
 
 def observation_sequence_cancel_view(request):
     obsr_id = int(float(request.GET['pk']))
     obsr = ObservationRecord.objects.get(id=obsr_id)
+    if request.user not in get_users_with_perms(obsr):
+        return HttpResponseForbidden('Not authorized')
     obs_group = obsr.observationgroup_set.first()
 
     try:
@@ -640,42 +622,51 @@ def observation_sequence_cancel_view(request):
         logger.error('This sequence was not canceled', exc_info=True)
         return JsonResponse({'failure': 'This sequence was not canceled'})
 
-def scheduling_view(request):
-    obs_id = request.GET.get('observation_id')
-    obs = ObservationRecord.objects.get(id=obs_id)
+def scheduling_row_view(request, observation_id):
+    obs = get_object_or_404(ObservationRecord, id=observation_id)
+    if obs.facility != 'LCO':
+        return HttpResponse('')
+    if request.user not in get_users_with_perms(obs):
+        return HttpResponseForbidden('Not authorized')
+    context = custom_code_tags.get_scheduling_row_context(obs, request.user.id)
+    if context is None:
+        return HttpResponse('')
+    context['user'] = request.user
+    return render(request, 'custom_code/partials/scheduling/scheduling_row.html', context)
+
+def scheduling_action_view(request, observation_id, action):
+    obs = get_object_or_404(ObservationRecord, id=observation_id)
+    if request.user not in get_users_with_perms(obs):
+        return HttpResponseForbidden('Not authorized')
     obs_group = obs.observationgroup_set.first()
+    observation_type = obs.parameters.get('observation_type', '')
+    proposal_choices = get_proposal_choices(obs.facility, observation_type, obs.parameters.get('proposal'))
 
-    if obs.parameters.get('observation_type', '') == 'IMAGING':
-        form = PhotSchedulingForm(request.GET, initial=obs.parameters)
+    if observation_type == 'IMAGING':
+        form = PhotSchedulingForm(request.POST, initial=obs.parameters, proposal_choices=proposal_choices)
     else:
-        form = SpecSchedulingForm(request.GET, initial=obs.parameters)
-    if form.is_valid():
-        action = next((a for a in ['modify', 'continue', 'stop'] if a in request.GET.get('button', '')), None)
+        form = SpecSchedulingForm(request.POST, initial=obs.parameters, proposal_choices=proposal_choices)
+
+    error = None
+    if not form.is_valid():
+        error = 'Invalid form: ' + format_form_errors(form.errors)
+    else:
+        form.cleaned_data['comment'] = request.POST.get('comment', '')
         try:
-            comment_raw = request.GET.get("comment", "")
-
-            if comment_raw.startswith('{'):
-                try:
-                    comment_data = json.loads(comment_raw)
-                    cancel_reason = comment_data.get("cancel", comment_raw)
-                except (json.JSONDecodeError, TypeError):
-                    cancel_reason = comment_raw
-            else:
-                cancel_reason = comment_raw
-            form.cleaned_data['comment'] = cancel_reason
-            response_data = change_obs_from_scheduling(
-                action=action,
-                obs_group=obs_group,
-                user=request.user,
-                data=form.cleaned_data
-            )
-            
-            return HttpResponse(json.dumps(response_data), content_type='application/json')
-
+            result = change_obs_from_scheduling(action=action, obs_group=obs_group, user=request.user, data=form.cleaned_data)
         except Exception as e:
-            return JsonResponse({'failure': str(e)})
-        
-    return JsonResponse({'failure': 'Invalid Form', 'errors': form.errors})
+            logger.error(f'Scheduling action {action} failed for group {obs_group.id}: {e}', exc_info=True)
+            result = {'failure': str(e)}
+        if 'failure' in result:
+            error = result['failure']
+        else:
+            return render(request, 'custom_code/partials/scheduling/scheduling_action_result.html', {'message': result.get('success', 'Done')})
+
+    return render(request, 'custom_code/partials/scheduling/scheduling_buttons.html', {
+        'parameter': {'observation_id': observation_id},
+        'form': form,
+        'error': error
+    })
 
 def change_target_known_to_view(request):
     action = request.GET.get('action')
@@ -767,40 +758,20 @@ def search_name_view(request):
     return render(request, 'tom_targets/target_grouping.html', context=context)
 
 
-def async_spectra_page_view(request):
-    target_id = request.GET.get('target_id')
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context = custom_code_tags.dash_spectra_page(RequestContext(request), target)
-        html = render_to_string(
-            template_name='custom_code/dash_spectra_page.html',
-            context=context,
-            request=request
-        )
-        data_dict = {'html_from_view': html}
-
-        return JsonResponse(data=data_dict, safe=False)
-    return ''
-
-
 def async_scheduling_page_view(request):
     obs_ids = json.loads(request.GET['obs_ids'])
     all_html = ''
     for obs_id in obs_ids:
         obs = ObservationRecord.objects.get(id=obs_id)
-        response = custom_code_tags.scheduling_list_with_form({'request': request}, obs)
-
-        html = render_to_string(
-            template_name='custom_code/scheduling_list_with_form.html',
-            context=response,
+        if request.user not in get_users_with_perms(obs):
+            continue
+        all_html += render_to_string(
+            template_name='custom_code/partials/scheduling/scheduling_row_placeholder.html',
+            context=custom_code_tags.scheduling_list_with_form(obs),
             request=request
         )
 
-        all_html += html
-
-    data_dict = {'html_from_view': all_html}
-    
-    return JsonResponse(data=data_dict, safe=False)
+    return HttpResponse(all_html)
 
 
 def add_target_to_group_view(request):
@@ -884,18 +855,33 @@ def change_observing_priority_view(request):
 
 class CustomObservationListView(ObservationListView):
 
-    def get_queryset(self, *args, **kwargs):
-        """
-        Gets the most recent ObservationRecord objects associated with active
-        DynamicCadences that the user has permission to view
-        """
+    def _active_observation_ids(self):
         try:
             obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
         except Exception as e:
             logger.info(e)
             obsrecordlist = []
-        obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
-        return ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+        return [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
+
+    def get_queryset(self, *args, **kwargs):
+        """
+        Gets the most recent ObservationRecord objects associated with active
+        DynamicCadences that the user has permission to view
+        """
+        queryset = ObservationRecord.objects.filter(id__in=self._active_observation_ids())
+        proposals = self.request.GET.getlist('proposal')
+        if proposals:
+            queryset = queryset.filter(parameters__proposal__in=proposals)
+        return queryset
+
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+        proposals = ObservationRecord.objects.filter(id__in=self._active_observation_ids()) \
+            .exclude(parameters__proposal__isnull=True) \
+            .values_list('parameters__proposal', flat=True)
+        context['available_proposals'] = sorted(set(p for p in proposals if p))
+        context['selected_proposals'] = self.request.GET.getlist('proposal')
+        return context
 
 
 class ObservationListExtrasView(ListView):
@@ -908,22 +894,27 @@ class ObservationListExtrasView(ListView):
     strict = False
     context_object_name = 'observation_list'
 
+    def _active_observation_ids_for_extras(self):
+        try:
+            obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
+        except Exception as e:
+            logger.info(e)
+            obsrecordlist = []
+        return [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
+
     def get_queryset(self, *args, **kwargs):
         """
         Get all active cadences and order their observation records in order of IPP or urgency
         """
         val = self.kwargs['key']
-        
+        proposals = self.request.GET.getlist('proposal')
+
         if val == 'ipp':
-            try:
-                obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-            except Exception as e:
-                logger.info(e)
-                obsrecordlist = []
-            obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
-            obsrecords = ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+            obsrecords = ObservationRecord.objects.filter(id__in=self._active_observation_ids_for_extras())
+            if proposals:
+                obsrecords = obsrecords.filter(parameters__proposal__in=proposals)
             return obsrecords.order_by('-parameters__ipp_value')
-        
+
         elif val == 'urgency':
             try:
                 obsrecordlist = [c.observation_group.observation_records.filter(status='COMPLETED').order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
@@ -932,17 +923,23 @@ class ObservationListExtrasView(ListView):
                 obsrecordlist = []
             obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
             obsrecords = ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+            if proposals:
+                obsrecords = obsrecords.filter(parameters__proposal__in=proposals)
             now = datetime.utcnow()
             recent_obs = obsrecords.annotate(days_since=now-Cast(KeyTextTransform('start', 'parameters'), DateTimeField()))
             recent_obs = recent_obs.filter(parameters__cadence_frequency_days__gt=0.0)
             recent_obs = recent_obs.annotate(urgency=ExpressionWrapper(F('days_since')/(Cast(KeyTextTransform('cadence_frequency_days', 'parameters'), FloatField())), DateTimeField()))
             return recent_obs.order_by('-urgency')
 
-    
     def get_context_data(self, *args, **kwargs):
-        
         context = super().get_context_data(*args, **kwargs)
         context['value'] = self.kwargs['key'].upper()
+        obsrecordlist_ids = self._active_observation_ids_for_extras()
+        proposals = ObservationRecord.objects.filter(id__in=obsrecordlist_ids) \
+            .exclude(parameters__proposal__isnull=True) \
+            .values_list('parameters__proposal', flat=True)
+        context['available_proposals'] = sorted(set(p for p in proposals if p))
+        context['selected_proposals'] = self.request.GET.getlist('proposal')
         return context
 
 
@@ -999,12 +996,7 @@ class CustomObservationCreateView(ObservationCreateView):
         if not settings.TARGET_PERMISSIONS_ONLY:
             groups = form.cleaned_data.get('groups')
             if not groups:
-                target_ct = ContentType.objects.get_for_model(Target)
-                target_group_ids = GroupObjectPermission.objects.filter(
-                    object_pk=target.id,
-                    content_type=target_ct
-                ).values_list('group_id', flat=True).distinct()
-                groups = Group.objects.filter(id__in=target_group_ids)
+                groups = get_target_permission_groups(target.id)
             if groups:
                 if not new_records:
                     new_records = list(
@@ -1070,372 +1062,89 @@ def make_tns_request_view(request):
         return HttpResponse(json.dumps(response_data), content_type='application/json')
 
 
-def load_lightcurve_view(request):
-    target = Target.objects.get(id=request.GET.get('target_id'))
-    user = User.objects.get(id=request.GET.get('user_id'))
-
-    lightcurve = custom_code_tags.lightcurve_with_extras(target, user)['plot']
-    context = {'success': 'success',
-               'lightcurve_plot': lightcurve
-    }
-    return HttpResponse(json.dumps(context), content_type='application/json')
+def _target_for_user(request, pk):
+    qs = targets_for_user(request.user, Target.objects.filter(pk=pk), 'view_target')
+    target = qs.first()
+    if target is None:
+        raise Http404('Target not found or not visible to this user')
+    return target
 
 
-def load_dash_lightcurve_view(request):
-    """Lazy-load the dash lightcurve plot for the overview tab"""
-    target_id = request.GET.get('target_id')
-    width = int(request.GET.get('width', 600))
-    height = int(request.GET.get('height', 400))
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        # Create a context dict with request, as expected by dash_lightcurve
-        context_dict = {'request': request}
-        context = custom_code_tags.dash_lightcurve(context_dict, target, width, height)
-        html = render_to_string(
-            template_name='custom_code/dash_lightcurve.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'plot_html': html}, safe=False)
-    return JsonResponse({'plot_html': '<div>Error loading plot</div>'}, safe=False)
+def _render_target_partial(request, pk, template):
+    target = _target_for_user(request, pk)
+    return render(request, template, {'target': target, 'object': target})
 
 
-def load_spectra_plot_view(request):
-    """Lazy-load the spectra plot for the overview tab"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        # Create a context dict with request, as expected by spectra_plot
-        context_dict = {'request': request}
-        context = custom_code_tags.spectra_plot(context_dict, target)
-        html = render_to_string(
-            template_name='custom_code/spectra.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'plot_html': html}, safe=False)
-    return JsonResponse({'plot_html': '<div>Error loading plot</div>'}, safe=False)
+def load_details_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_details.html')
 
 
-def load_thumbnail_view(request):
-    """Lazy-load the thumbnail for the overview tab"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request}
-        context = custom_code_tags.display_thumbnails(context_dict, target)
-        html = render_to_string(
-            template_name='custom_code/thumbnail.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading thumbnail</div>'}, safe=False)
+def load_observations_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_observations.html')
 
 
-def load_airmass_plot_view(request):
-    """Lazy-load the airmass plot for the overview tab"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        # Create a context dict with object (not request), as expected by airmass_plot
-        context_dict = {'object': target}
-        context = custom_code_tags.airmass_plot(context_dict)
-        html = render_to_string(
-            template_name='custom_code/airmass.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading airmass plot</div>'}, safe=False)
+def load_manage_data_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_data.html')
 
 
-def load_details_tab_view(request):
-    """Lazy-load the details tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        context = custom_code_tags.target_details(context_dict, target)
-        html = render_to_string(
-            template_name='custom_code/target_details.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading details</div>'}, safe=False)
+def load_observing_runs_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_observing_runs.html')
 
 
-def load_observations_tab_view(request):
-    """Lazy-load the observations tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        
-        # Get all the template tag contexts
-        observing_buttons_context = observing_buttons(target)
-        previous_obs_context = custom_code_tags.observation_summary(context_dict, target, is_active = False)
-        ongoing_obs_context = custom_code_tags.observation_summary(context_dict, target, is_active = True)
-        submit_obs_context = custom_code_tags.submit_lco_observations(context_dict, target)
-        
-        # Combine all contexts
-        combined_context = {
-            'target': target,
-            'object': target,
-            'observing_buttons_html': render_to_string('tom_observations/partials/observing_buttons.html', observing_buttons_context, request=request),
-            'previous_obs_html': render_to_string('custom_code/observation_summary.html', previous_obs_context, request=request),
-            'ongoing_obs_html': render_to_string('custom_code/observation_summary.html', ongoing_obs_context, request=request),
-            'submit_obs_html': render_to_string('custom_code/submit_lco_observations.html', submit_obs_context, request=request),
-        }
-        
-        # Render the combined template
-        html = render_to_string(
-            template_name='custom_code/observations_tab.html',
-            context=combined_context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading observations</div>'}, safe=False)
+def load_images_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_images.html')
 
 
-def load_manage_data_tab_view(request):
-    """Lazy-load the manage data tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        
-        # Get the template tag contexts
-        upload_context = custom_code_tags.custom_upload_dataproduct(context_dict, target) if request.user.is_authenticated else None
-        dataproduct_context = dataproduct_list_for_target(context_dict, target)
-        telescopes, instruments = set(), set()
-        for p in dataproduct_context['products']:
-            rde = p.reduceddatumextra_set.first()
-            if rde and rde.value:
-                t = rde.value.get('telescope')
-                i = rde.value.get('instrument')
-                if t:
-                    telescopes.add(t)
-                if i:
-                    instruments.add(i)
-        dataproduct_context['telescopes'] = sorted(telescopes)
-        dataproduct_context['instruments'] = sorted(instruments)
-
-        # Render the components
-        upload_html = render_to_string('custom_code/custom_upload_dataproduct.html', upload_context, request=request) if upload_context else ''
-        dataproduct_html = render_to_string('tom_dataproducts/partials/dataproduct_list_for_target.html', dataproduct_context, request=request)
-        
-        combined_context = {
-            'upload_html': upload_html,
-            'dataproduct_html': dataproduct_html,
-        }
-        
-        html = render_to_string(
-            template_name='custom_code/manage_data_tab.html',
-            context=combined_context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading manage data</div>'}, safe=False)
+def load_photometry_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_photometry.html')
 
 
-def load_observing_runs_tab_view(request):
-    """Lazy-load the observing runs tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context = target_groups(target)
-        html = render_to_string(
-            template_name='tom_targets/partials/target_groups.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading observing runs</div>'}, safe=False)
+def load_spectroscopy_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_spectroscopy.html')
 
 
-def load_images_tab_view(request):
-    """Lazy-load the images tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        context = custom_code_tags.image_slideshow(context_dict, target)
-        html = render_to_string(
-            template_name='custom_code/image_slideshow.html',
-            context=context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading images</div>'}, safe=False)
+def load_dash_lightcurve_view(request, pk):
+    target = _target_for_user(request, pk)
+    return render(request, 'custom_code/partials/target/overview_lightcurve.html', {
+        'target': target,
+        'object': target,
+        'height': int(request.GET.get('height', 400)),
+    })
 
 
-def load_photometry_tab_view(request):
-    """Lazy-load the photometry tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        
-        # Get photometry data
-        photometry_context = custom_code_tags.snex2_get_photometry_data(context_dict, target)
-        photometry_html = render_to_string('tom_dataproducts/partials/photometry_datalist_for_target.html', photometry_context, request=request)
-        
-        # Get dash lightcurve
-        lightcurve_context = custom_code_tags.dash_lightcurve(context_dict, target, 1000, 600)
-        lightcurve_html = render_to_string('custom_code/dash_lightcurve.html', lightcurve_context, request=request)
-        
-        combined_context = {
-            'target': target,
-            'photometry_html': photometry_html,
-            'lightcurve_html': lightcurve_html,
-        }
-        
-        html = render_to_string(
-            template_name='custom_code/photometry_tab.html',
-            context=combined_context,
-            request=request
-        )
-        return JsonResponse({'html': html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading photometry</div>'}, safe=False)
+def load_spectra_plot_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/overview_spectra.html')
 
 
-def load_spectroscopy_tab_view(request):
-    """Lazy-load the spectroscopy tab content"""
-    target_id = request.GET.get('target_id')
-    
-    if target_id:
-        target = Target.objects.get(id=target_id)
-        context_dict = {'request': request, 'user': request.user}
-        
-        # Load the overview plot
-        overview_context = custom_code_tags.dash_spectra(context_dict, target)
-        overview_html = render_to_string(
-            template_name='custom_code/dash_spectra.html',
-            context=overview_context,
-            request=request
-        )
-        
-        # Get the list of spectra metadata without rendering the plots
-        # Pass dict with request for compatibility (dash_spectra_page now supports both)
-        details_context = custom_code_tags.dash_spectra_page(context_dict, target)
-        
-        # Build the spectra list metadata for progressive loading
-        spectra_metadata = []
-        for entry in details_context.get('plot_list', []):
-            spectra_metadata.append({
-                'spectrum_id': entry['spectrum'].id,
-                'time': entry['time'],
-                'telescope': entry['spec_extras'].get('telescope', 'Unknown'),
-                'instrument': entry['spec_extras'].get('instrument', 'Unknown')
-            })
-        
-        # Render the spectra container with placeholders
-        spectra_container_html = render_to_string(
-            template_name='custom_code/spectra_progressive_container.html',
-            context={
-                'spectra_metadata': spectra_metadata,
-                'target': target,
-                'target_data_share_form': details_context.get('target_data_share_form'),
-                'sharing_destinations': details_context.get('sharing_destinations'),
-                'hermes_sharing': details_context.get('hermes_sharing'),
-            },
-            request=request
-        )
-        
-        # Combine both
-        combined_html = overview_html + spectra_container_html
-        
-        return JsonResponse({'html': combined_html}, safe=False)
-    return JsonResponse({'html': '<div>Error loading spectroscopy</div>'}, safe=False)
+def load_thumbnail_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/overview_thumbnail.html')
 
 
-def load_single_spectrum_view(request):
-    """Lazy-load a single spectrum"""
-    spectrum_id = request.GET.get('spectrum_id')
-    target_id = request.GET.get('target_id')
-    
-    if spectrum_id and target_id:
-        try:
-            target = Target.objects.get(id=target_id)
-            spectrum = ReducedDatum.objects.get(id=spectrum_id)
-            
-            try:
-                z = target.redshift
-            except:
-                z = 0
-            
-            # Get spectrum extras - query directly since user already has target access
-            # (ReducedDatumExtra doesn't need separate object-level permissions)
-            spec_extras_row = ReducedDatumExtra.objects.filter(
-                data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
+def load_airmass_plot_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/overview_airmass.html')
 
-            spec_extras = {}
 
-            if spec_extras_row:
-                spec_extras = spec_extras_row.value
-                if spec_extras.get('instrument', '') == 'en06':
-                    spec_extras['site'] = '(OGG 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
-                elif spec_extras.get('instrument', '') == 'en12':
-                    spec_extras['site'] = '(COJ 2m)'
-                    spec_extras['instrument'] += ' (FLOYDS)'
+def _spectrum_for_user(request, pk, spectrum_id):
+    target = _target_for_user(request, pk)
+    spectrum = get_objects_for_user(
+        request.user, 'tom_dataproducts.view_reduceddatum',
+        klass=ReducedDatum.objects.filter(id=spectrum_id, target=target, data_type='spectroscopy')).first()
+    if spectrum is None:
+        raise Http404('Spectrum not found or not visible to this user')
+    return target, spectrum
 
-                content_type_id = ContentType.objects.get(model='reduceddatum').id
-                comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-                comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-                spec_extras['comments'] = comments
-                spec_extras['comments_list'] = comment_list
-            
-            # Calculate min/max flux
-            datum = spectrum.value
-            flux = []
-            if datum.get('photon_flux'):
-                flux = datum.get('photon_flux')
-            elif datum.get('flux'):
-                flux = datum.get('flux')
-            else:
-                for key, value in datum.items():
-                    flux.append(float(value['flux']))
-            
-            max_flux = max(flux) if flux else 0
-            min_flux = min(flux) if flux else 0
-            
-            entry = {
-                'dash_context': {
-                    'spectrum_id': {'value': spectrum.id},
-                    'target_redshift': {'value': z},
-                    'min-flux': {'value': min_flux},
-                    'max-flux': {'value': max_flux}
-                },
-                'time': str(spectrum.timestamp).split('+')[0],
-                'spec_extras': spec_extras,
-                'spectrum': spectrum
-            }
-            
-            html = render_to_string(
-                template_name='custom_code/single_spectrum.html',
-                context={'entry': entry, 'target': target},
-                request=request
-            )
-            
-            return JsonResponse({'html': html}, safe=False)
-        except Exception as e:
-            logger.error(f"Error loading spectrum {spectrum_id}: {e}")
-            return JsonResponse({'html': f'<div>Error loading spectrum: {e}</div>'}, safe=False)
-    
-    return JsonResponse({'html': '<div>Error: Missing parameters</div>'}, safe=False)
+
+def load_single_spectrum_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    entry = custom_code_tags.build_spectrum_entry(target, spectrum, user=request.user)
+    return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
+
+
+def load_spectrum_interactive_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    entry = custom_code_tags.build_spectrum_entry(target, spectrum, user=request.user, include_plot=False)
+    return render(request, 'custom_code/partials/target/spectrum_interactive.html',
+                  {'entry': entry, 'target': target})
 
 
 def fit_lightcurve_view(request):
@@ -1972,19 +1681,8 @@ def download_photometry_view(request, targetid):
 
 
 def get_target_standards_view(request):
-
-    pipeline_id = request.GET.get('pipeline_id', '')
-
-    standard_info = get_standards_from_snex1(pipeline_id)
-    
-    html = render_to_string(
-        template_name='custom_code/partials/get_target_standards.html',
-        context={'standards': standard_info}
-    )
-
-    data_dict = {"html_from_view": html}
-
-    return JsonResponse(data=data_dict, safe=False)
+    standard_info = get_standards_from_snex1(request.GET.get('pipeline_id', ''))
+    return render(request, 'custom_code/partials/target/get_target_standards.html', {'standards': standard_info})
 
 
 class TargetFilterForm(forms.Form):

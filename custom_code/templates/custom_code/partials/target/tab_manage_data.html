@@ -1,0 +1,5 @@
+{% load custom_code_tags %}
+{% if user.is_authenticated %}
+{% custom_upload_dataproduct target %}
+{% endif %}
+{% snex_dataproduct_list target %}
