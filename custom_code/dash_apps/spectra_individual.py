@@ -508,9 +508,6 @@ def display_output(selected_rows,
                 )
                 graph_data['data'].append(scatter_obj)
 
-            # The single-spectrum path pins the axes to the raw flux/wavelength scale.
-            # Comparison traces are median-normalized and redshift-shifted, so those
-            # pinned ranges no longer apply and must be released.
             for axis in ('xaxis', 'yaxis'):
                 axis_layout = graph_data['layout'].setdefault(axis, {})
                 axis_layout.pop('range', None)
@@ -609,8 +606,6 @@ def display_output(selected_rows,
         y = []
         
         if compare_target:
-            # Comparison traces are median-normalized, so the raw min/max flux
-            # passed in as initial arguments must not seed the range here.
             actual_min_flux, actual_max_flux = calculate_flux_range(graph_data)
         for lambduh in lambda_rest:
 

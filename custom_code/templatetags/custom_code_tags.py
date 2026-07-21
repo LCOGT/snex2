@@ -1476,10 +1476,6 @@ def extract_spectrum_arrays(spectrum):
 
 
 def build_spectrum_plot(spectrum, bin_factor=5):
-    """
-    Server-rendered static preview of a single spectrum. Shares the page's
-    plotly.js rather than instantiating a Dash app per spectrum.
-    """
     wavelength, flux = extract_spectrum_arrays(spectrum)
     if not wavelength or not flux:
         return ''
