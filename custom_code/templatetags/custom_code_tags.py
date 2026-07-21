@@ -1687,14 +1687,6 @@ def past_observing_runs(targetlist):
 
 
 @register.filter
-def interesting_targets(targetlist):
-    for obj in targetlist:
-        if obj.name == 'Interesting Targets':
-            return obj
-    return []
-
-
-@register.filter
 def is_interesting(target):
     interesting_list = TargetList.objects.filter(name='Interesting Targets').first()
     if not interesting_list:

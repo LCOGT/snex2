@@ -609,8 +609,9 @@ def display_output(selected_rows,
         y = []
         
         if compare_target:
-            actual_max_flux = max([max(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
-            actual_min_flux = min([min(d['y']) for d in graph_data['data'] if d['name'] not in elements.keys()])
+            # Comparison traces are median-normalized, so the raw min/max flux
+            # passed in as initial arguments must not seed the range here.
+            actual_min_flux, actual_max_flux = calculate_flux_range(graph_data)
         for lambduh in lambda_rest:
 
             lambda_observed = lambduh*((1+z)-v_over_c)
