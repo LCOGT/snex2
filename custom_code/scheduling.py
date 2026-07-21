@@ -174,6 +174,10 @@ def _continue_sequence(obs_group, data):
     for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
         if key in data.keys() and key in obs.parameters.keys():
             if data[key] != obs.parameters[key]:
+                if key == 'proposal' and any(
+                        rollover['old_id'] == data[key] and rollover['new_id'] == obs.parameters[key]
+                        for rollover in getattr(settings, 'PROPOSAL_ROLLOVERS', [])):
+                    continue
                 return {'failure': f'Sequence parameter {key} for form: {data[key]} and observation record: {obs.parameters[key]} were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
 
     obs.parameters['reminder'] = data['reminder']
