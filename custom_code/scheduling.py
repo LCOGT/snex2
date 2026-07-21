@@ -14,6 +14,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+SEQUENCE_FILTERS = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']
+SEQUENCE_PARAMETERS = ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal'] + \
+    SEQUENCE_FILTERS + ['exposure_time']
+
 def refresh_group_statuses(obs_group):
     non_terminal = obs_group.observation_records.filter(status__in=['PENDING', ''])
     first = non_terminal.first()
@@ -169,7 +173,7 @@ def _continue_sequence(obs_group, data):
 
     reference = obs or obs_group.observation_records.order_by('-created').first()
     if reference:
-        for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
+        for key in SEQUENCE_PARAMETERS:
             if key in data.keys() and key in reference.parameters.keys():
                 if data[key] != reference.parameters[key]:
                     if key == 'proposal' and any(
@@ -246,9 +250,7 @@ def _modify_sequence(obs_group, user, data):
     new_params['delay_start'] = False
     new_params['delay_amount'] = 0
     
-    # Update filters
-    filters = ['U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
-    for f in filters:
+    for f in SEQUENCE_FILTERS + ['exposure_time']:
         if f in data and data[f]:
             new_params[f] = data[f]
 

@@ -1491,22 +1491,20 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
 
     spec_extras_row = ReducedDatumExtra.objects.filter(
         data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
-    spec_extras = {}
-    if spec_extras_row:
-        spec_extras = spec_extras_row.value or {}
-        if spec_extras.get('instrument', '') == 'en06':
-            spec_extras['site'] = '(OGG 2m)'
-            spec_extras['instrument'] += ' (FLOYDS)'
-        elif spec_extras.get('instrument', '') == 'en12':
-            spec_extras['site'] = '(COJ 2m)'
-            spec_extras['instrument'] += ' (FLOYDS)'
+    spec_extras = dict(spec_extras_row.value or {}) if spec_extras_row else {}
+    if spec_extras.get('instrument', '') == 'en06':
+        spec_extras['site'] = '(OGG 2m)'
+        spec_extras['instrument'] += ' (FLOYDS)'
+    elif spec_extras.get('instrument', '') == 'en12':
+        spec_extras['site'] = '(COJ 2m)'
+        spec_extras['instrument'] += ' (FLOYDS)'
 
-        content_type = ContentType.objects.get_for_model(ReducedDatum)
-        comments = Comment.objects.filter(
-            object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
-        spec_extras['comments'] = comments
-        spec_extras['comments_list'] = [
-            '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+    content_type = ContentType.objects.get_for_model(ReducedDatum)
+    comments = Comment.objects.filter(
+        object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
+    spec_extras['comments'] = comments
+    spec_extras['comments_list'] = [
+        '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
 
     return {
         'dash_context': {
