@@ -296,6 +296,9 @@ LOGGING = {
         '': {
             'handlers': ['console'],
             'level': 'INFO'
+        },
+        'tom_observations.facilities.ocs': {
+            'level': 'ERROR'
         }
     }
 }

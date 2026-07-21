@@ -18,9 +18,19 @@ from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
 import logging
 
+from tom_observations.facilities import ocs
+
 from custom_code.utils import get_target_permission_groups
 
 logger = logging.getLogger(__name__)
+
+_make_request = ocs.make_request
+
+def _make_request_with_timeout(*args, **kwargs):
+    kwargs.setdefault('timeout', 30)
+    return _make_request(*args, **kwargs)
+
+ocs.make_request = _make_request_with_timeout
 
 
 def _default_permission_groups(target_id):

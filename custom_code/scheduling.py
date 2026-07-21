@@ -31,8 +31,12 @@ def refresh_group_statuses(obs_group):
             logger.error(f'Failed to update status for observation {record.id}: {e}', exc_info=True)
 
 def get_proposal_choices(facility, observation_type, current_proposal=None):
-    facility_class = get_service_class(facility)()
-    choices = list(facility_class.get_form(observation_type).proposal_choices(facility_class))
+    try:
+        facility_class = get_service_class(facility)()
+        choices = list(facility_class.get_form(observation_type).proposal_choices(facility_class))
+    except Exception as e:
+        logger.error(f'Failed to fetch proposal choices from {facility}: {e}', exc_info=True)
+        choices = []
 
     if current_proposal and current_proposal not in dict(choices):
         choices = [(current_proposal, current_proposal)] + choices
@@ -217,11 +221,7 @@ def _modify_sequence(obs_group, user, data):
         return {'failure': 'No observations found in group'}
     
     logger.info(f'Modifying Sequence group {obs_group.id} for target {obs.target.id}')
-    
-    result = _stop_sequence(obs_group, user, data)
-    if 'failure' in result:
-        return result
-    
+
     new_params = obs.parameters.copy()
     
     new_params['comment'] = ''
@@ -254,24 +254,23 @@ def _modify_sequence(obs_group, user, data):
 
     new_params = apply_proposal_rollover(new_params)
 
-    try:
-        facility = get_service_class(obs.facility)()
-        form_class = facility.get_form(data['observation_type'])
-        form = form_class(data=new_params)
-        
-        if not form.is_valid():
-            logger.error(f"Form validation failed: {format_form_errors(form.errors)}")
-            raise Exception(f"New parameters invalid for {obs.facility}: {format_form_errors(form.errors)}")
-        
-        observation_ids = facility.submit_observation(form.observation_payload())
-        
-        if not observation_ids:
-            raise Exception("Facility did not return any observation IDs")
-            
-    except Exception as e:
-        logger.error(f'Failed to submit new observation: {e}', exc_info=True)
-        raise
-    
+    facility = get_service_class(obs.facility)()
+    form_class = facility.get_form(data['observation_type'])
+    form = form_class(data=new_params)
+
+    if not form.is_valid():
+        logger.error(f'Modify validation failed for group {obs_group.id}: {format_form_errors(form.errors)}')
+        return {'failure': f'New parameters invalid for {obs.facility}: {format_form_errors(form.errors)}'}
+
+    result = _stop_sequence(obs_group, user, data)
+    if 'failure' in result:
+        return result
+
+    observation_ids = facility.submit_observation(form.observation_payload())
+
+    if not observation_ids:
+        raise Exception("Facility did not return any observation IDs")
+
     new_obs_group = ObservationGroup.objects.create(name=data['name'])
     
     for lco_id in observation_ids:
