@@ -152,7 +152,16 @@ def cancel_observation(obs_group):
     return True
 
 def _continue_sequence(obs_group, data):
-    obs = obs_group.observation_records.filter(status='PENDING').first()
+    obs = obs_group.observation_records.filter(status__in=['PENDING', '']).order_by('-created').first()
+    if obs:
+        try:
+            facility = get_service_class(obs.facility)()
+            facility.update_observation_status(obs.observation_id)
+            obs.refresh_from_db()
+        except Exception as e:
+            logger.error(f'Failed to update status for observation {obs.id}: {e}', exc_info=True)
+        if obs.terminal:
+            obs = None
     if not obs:
         cg = obs_group.dynamiccadence_set.first()
         if not cg or not cg.active:
