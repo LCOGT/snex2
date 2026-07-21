@@ -204,7 +204,8 @@ def _continue_sequence(obs_group, data):
 
     now = timezone.now()
     reminder_date = (now + timedelta(days=data['reminder'])).isoformat()
-    for record in obs_group.observation_records.all():
+    latest = obs_group.observation_records.order_by('-id').first()
+    for record in {r.id: r for r in (obs, latest) if r}.values():
         record.parameters['reminder'] = data['reminder']
         record.parameters['reminder_date'] = reminder_date
         record.save()
