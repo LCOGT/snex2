@@ -426,8 +426,8 @@ class BaseSchedulingForm(forms.Form):
         self.helper.layout = Layout(
             'name', 'observation_id', 'target_id', 'facility',
             'observation_type', 'cadence_strategy', 'observing_parameters',
-            Row(Column('proposal', css_class='col-auto'), css_class='flex-wrap'),
             Row(*self.scheduling_fields(), css_class='align-items-start flex-wrap'),
+            Row(Column('proposal', css_class='col-auto'), css_class='flex-wrap'),
         )
 
         self.exposure_helper = FormHelper()
@@ -482,6 +482,8 @@ class PhotSchedulingForm(BaseSchedulingForm):
             self.fields[f].widget.attrs['style'] = ''
             for i, subwidget in enumerate(self.fields[f].widget.widgets):
                 subwidget.attrs['style'] = ''
+                if isinstance(subwidget, forms.HiddenInput):
+                    continue
                 subwidget.attrs['class'] = 'form-control ' + (
                     'scheduling-exposure-time' if i == 0 else 'scheduling-exposure')
 
@@ -491,7 +493,8 @@ class PhotSchedulingForm(BaseSchedulingForm):
             if 'muscat_filter' not in active_filters:
                 section_label += ', Block Number'
             filter_rows = [
-                Row(PrependedText(f, self.filter_labels.get(f, f), wrapper_class='mb-0'), css_class='scheduling-filter-row')
+                Row(PrependedText(f, self.filter_labels.get(f, f), wrapper_class='mb-0'),
+                    css_class='scheduling-filter-row' + (' scheduling-muscat-row' if f == 'muscat_filter' else ''))
                 for f in active_filters
             ]
             self.exposure_helper.layout = Layout(

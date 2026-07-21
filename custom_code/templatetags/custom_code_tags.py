@@ -939,12 +939,8 @@ def format_lco_summary(obs, group, is_active):
 
     elif obs_type == 'spectra':
         exp = params.get('exposure_time')
-        exp_count = params.get('exposure_count')
         if exp:
-            if exp_count:
-                summary.append(f"{exp}s x {exp_count}")
-            else:
-                summary.append(f"{exp}s")
+            summary.append(f"{exp}s")
 
     mode = params.get('observation_mode')
     if mode == 'TIME_CRITICAL':
