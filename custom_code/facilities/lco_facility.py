@@ -18,7 +18,17 @@ from tom_observations.widgets import FilterField
 from django.contrib.auth.models import Group
 import logging
 
+from custom_code.scheduling import get_target_permission_groups
+
 logger = logging.getLogger(__name__)
+
+
+def _default_permission_groups(target_id):
+    if target_id:
+        groups = get_target_permission_groups(target_id)
+        if groups.exists():
+            return groups
+    return Group.objects.filter(name__in=settings.DEFAULT_GROUPS)
 
 # Determine settings for this module.
 try:
@@ -139,7 +149,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         if not settings.TARGET_PERMISSIONS_ONLY:
             self.fields['groups'] = forms.ModelMultipleChoiceField(
                 Group.objects.all(),
-                initial=Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
+                initial=_default_permission_groups(self.initial.get('target_id')),
                 required=False,
                 widget=forms.CheckboxSelectMultiple,
                 label='Data granted to'
@@ -460,7 +470,7 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         if not settings.TARGET_PERMISSIONS_ONLY:
             self.fields['groups'] = forms.ModelMultipleChoiceField(
                 Group.objects.all(),
-                initial=Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
+                initial=_default_permission_groups(self.initial.get('target_id')),
                 required=False,
                 widget=forms.CheckboxSelectMultiple,
                 label='Data granted to'

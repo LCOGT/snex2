@@ -11,6 +11,7 @@ from tom_targets.models import Target, TargetName
 from tom_targets.api_views import TargetViewSet
 from custom_code.models import ReducedDatumExtra, Papers
 from custom_code.serializers import SNExTargetSerializer
+from custom_code.scheduling import sync_group_permissions_to_target
 from .processors.data_processor import run_custom_data_processor
 import json
 
@@ -214,6 +215,7 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 self.perform_create(serializer)
                 if observation_group is not None:
                     observation_group.observation_records.add(*serializer.instance)
+                sync_group_permissions_to_target(observation_group, serializer.instance, target)
             except ValidationError as ve:
                 observation_group.delete()
                 logger.error(f'Failed to create ObservationRecord due to exception {ve}')

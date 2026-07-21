@@ -1,7 +1,7 @@
 from django.core.exceptions import NON_FIELD_ERRORS
 from django.db import transaction
 from guardian.models import GroupObjectPermission
-from guardian.shortcuts import assign_perm
+from guardian.shortcuts import assign_perm, remove_perm
 from django.contrib.auth.models import Group
 from django.conf import settings
 from datetime import timedelta
@@ -11,6 +11,7 @@ from django_comments.models import Comment
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
+from tom_targets.models import Target
 
 import logging
 
@@ -25,6 +26,49 @@ def format_form_errors(errors):
             else:
                 lines.append(f'{field}: {message}')
     return '; '.join(lines)
+
+def get_target_permission_groups(target_id):
+    target_ct = ContentType.objects.get_for_model(Target)
+    target_group_ids = GroupObjectPermission.objects.filter(
+        object_pk=target_id,
+        content_type=target_ct
+    ).values_list('group_id', flat=True).distinct()
+    return Group.objects.filter(id__in=target_group_ids)
+
+def sync_group_permissions_to_target(obs_group, records, target):
+    """
+    Sets the Group-level permissions on obs_group (if given) and each record in
+    records to exactly match the target's current permission groups, so that
+    anyone who can view the target can also view/change/delete its sequences.
+    """
+    if settings.TARGET_PERMISSIONS_ONLY:
+        return
+
+    target_groups = set(get_target_permission_groups(target.id))
+
+    objects = []
+    if obs_group is not None:
+        objects.append((obs_group, ContentType.objects.get_for_model(ObservationGroup), 'observationgroup'))
+    record_ct = ContentType.objects.get_for_model(ObservationRecord)
+    for record in records:
+        objects.append((record, record_ct, 'observationrecord'))
+
+    for obj, content_type, codename_model in objects:
+        current_group_ids = set(GroupObjectPermission.objects.filter(
+            object_pk=obj.id,
+            content_type=content_type
+        ).values_list('group_id', flat=True).distinct())
+        target_group_ids = set(g.id for g in target_groups)
+
+        for group in Group.objects.filter(id__in=current_group_ids - target_group_ids):
+            remove_perm(f'tom_observations.view_{codename_model}', group, obj)
+            remove_perm(f'tom_observations.change_{codename_model}', group, obj)
+            remove_perm(f'tom_observations.delete_{codename_model}', group, obj)
+
+        for group in target_groups:
+            assign_perm(f'tom_observations.view_{codename_model}', group, obj)
+            assign_perm(f'tom_observations.change_{codename_model}', group, obj)
+            assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
 def get_proposal_choices(facility, observation_type, current_proposal=None):
     facility_class = get_service_class(facility)()
@@ -294,25 +338,10 @@ def _modify_sequence(obs_group, user, data):
         active=True
     )
     
-    _sync_permissions(obs_group, new_obs_group)
-    logger.info(f'Permissions synced from old group {obs_group.id} to new group {new_obs_group.id}')
-    
-    return {'success': 'Modified'}
-
-def _sync_permissions(old_group, new_group):
     try:
-        group_ids = GroupObjectPermission.objects.filter(
-            object_pk=old_group.id,
-            content_type=ContentType.objects.get_for_model(ObservationGroup)
-        ).values_list('group_id', flat=True).distinct()
-        groups = Group.objects.filter(id__in=group_ids)
-        for group in groups:
-            assign_perm('tom_observations.view_observationgroup', group, new_group)
-            assign_perm('tom_observations.change_observationgroup', group, new_group)
-            assign_perm('tom_observations.delete_observationgroup', group, new_group)
-            for record in new_group.observation_records.all():
-                assign_perm('tom_observations.view_observationrecord', group, record)
-                assign_perm('tom_observations.change_observationrecord', group, record)
-                assign_perm('tom_observations.delete_observationrecord', group, record)
+        sync_group_permissions_to_target(new_obs_group, new_obs_group.observation_records.all(), obs.target)
+        logger.info(f'Permissions synced to target for new group {new_obs_group.id}')
     except Exception as e:
         logger.error(f'Failed to sync permissions: {e}', exc_info=True)
+
+    return {'success': 'Modified'}

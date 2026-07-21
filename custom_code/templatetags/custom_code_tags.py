@@ -12,21 +12,20 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.core.paginator import Paginator
 
-from tom_targets.models import Target, TargetList, BaseTarget
+from tom_targets.models import Target, TargetList
 from tom_observations import utils, facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
-from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
-from tom_observations.facility import get_service_class
+from tom_observations.models import ObservationRecord, ObservationGroup
 from tom_common.hooks import run_hook
 
-from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
+from astroplan import Observer, FixedTarget, time_grid_from_range, moon_illumination
 import datetime
 from django.utils import timezone
 import json
 from astropy.time import Time
 from astropy import units as u
-from astropy.coordinates import get_body, get_sun, SkyCoord, AltAz
+from astropy.coordinates import get_body, get_sun, SkyCoord
 import numpy as np
 import matplotlib.pyplot as plt
 
