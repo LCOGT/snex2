@@ -138,7 +138,8 @@ def airmass_plot(context):
         plot_bgcolor='white'
     )
     visibility_graph = offline.plot(
-        go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False
+        go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False,
+        include_plotlyjs=False
     )
     return {
         'target': context['object'],
@@ -299,32 +300,6 @@ def generic_lightcurve_plot(target, user):
         ) for filter_name, filter_values in photometry_data.items()]
 
     return plot_data
-
-
-@register.inclusion_tag('custom_code/lightcurve.html', takes_context=True)
-def lightcurve(context, target):
-    
-    plot_data = generic_lightcurve_plot(target, context['request'].user)         
-
-    layout = go.Layout(
-        xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
-        yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
-        margin=dict(l=30, r=10, b=100, t=40),
-        hovermode='closest',
-        plot_bgcolor='white'
-        #height=500,
-        #width=500
-    )
-    if plot_data:
-      return {
-          'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
-      }
-    else:
-        return {
-            'target': target,
-            'plot': 'No photometry for this target yet.'
-        }
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
@@ -1896,7 +1871,8 @@ def lightcurve_fits(target, user, filt=False, days=None):
     elif filt and filt not in photometry_data.keys(): # No photometry for this filter
         return {
             'target': target,
-            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False),
+            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                                 show_link=False, include_plotlyjs=False),
             'max': '',
             'mag': '',
             'filt': ''
@@ -1963,7 +1939,8 @@ def lightcurve_fits(target, user, filt=False, days=None):
 
     return {
         'target': target,
-        'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False),
+        'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                             show_link=False, include_plotlyjs=False),
         'max': maximum,
         'mag': max_mag,
         'filt': filt
@@ -2025,7 +2002,8 @@ def lightcurve_with_extras(target, user):
     if plot_data:
       return {
           'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                               show_link=False, include_plotlyjs=False)
       }
     else:
         return {
@@ -2186,7 +2164,8 @@ def broker_target_lightcurve(target):
     if plot_data:
       return {
           'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                               show_link=False, include_plotlyjs=False)
       }
     else:
         return {
