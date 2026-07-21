@@ -1367,6 +1367,8 @@ def get_scheduling_row_context(observation, viewer_user_id):
         return None
 
     first_obs = obsgroup.observation_records.order_by('created').first()
+    if not first_obs:
+        return None
     start = _format_scheduling_timestamp(first_obs.created) or 'Unknown'
     username = first_obs.parameters.get('start_user', 'snex_secure')
     user = User.objects.filter(username=username).first()

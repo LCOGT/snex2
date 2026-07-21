@@ -943,13 +943,7 @@ class ObservationListExtrasView(ListView):
         proposals = self.request.GET.getlist('proposal')
 
         if val == 'ipp':
-            try:
-                obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-            except Exception as e:
-                logger.info(e)
-                obsrecordlist = []
-            obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
-            obsrecords = ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+            obsrecords = ObservationRecord.objects.filter(id__in=self._active_observation_ids_for_extras())
             if proposals:
                 obsrecords = obsrecords.filter(parameters__proposal__in=proposals)
             return obsrecords.order_by('-parameters__ipp_value')
