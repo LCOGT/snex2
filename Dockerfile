@@ -20,4 +20,5 @@ RUN /root/.local/bin/uv pip install /snex2 --no-deps --system
 
 WORKDIR /snex2
 
-RUN python manage.py collectstatic --noinput
+RUN CACHE_BACKEND=django.core.cache.backends.locmem.LocMemCache \
+    python manage.py collectstatic --noinput
