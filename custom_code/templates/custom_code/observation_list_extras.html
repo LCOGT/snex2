@@ -28,7 +28,6 @@
 {% endblock %}
 {% block content %}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="https://unpkg.com/htmx.org@1.9.12"></script>
 <nav class="navbar navbar-expand-md fixed-top fixed-top-2">
   <div class="collapse navbar-collapse" id="targetInfo">
     <h3>Active Sequences</h3>
@@ -59,7 +58,7 @@
             <a class="btn btn-primary" href="{% url 'observation-list' key='urgency' %}">View by Most Overdue</a>
           </div>
           <div class="col-auto">
-            {% include 'custom_code/partials/proposal_filter_dropdown.html' %}
+            {% include 'custom_code/partials/scheduling/proposal_filter_dropdown.html' %}
           </div>
 	  <div class="col-auto">
 	    <a class="btn btn-primary" href="{% url 'scheduling' %}">Return to Scheduling</a>

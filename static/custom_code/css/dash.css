@@ -19,8 +19,8 @@ h2 {
 
 body {
   font-family: 'Open Sans', sans-serif;
-  padding-top: 1rem;
-  width: 90%;
+  margin: 0;
+  width: 100%;
 }
 
 nav a {

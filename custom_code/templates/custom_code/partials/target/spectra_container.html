@@ -1,4 +1,4 @@
-{% load bootstrap4 custom_code_tags %}
+{% load bootstrap4 %}
 
 <form method="POST" action="{% url 'tom_dataproducts:share_all' tg_pk=target.id %}" enctype="multipart/form-data" id="spectroscopy-data-share-form">
   {% csrf_token %}
@@ -8,7 +8,10 @@
   <table class="table">
   <tbody id="spectra-tbody">
   {% for spectrum_meta in spectra_metadata %}
-    <tr id="spectrum-row-{{ spectrum_meta.spectrum_id }}" class="spectrum-placeholder">
+    <tr id="spectrum-row-{{ spectrum_meta.spectrum_id }}"
+      hx-get="{% url 'load-single-spectrum' target.id spectrum_meta.spectrum_id %}"
+      hx-trigger="intersect once"
+      hx-swap="outerHTML">
       <td colspan="2" style="text-align: center; padding: 30px; color: #999;">
         <div class="spinner-border spinner-border-sm" role="status" style="margin-right: 10px;">
           <span class="sr-only">Loading...</span>
@@ -16,6 +19,8 @@
         Loading spectrum for {{ spectrum_meta.time }} ({{ spectrum_meta.telescope }} - {{ spectrum_meta.instrument }})...
       </td>
     </tr>
+  {% empty %}
+    <tr><td style="padding: 30px; color: #999;">No spectra for this target yet.</td></tr>
   {% endfor %}
   </tbody>
   </table>
@@ -59,82 +64,21 @@
 </form>
 
 <script>
-// Progressive loading of individual spectra
-$(document).ready(function() {
-  var spectraToLoad = [
-    {% for spectrum_meta in spectra_metadata %}
-    {
-      spectrum_id: {{ spectrum_meta.spectrum_id }},
-      target_id: {{ target.id }}
-    }{% if not forloop.last %},{% endif %}
-    {% endfor %}
-  ];
-  
-  // Track which spectra have been loaded to prevent duplicates
-  var loadedSpectra = new Set();
-  
-  function loadSpectrum(index) {
-    if (index >= spectraToLoad.length) {
-      return; // All done!
-    }
-    
-    var spectrum = spectraToLoad[index];
-    
-    // Skip if already loaded
-    if (loadedSpectra.has(spectrum.spectrum_id)) {
-      console.log('Spectrum already loaded, skipping:', spectrum.spectrum_id);
-      loadSpectrum(index + 1);
-      return;
-    }
-    
-    // Check if placeholder still exists (hasn't been replaced by error recovery)
-    var $placeholder = $('#spectrum-row-' + spectrum.spectrum_id);
-    if ($placeholder.length === 0 || !$placeholder.hasClass('spectrum-placeholder')) {
-      console.log('Placeholder not found or already replaced, skipping:', spectrum.spectrum_id);
-      loadSpectrum(index + 1);
-      return;
-    }
-    
-    loadedSpectra.add(spectrum.spectrum_id);
-    
-    $.ajax({
-      url: '{% url "load-single-spectrum" %}',
-      data: {
-        'spectrum_id': spectrum.spectrum_id,
-        'target_id': spectrum.target_id
-      },
-      dataType: 'json',
-      success: function(response) {
-        // Replace the placeholder row with the actual spectrum
-        var $row = $('#spectrum-row-' + spectrum.spectrum_id);
-        if ($row.length > 0) {
-          $row.replaceWith(response.html);
-        }
-        
-        // Load the next spectrum after a short delay
-        setTimeout(function() {
-          loadSpectrum(index + 1);
-        }, 300); // 300ms delay between loads
-      },
-      error: function() {
-        // Show error but continue with next spectrum
-        var $row = $('#spectrum-row-' + spectrum.spectrum_id);
-        if ($row.length > 0) {
-          $row.html(
-            '<td colspan="2" style="text-align: center; padding: 30px; color: red;">Error loading spectrum</td>'
-          );
-        }
-        setTimeout(function() {
-          loadSpectrum(index + 1);
-        }, 300);
-      }
-    });
+function setTargetOnSpectroscopyForm(val) {
+  const spectroscopyShareForm = document.getElementById('spectroscopy-data-share-form');
+  if (val && val !== '') {
+    spectroscopyShareForm.setAttribute('target', val);
+  } else {
+    spectroscopyShareForm.removeAttribute('target');
   }
-  
-  // Start loading spectra after a short delay
-  setTimeout(function() {
-    loadSpectrum(0);
-  }, 500);
-});
+  return true;
+}
+function check_selected_spectra() {
+  const boxes = document.querySelectorAll("#spectra-tbody input[name='share-box']");
+  const submitBtn = document.getElementById('submit_selected_spectra');
+  if (!submitBtn) {
+    return;
+  }
+  submitBtn.disabled = ![...boxes].some(box => box.checked);
+}
 </script>
-

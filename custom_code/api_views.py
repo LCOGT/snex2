@@ -26,8 +26,6 @@ from tom_observations.cadence import get_cadence_strategy
 from tom_observations.models import ObservationGroup, DynamicCadence
 from rest_framework.exceptions import ValidationError
 from django.db import transaction
-from urllib.parse import urlencode
-import requests
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 
 import logging

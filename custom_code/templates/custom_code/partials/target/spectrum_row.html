@@ -1,0 +1,52 @@
+{% load bootstrap4 custom_code_tags comments %}
+
+<tr valign="top" id="spectrum-row-{{ entry.spectrum.id }}">
+  <td width=200>
+    <div class="row">
+      <input type="checkbox" class="spectrum-row" id="share-box-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
+      <label class="form-check-label" for="share-box-{{ entry.spectrum.id }}">Share</label>
+    </div>
+        <div class="row"><b>{{ entry.time }}</b></div>
+    <div class="row">Telescope: {{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</div>
+    <div class="row">Instrument: {{ entry.spec_extras.instrument }}</div>
+    <div class="row">Exposure Time: {{ entry.spec_extras.exptime|floatformat:0 }}s</div>
+    <div class="row">Slit: {{ entry.spec_extras.slit }}"</div>
+    <div class="row">Airmass: {{ entry.spec_extras.airmass|floatformat:2 }}</div>
+    <div class="row">Reduced by: {{ entry.spec_extras.reducer }}</div>
+    {% for comment in entry.spec_extras.comments %}
+    {% include 'custom_code/partials/target/comment_row.html' %}
+    {% endfor %}
+    <div class="row">
+      <input id="comment-{{ entry.spectrum.id }}" type="text" name="comment" title="Press Enter to submit" placeholder="Add a comment"
+        hx-get="{% url 'save-comment' %}"
+        hx-vals='{"object_id": {{ entry.spectrum.id }}, "tablename": "spec"}'
+        hx-trigger="keyup[key=='Enter'&&target.value!='']"
+        hx-target="closest .row"
+        hx-swap="beforebegin"
+        hx-on::after-request="if(event.detail.successful) this.value=''">
+    </div>
+    <div class="row mt-2">
+      <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title=TNS class="btn  btn-info">Submit TNS Classification</a>
+    </div>
+  </td>
+  <td width=1000>
+    <div id="spectrum-plot-{{ entry.spectrum.id }}">
+      {% if entry.static_plot %}
+        {{ entry.static_plot|safe }}
+        <div class="text-right">
+          <button type="button" class="btn btn-sm btn-outline-info"
+            hx-get="{% url 'load-spectrum-interactive' entry.spectrum.target.id entry.spectrum.id %}"
+            hx-target="#spectrum-plot-{{ entry.spectrum.id }}"
+            hx-swap="innerHTML"
+            hx-trigger="click once"
+            hx-disabled-elt="this">Interactive tools
+            <span class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+          </button>
+        </div>
+      {% else %}
+        <div style="padding: 30px; color: #999;">No plottable data for this spectrum.</div>
+      {% endif %}
+    </div>
+  </td>
+</tr>
+

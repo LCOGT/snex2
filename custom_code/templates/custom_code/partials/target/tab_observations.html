@@ -1,0 +1,12 @@
+{% load observation_extras custom_code_tags %}
+<h4>Schedule Observations</h4>
+{% observing_buttons target %}
+<hr/>
+<button class="btn" data-toggle="collapse" data-target="#previous-obs" style="background-color: white; color: black; font-size: 16px; border: none; outline: none; box-shadow: none;">Show Previous Observations</button>
+<div class="collapse px-3" id="previous-obs" style="color: gray;">
+  {% observation_summary target is_active=False %}
+</div>
+<div class="px-3" id="ongoing-obs">
+  {% observation_summary target is_active=True %}
+</div>
+{% submit_lco_observations target %}

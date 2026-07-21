@@ -111,11 +111,6 @@ def get_target_permission_groups(target_id):
     return best
 
 def sync_group_permissions_to_target(obs_group, records, target):
-    """
-    Sets the Group-level permissions on obs_group (if given) and each record in
-    records to exactly match the target's current permission groups, so that
-    anyone who can view the target can also view/change/delete its sequences.
-    """
     if settings.TARGET_PERMISSIONS_ONLY:
         return
 
