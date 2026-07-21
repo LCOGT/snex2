@@ -13,7 +13,7 @@ from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra, Papers
 import logging
 from django.templatetags.static import static
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from astropy.time import Time
 from dash import no_update
 from guardian.shortcuts import get_objects_for_user

@@ -1466,18 +1466,17 @@ def build_spectrum_plot(spectrum, bin_factor=5):
         return ''
 
     layout = go.Layout(
-        height=300,
+        height=350,
+        margin=dict(l=60, b=30, r=60, t=10),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(type='linear', tickformat='.1e'),
+        legend=dict(x=0.85, y=1.0),
         hovermode='closest',
-        xaxis=dict(tickformat='d', title='Wavelength (angstroms)', gridcolor='#D3D3D3',
-                   showline=True, linecolor='#D3D3D3', mirror=True),
-        yaxis=dict(tickformat='.1g', title='Flux', gridcolor='#D3D3D3',
-                   showline=True, linecolor='#D3D3D3', mirror=True),
-        plot_bgcolor='white',
-        margin=dict(l=50, r=10, b=40, t=20),
-        showlegend=False,
     )
-    figure = go.Figure(data=[go.Scatter(x=binned_wavelength, y=binned_flux, line_color='black')],
-                       layout=layout)
+    figure = go.Figure(
+        data=[go.Scatter(x=binned_wavelength, y=binned_flux,
+                         name=str(spectrum.timestamp).split(' ')[0], line_color='black')],
+        layout=layout)
     return offline.plot(figure, output_type='div', show_link=False, include_plotlyjs=False)
 
 
