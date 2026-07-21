@@ -51,7 +51,6 @@ except (AttributeError, KeyError):
 
 # Module specific settings.
 PORTAL_URL = LCO_SETTINGS['portal_url']
-TERMINAL_OBSERVING_STATES = ['COMPLETED', 'CANCELED', 'WINDOW_EXPIRED']
 
 # Units of flux and wavelength for converting to Specutils Spectrum1D objects
 FLUX_CONSTANT = (1e-15 * u.erg) / (u.cm ** 2 * u.second * u.angstrom)

@@ -42,7 +42,8 @@ import logging
 import os
 
 logger = logging.getLogger(__name__)
-TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED'}
+TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED',
+                             'FAILURE_LIMIT_REACHED', 'NOT_ATTEMPTED'}
 LIGHTCURVE_CONTROLS_HEIGHT = 580
 
 register = template.Library()
