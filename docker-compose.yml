@@ -87,12 +87,21 @@ services:
         container_name: snex2-snex2-gw-listener-1
         network_mode: bridge
         links:
+            - "snex2-db:snex2-db"
             - "snex2:snex2"
         ports:
             - 8898:8080
         restart: "always"
         entrypoint: [ "bash", "-c", "python manage.py readstreams"]
         environment:
+            - DB_NAME=snex2
+            - SNEX2_DB_HOST=snex2-db
+            - SNEX2_DB_PORT=5432
+            - SNEX2_DB_USER=${SNEX2_DB_USER}
+            - SNEX2_DB_PASSWORD=${SNEX2_DB_PASSWORD}
+            - SNEX2_DB_BACKEND=postgres
+            - SNEX1_DB_USER=${SNEX1_DB_USER}
+            - SNEX1_DB_PASSWORD=${SNEX1_DB_PASSWORD}
             - SCIMMA_AUTH_USERNAME=${SCIMMA_AUTH_USERNAME}
             - SCIMMA_AUTH_PASSWORD=${SCIMMA_AUTH_PASSWORD}
             - GCN_CLASSIC_CLIENT_ID=${GCN_CLASSIC_CLIENT_ID}
