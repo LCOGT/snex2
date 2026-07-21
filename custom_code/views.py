@@ -1108,7 +1108,6 @@ def load_dash_lightcurve_view(request, pk):
     return render(request, 'custom_code/partials/target/overview_lightcurve.html', {
         'target': target,
         'object': target,
-        'width': int(request.GET.get('width', 600)),
         'height': int(request.GET.get('height', 400)),
     })
 

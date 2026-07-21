@@ -43,6 +43,7 @@ import os
 
 logger = logging.getLogger(__name__)
 TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED'}
+LIGHTCURVE_CONTROLS_HEIGHT = 580
 
 register = template.Library()
 
@@ -670,7 +671,7 @@ def submit_lco_observations(context, target):
             'soar_form': soar_form}
 
 @register.inclusion_tag('custom_code/dash_lightcurve.html', takes_context=True)
-def dash_lightcurve(context, target, width, height):
+def dash_lightcurve(context, target, height):
     request = context['request']
     # Get initial choices and values for some dash elements
     telescopes = ['LCO']
@@ -745,7 +746,6 @@ def dash_lightcurve(context, target, width, height):
 
     dash_context = {'target_id': {'value': target.id},
                     'user_id': {'value': user.id},
-                    'plot-width': {'value': width},
                     'plot-height': {'value': height},
                     'telescopes-checklist': {'options': [{'label': k, 'value': k} for k in telescopes]},
                     'reducer-group-checklist': {'options': reducer_group_options,
@@ -770,7 +770,13 @@ def dash_lightcurve(context, target, width, height):
         dash_context['subtracted-radio'] = {'value': 'Unsubtracted'}
 
 
+    try:
+        frame_height = f'{int(height) + LIGHTCURVE_CONTROLS_HEIGHT}px'
+    except (TypeError, ValueError):
+        frame_height = f'{400 + LIGHTCURVE_CONTROLS_HEIGHT}px'
+
     return {'dash_context': dash_context,
+            'frame_height': frame_height,
             'request': request}
 
 

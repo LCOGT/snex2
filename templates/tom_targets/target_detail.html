@@ -159,7 +159,7 @@
         <div class="row">
           <div class="col-md-6">
             <h4>Photometry</h4>
-            <div hx-get="{% url 'load-dash-lightcurve' target.id %}?width=600&height=400" hx-trigger="load" hx-swap="outerHTML">
+            <div hx-get="{% url 'load-dash-lightcurve' target.id %}?height=400" hx-trigger="load" hx-swap="outerHTML">
               <div class="tab-placeholder">Loading photometry plot...</div>
             </div>
           </div>

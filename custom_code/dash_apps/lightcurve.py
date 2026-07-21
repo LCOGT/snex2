@@ -27,7 +27,9 @@ reducer_groups = []
 papers_used_in = []
 app.layout = html.Div([
     dcc.Graph(
-        id='lightcurve-plot'
+        id='lightcurve-plot',
+        style={'width': '100%'},
+        config={'responsive': True}
     ),
     dcc.Input(
         id='target_id',
@@ -38,11 +40,6 @@ app.layout = html.Div([
         id='user_id',
         type='hidden',
         value=0
-    ),
-    dcc.Input(
-        id='plot-width',
-        type='hidden',
-        value=600
     ),
     dcc.Input(
         id='plot-height',
@@ -271,9 +268,8 @@ def update_template_value(selected_subtraction):
          Input('reducer-group-checklist', 'value'),
          Input('target_id', 'value'),
          Input('user_id', 'value'),
-         Input('plot-width', 'value'),
          Input('plot-height', 'value')])
-def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, target_id, user_id, width, height):
+def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, target_id, user_id, height):
     def get_color(filter_name, filter_translate):
         colors = {'U': 'rgb(59,0,113)',
             'u': 'rgb(59,0,113)',
@@ -454,9 +450,9 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         xaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         yaxis2=yaxis2,
-        margin=dict(l=40, r=50, b=40, t=40),
-        legend=dict(x=1.075, y=1.0, bgcolor='rgba(0,0,0,0)'),
-        width=width,
+        margin=dict(l=40, r=120, b=40, t=40),
+        legend=dict(x=1.02, xanchor='left', y=1.0, bgcolor='rgba(0,0,0,0)'),
+        autosize=True,
         height=height,
         hovermode='closest',
         plot_bgcolor='white',
