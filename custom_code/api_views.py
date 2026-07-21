@@ -11,7 +11,7 @@ from tom_targets.models import Target, TargetName
 from tom_targets.api_views import TargetViewSet
 from custom_code.models import ReducedDatumExtra, Papers
 from custom_code.serializers import SNExTargetSerializer
-from custom_code.utils import sync_group_permissions_to_target
+from custom_code.utils import format_form_errors, sync_group_permissions_to_target
 from .processors.data_processor import run_custom_data_processor
 import json
 
@@ -155,7 +155,7 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
             if observation_form.is_valid():
                 observation_ids = facility.submit_observation(observation_form.observation_payload())
             else:
-                logger.warning(f'Unable to submit observation due to errors: {observation_form.errors}')
+                logger.warning(f'Unable to submit observation due to errors: {format_form_errors(observation_form.errors)}')
                 raise ValidationError(observation_form.errors)
 
             # Normally related objects would be created in the serializer--however, because the ObservationRecordSerializer
