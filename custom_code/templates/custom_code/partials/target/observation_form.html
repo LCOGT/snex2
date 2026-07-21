@@ -1,4 +1,5 @@
 {% load crispy_forms_tags %}
 <div id="obs-form-{{ form_prefix }}">
+  {% if validation_message %}<div class="alert alert-info">{{ validation_message }}</div>{% endif %}
   {% crispy form %}
 </div>

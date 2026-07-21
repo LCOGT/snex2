@@ -986,11 +986,24 @@ class CustomObservationCreateView(ObservationCreateView):
             )
         return form
 
+    def _render_observation_form(self, form, validation_message=None):
+        source = self.request.POST if self.request.method == 'POST' else self.request.GET
+        bind_observation_form_htmx(form, self.kwargs['facility'], source.get('observation_type'))
+        if not settings.TARGET_PERMISSIONS_ONLY and 'groups' in form.fields:
+            form.fields['groups'].queryset = Group.objects.all()
+        return render(self.request, 'custom_code/partials/target/observation_form.html',
+                      {'form': form, 'form_prefix': self._form_prefix(),
+                       'validation_message': validation_message})
+
     def form_invalid(self, form):
         if getattr(self.request, 'htmx', False):
-            return render(self.request, 'custom_code/partials/target/observation_form.html',
-                          {'form': form, 'form_prefix': self._form_prefix()})
+            return self._render_observation_form(form)
         return super().form_invalid(form)
+
+    def form_validation_valid(self, form):
+        if getattr(self.request, 'htmx', False):
+            return self._render_observation_form(form, form.get_validation_message())
+        return super().form_validation_valid(form)
 
     def form_valid(self, form):
         form.cleaned_data['start_user'] = self.request.user.username

@@ -275,6 +275,19 @@ $(function () {
     });
   });
 
+  $(document).on("click", "[id^='obs-form-'] [type='submit']", function() {
+    if (!this.form || !this.name) {
+      return;
+    }
+    $(this.form).find("input.htmx-submitter").remove();
+    $(this.form).append($("<input>", {
+      type: "hidden",
+      "class": "htmx-submitter",
+      name: this.name,
+      value: this.value || ""
+    }));
+  });
+
   $(document).on("htmx:afterSettle", function(evt) {
     if (evt.target && evt.target.id && evt.target.id.indexOf("obs-form-") === 0) {
       initObsForms(false);
