@@ -671,7 +671,11 @@ def scheduling_action_view(request, observation_id, action):
         error = 'Invalid form: ' + format_form_errors(form.errors)
     else:
         form.cleaned_data['comment'] = request.POST.get('comment', '')
-        result = change_obs_from_scheduling(action=action, obs_group=obs_group, user=request.user, data=form.cleaned_data)
+        try:
+            result = change_obs_from_scheduling(action=action, obs_group=obs_group, user=request.user, data=form.cleaned_data)
+        except Exception as e:
+            logger.error(f'Scheduling action {action} failed for group {obs_group.id}: {e}', exc_info=True)
+            result = {'failure': str(e)}
         if 'failure' in result:
             error = result['failure']
         else:

@@ -14,6 +14,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def refresh_group_statuses(obs_group):
+    non_terminal = obs_group.observation_records.filter(status__in=['PENDING', ''])
+    first = non_terminal.first()
+    if not first:
+        return
+    try:
+        facility = get_service_class(first.facility)()
+    except Exception as e:
+        logger.error(f'Failed to get facility service for {first.facility}: {e}', exc_info=True)
+        return
+    for record in non_terminal:
+        try:
+            facility.update_observation_status(record.observation_id)
+        except Exception as e:
+            logger.error(f'Failed to update status for observation {record.id}: {e}', exc_info=True)
+
 def get_proposal_choices(facility, observation_type, current_proposal=None):
     facility_class = get_service_class(facility)()
     choices = list(facility_class.get_form(observation_type).proposal_choices(facility_class))
@@ -98,15 +114,7 @@ def cancel_observation(obs_group):
         logger.error(f'Failed to get facility service for {first_obs.facility}: {e}', exc_info=True)
         return False
     
-    non_terminal_statuses = ['PENDING', '']
-    records_to_update = obs_group.observation_records.filter(status__in=non_terminal_statuses)
-    
-    for record in records_to_update:
-        try:
-            facility.update_observation_status(record.observation_id)
-            record.refresh_from_db()
-        except Exception as e:
-            logger.error(f'Failed to update status for observation {record.id}: {e}', exc_info=True)
+    refresh_group_statuses(obs_group)
 
     pending_observations = obs_group.observation_records.filter(status='PENDING')
     logger.info(f'Found {pending_observations.count()} PENDING observation(s) in group {obs_group.id}')
@@ -152,16 +160,8 @@ def cancel_observation(obs_group):
     return True
 
 def _continue_sequence(obs_group, data):
+    refresh_group_statuses(obs_group)
     obs = obs_group.observation_records.filter(status__in=['PENDING', '']).order_by('-created').first()
-    if obs:
-        try:
-            facility = get_service_class(obs.facility)()
-            facility.update_observation_status(obs.observation_id)
-            obs.refresh_from_db()
-        except Exception as e:
-            logger.error(f'Failed to update status for observation {obs.id}: {e}', exc_info=True)
-        if obs.terminal:
-            obs = None
 
     reference = obs or obs_group.observation_records.order_by('-created').first()
     if reference:
