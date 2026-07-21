@@ -202,11 +202,12 @@ def _continue_sequence(obs_group, data):
 
     logger.info(f'Continuing Sequence group {obs_group.id} as-is')
 
-    obs.parameters['reminder'] = data['reminder']
     now = timezone.now()
     reminder_date = (now + timedelta(days=data['reminder'])).isoformat()
-    obs.parameters['reminder_date'] = reminder_date
-    obs.save()
+    for record in obs_group.observation_records.all():
+        record.parameters['reminder'] = data['reminder']
+        record.parameters['reminder_date'] = reminder_date
+        record.save()
 
     try:
         cad = DynamicCadence.objects.get(observation_group=obs_group)

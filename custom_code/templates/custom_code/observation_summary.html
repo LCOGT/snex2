@@ -9,7 +9,7 @@
     <a class="btn btn-outline-primary btn-sm" href="{% url 'custom_code:observationgroup-detail' parameter.group %}">Track This Sequence</a>
   </div>
   {% if is_active %}
-  <div class="col-auto ml-5">
+  <div class="col-auto" style="margin-left: 14rem;">
     <button type="button" id="cancel-btn-{{ parameter.observation }}" class="btn btn-outline-danger btn-sm" onclick="stopSequence({{ parameter.observation }})">Stop Sequence</button>
   </div>
   {% endif %}
