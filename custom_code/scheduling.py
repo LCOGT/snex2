@@ -11,7 +11,6 @@ from django_comments.models import Comment
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
 from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
-from tom_targets.models import Target
 
 import logging
 
@@ -27,13 +26,22 @@ def format_form_errors(errors):
                 lines.append(f'{field}: {message}')
     return '; '.join(lines)
 
+TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target'))
+
 def get_target_permission_groups(target_id):
-    target_ct = ContentType.objects.get_for_model(Target)
-    target_group_ids = GroupObjectPermission.objects.filter(
-        object_pk=target_id,
-        content_type=target_ct
-    ).values_list('group_id', flat=True).distinct()
-    return Group.objects.filter(id__in=target_group_ids)
+    best = Group.objects.none()
+    for app_label, model in TARGET_CONTENT_TYPES:
+        content_type = ContentType.objects.filter(app_label=app_label, model=model).first()
+        if not content_type:
+            continue
+        group_ids = GroupObjectPermission.objects.filter(
+            object_pk=str(target_id),
+            content_type=content_type
+        ).values_list('group_id', flat=True).distinct()
+        groups = Group.objects.filter(id__in=group_ids)
+        if groups.count() > best.count():
+            best = groups
+    return best
 
 def sync_group_permissions_to_target(obs_group, records, target):
     """
@@ -55,7 +63,7 @@ def sync_group_permissions_to_target(obs_group, records, target):
 
     for obj, content_type, codename_model in objects:
         current_group_ids = set(GroupObjectPermission.objects.filter(
-            object_pk=obj.id,
+            object_pk=str(obj.id),
             content_type=content_type
         ).values_list('group_id', flat=True).distinct())
         target_group_ids = set(g.id for g in target_groups)

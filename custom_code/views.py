@@ -46,7 +46,6 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
-from guardian.models import GroupObjectPermission
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct, ReducedDatum
@@ -66,7 +65,7 @@ from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unr
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
-from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, format_form_errors, get_proposal_choices, save_comments
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, format_form_errors, get_proposal_choices, get_target_permission_groups, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
 from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create
@@ -1034,12 +1033,7 @@ class CustomObservationCreateView(ObservationCreateView):
         if not settings.TARGET_PERMISSIONS_ONLY:
             groups = form.cleaned_data.get('groups')
             if not groups:
-                target_ct = ContentType.objects.get_for_model(Target)
-                target_group_ids = GroupObjectPermission.objects.filter(
-                    object_pk=target.id,
-                    content_type=target_ct
-                ).values_list('group_id', flat=True).distinct()
-                groups = Group.objects.filter(id__in=target_group_ids)
+                groups = get_target_permission_groups(target.id)
             if groups:
                 if not new_records:
                     new_records = list(

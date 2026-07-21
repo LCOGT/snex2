@@ -215,12 +215,16 @@ class CustomObservationRecordViewSet(ObservationRecordViewSet):
                 self.perform_create(serializer)
                 if observation_group is not None:
                     observation_group.observation_records.add(*serializer.instance)
-                sync_group_permissions_to_target(observation_group, serializer.instance, target)
             except ValidationError as ve:
                 observation_group.delete()
                 logger.error(f'Failed to create ObservationRecord due to exception {ve}')
                 raise ValidationError(f'''Observation submission successful, but failed to create a corresponding
                                           ObservationRecord due to exception {ve}.''')
+
+            try:
+                sync_group_permissions_to_target(observation_group, serializer.instance, target)
+            except Exception as e:
+                logger.error(f'Failed to sync permissions to target for new observation records: {e}', exc_info=True)
                 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
