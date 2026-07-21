@@ -15,6 +15,59 @@
   .htmx-request.htmx-indicator {
       display: inline-block;
   }
+  @media (min-width: 1600px) {
+      .scheduling-split-plots {
+          order: -1;
+          flex: 0 0 auto;
+          width: auto;
+          max-width: none;
+      }
+      .scheduling-split-form {
+          flex: 1 1 0;
+          width: auto;
+          max-width: none;
+          min-width: 0;
+      }
+  }
+  .scheduling-compact {
+      max-width: 5.5rem;
+  }
+  .scheduling-proposal {
+      max-width: min(30rem, 100%);
+  }
+  .scheduling-split-form .form-group {
+      margin-bottom: 0.5rem;
+  }
+  .scheduling-exposure {
+      max-width: 5rem;
+  }
+  .scheduling-exposure-time {
+      max-width: 7rem;
+  }
+  .scheduling-exposure-spec {
+      max-width: 10rem;
+  }
+  .scheduling-exposure-col {
+      text-align: left;
+      width: 33rem;
+      max-width: 100%;
+  }
+  .scheduling-fields-col {
+      min-width: 28rem;
+  }
+  .scheduling-plots {
+      margin-left: -4px;
+      margin-right: -4px;
+  }
+  .scheduling-plots > [class*="col-"] {
+      padding-left: 4px;
+      padding-right: 4px;
+  }
+  .scheduling-actions {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.5rem;
+  }
   .scheduling-filter-row .input-group-text {
       min-width: 45px;
   }

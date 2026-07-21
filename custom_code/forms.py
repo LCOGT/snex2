@@ -408,21 +408,35 @@ class BaseSchedulingForm(forms.Form):
     reminder = forms.FloatField(min_value=0.0, label='Reminder')
     delay_start = forms.FloatField(min_value=0.0, initial=0.0, label='Delay')
 
+    compact_fields = ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'delay_start',
+                      'reminder', 'exposure_time']
+
     def __init__(self, *args, proposal_choices=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['proposal'].choices = proposal_choices or []
+        self.fields['proposal'].widget.attrs['class'] = 'scheduling-proposal'
         self.fields['cadence_frequency_days'].widget.attrs['class'] = 'cadence-input'
         self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
+        for name in self.compact_fields:
+            if name in self.fields:
+                self.fields[name].widget.attrs['class'] = (
+                    self.fields[name].widget.attrs.get('class', '') + ' scheduling-compact').strip()
         self.helper = FormHelper()
         self.helper.form_tag = False
         self.helper.layout = Layout(
             'name', 'observation_id', 'target_id', 'facility',
             'observation_type', 'cadence_strategy', 'observing_parameters',
+            Row(Column('proposal', css_class='col-auto'), css_class='flex-wrap'),
+            Row(*self.scheduling_fields(), css_class='align-items-start flex-wrap'),
         )
+
+        self.exposure_helper = FormHelper()
+        self.exposure_helper.form_tag = False
+        self.exposure_helper.disable_csrf = True
+        self.exposure_helper.layout = Layout()
 
     def scheduling_fields(self):
         return [
-            Column('proposal', css_class='col-auto'),
             Column('ipp_value', css_class='col-auto'),
             Column('max_airmass', css_class='col-auto'),
             Column(AppendedText('cadence_frequency_days', 'd'), css_class='col-auto'),
@@ -465,11 +479,13 @@ class PhotSchedulingForm(BaseSchedulingForm):
             else:
                 self.fields[f] = FilterField(label='', initial=initial_list, required=False)
 
-            self.fields[f].widget.attrs['class'] = 'form-control'
             self.fields[f].widget.attrs['style'] = ''
+            for i, subwidget in enumerate(self.fields[f].widget.widgets):
+                subwidget.attrs['style'] = ''
+                subwidget.attrs['class'] = 'form-control ' + (
+                    'scheduling-exposure-time' if i == 0 else 'scheduling-exposure')
 
         active_filters = [f for f in self.filters if f in self.fields]
-        row_fields = self.scheduling_fields()
         if active_filters:
             section_label = 'Exposure Time, Count'
             if 'muscat_filter' not in active_filters:
@@ -478,14 +494,10 @@ class PhotSchedulingForm(BaseSchedulingForm):
                 Row(PrependedText(f, self.filter_labels.get(f, f), wrapper_class='mb-0'), css_class='scheduling-filter-row')
                 for f in active_filters
             ]
-            row_fields.append(
-                Column(
-                    HTML(f'<label>{section_label}</label>'),
-                    *filter_rows,
-                    css_class='col'
-                )
+            self.exposure_helper.layout = Layout(
+                HTML(f'<label>{section_label}</label>'),
+                *filter_rows
             )
-        self.helper.layout.append(Row(*row_fields, css_class='align-items-start flex-wrap'))
 
 
 class SpecSchedulingForm(BaseSchedulingForm):
@@ -494,8 +506,10 @@ class SpecSchedulingForm(BaseSchedulingForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        row_fields = self.scheduling_fields() + [Column('exposure_time', css_class='col-auto')]
-        self.helper.layout.append(Row(*row_fields, css_class='align-items-start flex-wrap'))
+        self.fields['exposure_time'].widget.attrs['class'] = 'form-control scheduling-exposure-spec'
+        self.exposure_helper.layout = Layout(
+            Row('exposure_time', css_class='scheduling-filter-row')
+        )
 
 
 class ReferenceStatusForm(forms.Form):

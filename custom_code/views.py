@@ -17,7 +17,7 @@ from django.contrib.auth.models import Group, User
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
 from django.core.cache import cache
-from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
+from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
@@ -853,15 +853,32 @@ def change_observing_priority_view(request):
     return HttpResponseRedirect('/targets/targetgrouping/')
 
 
+OBSERVATION_RECORD_PERMS = ['tom_observations.view_observationrecord',
+                            'tom_observations.change_observationrecord',
+                            'tom_observations.delete_observationrecord']
+
+
+def active_observation_ids(user, completed_only=False):
+    records = ObservationGroup.objects.filter(dynamiccadence__active=True)
+    if completed_only:
+        records = records.filter(observation_records__status='COMPLETED')
+    latest_ids = [i for i in records.annotate(latest_id=Max('observation_records__id'))
+                  .values_list('latest_id', flat=True) if i]
+    if not latest_ids:
+        return []
+    viewable = get_objects_for_user(
+        user, OBSERVATION_RECORD_PERMS,
+        klass=ObservationRecord.objects.filter(id__in=latest_ids),
+        any_perm=True, with_superuser=False, accept_global_perms=False)
+    return list(viewable.values_list('id', flat=True))
+
+
 class CustomObservationListView(ObservationListView):
 
     def _active_observation_ids(self):
-        try:
-            obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-        except Exception as e:
-            logger.info(e)
-            obsrecordlist = []
-        return [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
+        if not hasattr(self, '_cached_active_ids'):
+            self._cached_active_ids = active_observation_ids(self.request.user)
+        return self._cached_active_ids
 
     def get_queryset(self, *args, **kwargs):
         """
@@ -895,12 +912,9 @@ class ObservationListExtrasView(ListView):
     context_object_name = 'observation_list'
 
     def _active_observation_ids_for_extras(self):
-        try:
-            obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-        except Exception as e:
-            logger.info(e)
-            obsrecordlist = []
-        return [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
+        if not hasattr(self, '_cached_active_ids'):
+            self._cached_active_ids = active_observation_ids(self.request.user)
+        return self._cached_active_ids
 
     def get_queryset(self, *args, **kwargs):
         """
@@ -916,13 +930,8 @@ class ObservationListExtrasView(ListView):
             return obsrecords.order_by('-parameters__ipp_value')
 
         elif val == 'urgency':
-            try:
-                obsrecordlist = [c.observation_group.observation_records.filter(status='COMPLETED').order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-            except Exception as e:
-                logger.info(e)
-                obsrecordlist = []
-            obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
-            obsrecords = ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+            obsrecords = ObservationRecord.objects.filter(
+                id__in=active_observation_ids(self.request.user, completed_only=True))
             if proposals:
                 obsrecords = obsrecords.filter(parameters__proposal__in=proposals)
             now = datetime.utcnow()
