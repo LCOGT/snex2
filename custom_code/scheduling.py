@@ -162,6 +162,18 @@ def _continue_sequence(obs_group, data):
             logger.error(f'Failed to update status for observation {obs.id}: {e}', exc_info=True)
         if obs.terminal:
             obs = None
+
+    reference = obs or obs_group.observation_records.order_by('-created').first()
+    if reference:
+        for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
+            if key in data.keys() and key in reference.parameters.keys():
+                if data[key] != reference.parameters[key]:
+                    if key == 'proposal' and any(
+                            rollover['old_id'] == data[key] and rollover['new_id'] == reference.parameters[key]
+                            for rollover in getattr(settings, 'PROPOSAL_ROLLOVERS', [])):
+                        continue
+                    return {'failure': f'Sequence parameter {key} for form: {data[key]} and observation record: {reference.parameters[key]} were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
+
     if not obs:
         cg = obs_group.dynamiccadence_set.first()
         if not cg or not cg.active:
@@ -179,18 +191,8 @@ def _continue_sequence(obs_group, data):
             logger.error((f'Unable to run cadence_group: {cg}; strategy {strategy};'
                             f' with id {cg.id} due to error: {e}'))
             return {'failure': f'There is an error with this sequence: {e}'}
-        
-    
+
     logger.info(f'Continuing Sequence group {obs_group.id} as-is')
-    
-    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
-        if key in data.keys() and key in obs.parameters.keys():
-            if data[key] != obs.parameters[key]:
-                if key == 'proposal' and any(
-                        rollover['old_id'] == data[key] and rollover['new_id'] == obs.parameters[key]
-                        for rollover in getattr(settings, 'PROPOSAL_ROLLOVERS', [])):
-                    continue
-                return {'failure': f'Sequence parameter {key} for form: {data[key]} and observation record: {obs.parameters[key]} were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
 
     obs.parameters['reminder'] = data['reminder']
     now = timezone.now()
