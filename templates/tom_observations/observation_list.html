@@ -66,7 +66,7 @@
     <div class="row">
       <h4>Current Reminders</h4>
     </div>
-    {% with pagenumber=request.GET.urlencode %}
+    {% with pagenumber=request.GET.page %}
     {% for q in filter.qs|filter_current_reminders:pagenumber %}
     {% scheduling_list_with_form q %}
     {% endfor %}
@@ -116,7 +116,7 @@ $("body").on("input change", ".delay-start-input", function() {
 function loadUpcomingReminders() {
   document.getElementById("load-upcoming-reminders-btn").innerHTML = "Loading...";
   var obs_ids = [];
-  {% with pagenumber=request.GET.urlencode %}
+  {% with pagenumber=request.GET.page %}
   {% for q in filter.qs|filter_upcoming_reminders:pagenumber %}
     obs_ids.push({{ q.id }});
   {% endfor %}

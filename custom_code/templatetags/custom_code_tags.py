@@ -1219,6 +1219,8 @@ def get_scheduling_form(observation, user_id, start, requested_str):
             cadence_strat = 'Onetime, retry until successful'
         elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
             cadence_strat = 'Onetime'
+        else:
+            cadence_strat = cadence_strategy or 'Unknown'
 
         reminder = parameter.get('reminder', 2 * cadence_frequency_days)
         observing_parameters = {
@@ -1293,6 +1295,8 @@ def get_scheduling_form(observation, user_id, start, requested_str):
             cadence_strat = 'Onetime, retry until successful'
         elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
             cadence_strat = 'Onetime'
+        else:
+            cadence_strat = cadence_strategy or 'Unknown'
 
         end = _format_scheduling_timestamp(parameter.get('reminder_date', ''))
         if not end:
@@ -1384,7 +1388,7 @@ def filter_current_reminders(qs, pagenumber):
         id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
         latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
         parameters__reminder_date__lte=now.isoformat()).order_by('parameters__reminder_date')
-    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
+    return Paginator(queryset, 25).get_page(pagenumber)
 
 @register.filter
 def filter_upcoming_reminders(qs, pagenumber):
@@ -1393,7 +1397,7 @@ def filter_upcoming_reminders(qs, pagenumber):
         id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
         latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
         parameters__reminder_date__gte=now.isoformat()).order_by('parameters__reminder_date')
-    return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
+    return Paginator(queryset, 25).get_page(pagenumber)
 
 @register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
 def dash_spectra_page(context, target):

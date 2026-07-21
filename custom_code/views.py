@@ -644,6 +644,8 @@ def scheduling_row_view(request, observation_id):
     obs = get_object_or_404(ObservationRecord, id=observation_id)
     if obs.facility != 'LCO':
         return HttpResponse('')
+    if request.user not in get_users_with_perms(obs):
+        return HttpResponseForbidden('Not authorized')
     context = custom_code_tags.get_scheduling_row_context(obs, request.user.id)
     if context is None:
         return HttpResponse('')
@@ -652,6 +654,8 @@ def scheduling_row_view(request, observation_id):
 
 def scheduling_action_view(request, observation_id, action):
     obs = get_object_or_404(ObservationRecord, id=observation_id)
+    if request.user not in get_users_with_perms(obs):
+        return HttpResponseForbidden('Not authorized')
     obs_group = obs.observationgroup_set.first()
     observation_type = obs.parameters.get('observation_type', '')
     proposal_choices = get_proposal_choices(obs.facility, observation_type, obs.parameters.get('proposal'))
@@ -789,6 +793,8 @@ def async_scheduling_page_view(request):
     all_html = ''
     for obs_id in obs_ids:
         obs = ObservationRecord.objects.get(id=obs_id)
+        if request.user not in get_users_with_perms(obs):
+            continue
         all_html += render_to_string(
             template_name='custom_code/partials/scheduling_row_placeholder.html',
             context=custom_code_tags.scheduling_list_with_form(obs),
