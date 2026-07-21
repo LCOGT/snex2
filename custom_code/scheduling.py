@@ -8,7 +8,7 @@ from tom_observations.models import ObservationRecord, ObservationGroup, Dynamic
 from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
 
-from custom_code.utils import format_form_errors, sync_group_permissions_to_target
+from custom_code.utils import apply_proposal_rollover, format_form_errors, sync_group_permissions_to_target
 
 import logging
 
@@ -155,6 +155,9 @@ def _continue_sequence(obs_group, data):
     obs = obs_group.observation_records.filter(status='PENDING').first()
     if not obs:
         cg = obs_group.dynamiccadence_set.first()
+        if not cg or not cg.active:
+            logger.error(f'No active cadence found for group {obs_group.id}')
+            return {'failure': 'No active cadence found for this sequence. It may have been stopped by another user.'}
         strategy = get_cadence_strategy(cg.cadence_strategy)(cg)
         try:
             new_observations = strategy.run()
@@ -237,7 +240,9 @@ def _modify_sequence(obs_group, user, data):
     for f in filters:
         if f in data and data[f]:
             new_params[f] = data[f]
-    
+
+    new_params = apply_proposal_rollover(new_params)
+
     try:
         facility = get_service_class(obs.facility)()
         form_class = facility.get_form(data['observation_type'])

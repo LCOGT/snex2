@@ -14,8 +14,8 @@ from tom_observations.cadences.retry_failed_observations import RetryFailedObser
 from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord
 
-from custom_code.cadences.snex_resume_cadence_after_failure import SnexCadencePermissionMixin, apply_proposal_rollover
-from custom_code.utils import format_form_errors
+from custom_code.cadences.snex_resume_cadence_after_failure import SnexCadencePermissionMixin
+from custom_code.utils import apply_proposal_rollover, format_form_errors
 
 logger = logging.getLogger(__name__)
 

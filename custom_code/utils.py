@@ -3,12 +3,18 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.automap import automap_base
 from contextlib import contextmanager
 
+from dateutil.parser import parse
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm, remove_perm
 from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
 from django.core.exceptions import NON_FIELD_ERRORS
+from django.utils import timezone
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 def format_form_errors(errors):
     lines = []
@@ -19,6 +25,26 @@ def format_form_errors(errors):
             else:
                 lines.append(f'{field}: {message}')
     return '; '.join(lines)
+
+def apply_proposal_rollover(observation_payload, start_keyword='start'):
+    start = None
+    for rollover in getattr(settings, 'PROPOSAL_ROLLOVERS', []):
+        if observation_payload.get('proposal') != rollover['old_id']:
+            continue
+        if start is None:
+            start_value = observation_payload.get(start_keyword)
+            if not start_value:
+                return observation_payload
+            start = parse(start_value) if isinstance(start_value, str) else start_value
+            if timezone.is_naive(start):
+                start = timezone.make_aware(start)
+        semester_start = parse(rollover['semester_start'])
+        if timezone.is_naive(semester_start):
+            semester_start = timezone.make_aware(semester_start)
+        if start >= semester_start:
+            logger.info(f"Rolling over proposal {rollover['old_id']} to {rollover['new_id']} for window starting {observation_payload.get(start_keyword)}")
+            observation_payload['proposal'] = rollover['new_id']
+    return observation_payload
 
 def powers_of_two(num):
     powers = []
@@ -94,6 +120,7 @@ def sync_group_permissions_to_target(obs_group, records, target):
         return
 
     target_groups = set(get_target_permission_groups(target.id))
+    target_group_ids = set(g.id for g in target_groups)
 
     objects = []
     if obs_group is not None:
@@ -108,7 +135,6 @@ def sync_group_permissions_to_target(obs_group, records, target):
             object_pk=str(obj.id),
             content_type=content_type
         ).values_list('group_id', flat=True).distinct())
-        target_group_ids = set(g.id for g in target_groups)
 
         for group in Group.objects.filter(id__in=current_group_ids - target_group_ids):
             remove_perm(f'tom_observations.view_{codename_model}', group, obj)
