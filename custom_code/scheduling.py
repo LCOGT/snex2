@@ -1,7 +1,4 @@
 from django.db import transaction
-from guardian.models import GroupObjectPermission
-from guardian.shortcuts import assign_perm
-from django.contrib.auth.models import Group
 from django.conf import settings
 from datetime import timedelta
 from django.utils import timezone
@@ -11,19 +8,42 @@ from tom_observations.models import ObservationRecord, ObservationGroup, Dynamic
 from tom_observations.facility import get_service_class
 from tom_observations.cadence import get_cadence_strategy
 
+from custom_code.utils import apply_proposal_rollover, format_form_errors, sync_group_permissions_to_target
+
 import logging
 
 logger = logging.getLogger(__name__)
 
+def refresh_group_statuses(obs_group):
+    non_terminal = obs_group.observation_records.filter(status__in=['PENDING', ''])
+    first = non_terminal.first()
+    if not first:
+        return
+    try:
+        facility = get_service_class(first.facility)()
+    except Exception as e:
+        logger.error(f'Failed to get facility service for {first.facility}: {e}', exc_info=True)
+        return
+    for record in non_terminal:
+        try:
+            facility.update_observation_status(record.observation_id)
+        except Exception as e:
+            logger.error(f'Failed to update status for observation {record.id}: {e}', exc_info=True)
+
+def get_proposal_choices(facility, observation_type, current_proposal=None):
+    try:
+        facility_class = get_service_class(facility)()
+        choices = list(facility_class.get_form(observation_type).proposal_choices(facility_class))
+    except Exception as e:
+        logger.error(f'Failed to fetch proposal choices from {facility}: {e}', exc_info=True)
+        choices = []
+
+    if current_proposal and current_proposal not in dict(choices):
+        choices = [(current_proposal, current_proposal)] + choices
+
+    return choices
+
 def change_obs_from_scheduling(action, obs_group, user, data):
-    '''
-    Logic of the scheduling page
-    params:
-    action: str, modify, continue, stop
-    obs_group: ObservationGroup instance
-    user: User instance
-    data: cleaned data from PhotSchedulingForm or SpecSchedulingForm
-    '''
     if action == 'stop':
         logger.info(f'User {user.username} stopping sequence for group {obs_group.id}')
         return _stop_sequence(obs_group, user, data)
@@ -98,15 +118,7 @@ def cancel_observation(obs_group):
         logger.error(f'Failed to get facility service for {first_obs.facility}: {e}', exc_info=True)
         return False
     
-    non_terminal_statuses = ['PENDING', '']
-    records_to_update = obs_group.observation_records.filter(status__in=non_terminal_statuses)
-    
-    for record in records_to_update:
-        try:
-            facility.update_observation_status(record.observation_id)
-            record.refresh_from_db()
-        except Exception as e:
-            logger.error(f'Failed to update status for observation {record.id}: {e}', exc_info=True)
+    refresh_group_statuses(obs_group)
 
     pending_observations = obs_group.observation_records.filter(status='PENDING')
     logger.info(f'Found {pending_observations.count()} PENDING observation(s) in group {obs_group.id}')
@@ -152,9 +164,25 @@ def cancel_observation(obs_group):
     return True
 
 def _continue_sequence(obs_group, data):
-    obs = obs_group.observation_records.filter(status='PENDING').first()
+    refresh_group_statuses(obs_group)
+    obs = obs_group.observation_records.filter(status__in=['PENDING', '']).order_by('-created').first()
+
+    reference = obs or obs_group.observation_records.order_by('-created').first()
+    if reference:
+        for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
+            if key in data.keys() and key in reference.parameters.keys():
+                if data[key] != reference.parameters[key]:
+                    if key == 'proposal' and any(
+                            rollover['old_id'] == data[key] and rollover['new_id'] == reference.parameters[key]
+                            for rollover in getattr(settings, 'PROPOSAL_ROLLOVERS', [])):
+                        continue
+                    return {'failure': f'Sequence parameter {key} for form: {data[key]} and observation record: {reference.parameters[key]} were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
+
     if not obs:
         cg = obs_group.dynamiccadence_set.first()
+        if not cg or not cg.active:
+            logger.error(f'No active cadence found for group {obs_group.id}')
+            return {'failure': 'No active cadence found for this sequence. It may have been stopped by another user.'}
         strategy = get_cadence_strategy(cg.cadence_strategy)(cg)
         try:
             new_observations = strategy.run()
@@ -167,14 +195,8 @@ def _continue_sequence(obs_group, data):
             logger.error((f'Unable to run cadence_group: {cg}; strategy {strategy};'
                             f' with id {cg.id} due to error: {e}'))
             return {'failure': f'There is an error with this sequence: {e}'}
-        
-    
+
     logger.info(f'Continuing Sequence group {obs_group.id} as-is')
-    
-    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
-        if key in data.keys() and key in obs.parameters.keys():
-            if data[key] != obs.parameters[key]:
-                return {'failure': f'Sequence parameter {key} for form: {data[key]} and observation record: {obs.parameters[key]} were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
 
     obs.parameters['reminder'] = data['reminder']
     now = timezone.now()
@@ -199,14 +221,11 @@ def _modify_sequence(obs_group, user, data):
         return {'failure': 'No observations found in group'}
     
     logger.info(f'Modifying Sequence group {obs_group.id} for target {obs.target.id}')
-    
-    result = _stop_sequence(obs_group, user, data)
-    if 'failure' in result:
-        return result
-    
+
     new_params = obs.parameters.copy()
     
     new_params['comment'] = ''
+    new_params['proposal'] = data['proposal']
     new_params['ipp_value'] = data['ipp_value']
     new_params['max_airmass'] = data['max_airmass']
     new_params['cadence_frequency_days'] = data['cadence_frequency_days']
@@ -232,25 +251,26 @@ def _modify_sequence(obs_group, user, data):
     for f in filters:
         if f in data and data[f]:
             new_params[f] = data[f]
-    
-    try:
-        facility = get_service_class(obs.facility)()
-        form_class = facility.get_form(data['observation_type'])
-        form = form_class(data=new_params)
-        
-        if not form.is_valid():
-            logger.error(f"Form validation failed: {form.errors}")
-            raise Exception(f"New parameters invalid for {obs.facility}: {form.errors}")
-        
-        observation_ids = facility.submit_observation(form.observation_payload())
-        
-        if not observation_ids:
-            raise Exception("Facility did not return any observation IDs")
-            
-    except Exception as e:
-        logger.error(f'Failed to submit new observation: {e}', exc_info=True)
-        raise
-    
+
+    new_params = apply_proposal_rollover(new_params)
+
+    facility = get_service_class(obs.facility)()
+    form_class = facility.get_form(data['observation_type'])
+    form = form_class(data=new_params)
+
+    if not form.is_valid():
+        logger.error(f'Modify validation failed for group {obs_group.id}: {format_form_errors(form.errors)}')
+        return {'failure': f'New parameters invalid for {obs.facility}: {format_form_errors(form.errors)}'}
+
+    result = _stop_sequence(obs_group, user, data)
+    if 'failure' in result:
+        return result
+
+    observation_ids = facility.submit_observation(form.observation_payload())
+
+    if not observation_ids:
+        raise Exception("Facility did not return any observation IDs")
+
     new_obs_group = ObservationGroup.objects.create(name=data['name'])
     
     for lco_id in observation_ids:
@@ -281,25 +301,10 @@ def _modify_sequence(obs_group, user, data):
         active=True
     )
     
-    _sync_permissions(obs_group, new_obs_group)
-    logger.info(f'Permissions synced from old group {obs_group.id} to new group {new_obs_group.id}')
-    
-    return {'success': 'Modified'}
-
-def _sync_permissions(old_group, new_group):
     try:
-        group_ids = GroupObjectPermission.objects.filter(
-            object_pk=old_group.id,
-            content_type=ContentType.objects.get_for_model(ObservationGroup)
-        ).values_list('group_id', flat=True).distinct()
-        groups = Group.objects.filter(id__in=group_ids)
-        for group in groups:
-            assign_perm('tom_observations.view_observationgroup', group, new_group)
-            assign_perm('tom_observations.change_observationgroup', group, new_group)
-            assign_perm('tom_observations.delete_observationgroup', group, new_group)
-            for record in new_group.observation_records.all():
-                assign_perm('tom_observations.view_observationrecord', group, record)
-                assign_perm('tom_observations.change_observationrecord', group, record)
-                assign_perm('tom_observations.delete_observationrecord', group, record)
+        sync_group_permissions_to_target(new_obs_group, new_obs_group.observation_records.all(), obs.target)
+        logger.info(f'Permissions synced to target for new group {new_obs_group.id}')
     except Exception as e:
         logger.error(f'Failed to sync permissions: {e}', exc_info=True)
+
+    return {'success': 'Modified'}

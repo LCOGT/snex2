@@ -1,0 +1,33 @@
+{% if error %}
+<div class="alert alert-danger py-1 px-2 mb-2 small">{{ error }}</div>
+{% endif %}
+<div class="scheduling-actions">
+  <button type="button" class="btn btn-success"
+    hx-post="{% url 'custom_code:scheduling-action' parameter.observation_id 'continue' %}"
+    hx-include="closest form" hx-target="#scheduling-actions-{{ parameter.observation_id }}"
+    hx-swap="innerHTML" hx-disabled-elt="this"
+    hx-indicator="#spinner-continue-{{ parameter.observation_id }}">
+    Continue As-is
+    <span id="spinner-continue-{{ parameter.observation_id }}" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+  </button>
+  <button type="button" class="btn btn-danger" data-prompt-message="Reason for stopping observations:"
+    hx-post="{% url 'custom_code:scheduling-action' parameter.observation_id 'stop' %}"
+    hx-trigger="click[promptSchedulingReason(event)]"
+    hx-vals="js:{comment: window.schedulingReason}"
+    hx-include="closest form" hx-target="#scheduling-actions-{{ parameter.observation_id }}"
+    hx-swap="innerHTML" hx-disabled-elt="this"
+    hx-indicator="#spinner-stop-{{ parameter.observation_id }}">
+    Stop Sequence
+    <span id="spinner-stop-{{ parameter.observation_id }}" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+  </button>
+  <button type="button" class="btn btn-primary" data-prompt-message="Reason for modifying this sequence:"
+    hx-post="{% url 'custom_code:scheduling-action' parameter.observation_id 'modify' %}"
+    hx-trigger="click[promptSchedulingReason(event)]"
+    hx-vals="js:{comment: window.schedulingReason}"
+    hx-include="closest form" hx-target="#scheduling-actions-{{ parameter.observation_id }}"
+    hx-swap="innerHTML" hx-disabled-elt="this"
+    hx-indicator="#spinner-modify-{{ parameter.observation_id }}">
+    Modify Sequence
+    <span id="spinner-modify-{{ parameter.observation_id }}" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+  </button>
+</div>

@@ -15,6 +15,7 @@ from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord
 
 from custom_code.cadences.snex_resume_cadence_after_failure import SnexCadencePermissionMixin
+from custom_code.utils import apply_proposal_rollover, format_form_errors
 
 logger = logging.getLogger(__name__)
 
@@ -148,15 +149,17 @@ class BaseRetryStrategy(SnexCadencePermissionMixin, RetryFailedObservationsStrat
             )
             return
 
+        observation_payload = apply_proposal_rollover(observation_payload, start_keyword=start_keyword)
+
         obs_type = observation_payload.get('observation_type')
         form = facility.get_form(obs_type)(observation_payload)
 
         if not form.is_valid():
             logger.error(
-                msg=f'Unable to submit next observation: {form.errors} '
+                msg=f'Unable to submit next observation: {format_form_errors(form.errors)} '
                 f'for ObservationRecord.id: {last_obs.id}'
             )
-            raise Exception(f'Unable to submit next observation: {form.errors}')
+            raise Exception(f'Unable to submit next observation: {format_form_errors(form.errors)}')
 
         observation_ids = facility.submit_observation(form.observation_payload())
         new_observations = []

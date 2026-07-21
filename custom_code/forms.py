@@ -1,6 +1,8 @@
 import json
 import re
+from crispy_forms.bootstrap import AppendedText, PrependedText
 from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Column, HTML, Layout, Row
 from django import forms
 from django.conf import settings
 from django.contrib.auth.forms import UsernameField
@@ -389,7 +391,7 @@ class PapersForm(forms.ModelForm):
         }
 
 
-class PhotSchedulingForm(forms.Form):
+class BaseSchedulingForm(forms.Form):
 
     name = forms.CharField(widget=forms.HiddenInput())
     observation_id = forms.IntegerField(widget=forms.HiddenInput())
@@ -397,96 +399,103 @@ class PhotSchedulingForm(forms.Form):
     facility = forms.CharField(widget=forms.HiddenInput())
     observation_type = forms.CharField(widget=forms.HiddenInput())
     cadence_strategy = forms.CharField(widget=forms.HiddenInput(), required=False)
-    observing_parameters = forms.CharField(max_length=5000, widget=forms.HiddenInput()) 
-    
-    cadence_frequency_days = forms.FloatField(min_value=0.0, label='Cadence (Days)')
+    observing_parameters = forms.CharField(max_length=5000, widget=forms.HiddenInput())
+
+    proposal = forms.ChoiceField(choices=[], label='Proposal')
+    cadence_frequency_days = forms.FloatField(min_value=0.0, label='Cadence')
     ipp_value = forms.FloatField(min_value=0.5, max_value=2.0, label='IPP')
-    max_airmass = forms.FloatField(min_value=0.0, label='Airmass Limit')
-    reminder = forms.FloatField(min_value=0.0, label='Reminder Interval (Days)')
-    delay_start = forms.FloatField(min_value=0.0, initial=0.0, label='Delay Start (Days)')
+    max_airmass = forms.FloatField(min_value=0.0, label='Airmass')
+    reminder = forms.FloatField(min_value=0.0, label='Reminder')
+    delay_start = forms.FloatField(min_value=0.0, initial=0.0, label='Delay')
+
+    def __init__(self, *args, proposal_choices=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['proposal'].choices = proposal_choices or []
+        self.fields['cadence_frequency_days'].widget.attrs['class'] = 'cadence-input'
+        self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
+        self.helper = FormHelper()
+        self.helper.form_tag = False
+        self.helper.layout = Layout(
+            'name', 'observation_id', 'target_id', 'facility',
+            'observation_type', 'cadence_strategy', 'observing_parameters',
+        )
+
+    def scheduling_fields(self):
+        return [
+            Column('proposal', css_class='col-auto'),
+            Column('ipp_value', css_class='col-auto'),
+            Column('max_airmass', css_class='col-auto'),
+            Column(AppendedText('cadence_frequency_days', 'd'), css_class='col-auto'),
+            Column(AppendedText('delay_start', 'd'), css_class='col-auto'),
+            Column(AppendedText('reminder', 'd'), css_class='col-auto'),
+        ]
+
+    def clean_observing_parameters(self):
+        data = self.cleaned_data['observing_parameters']
+        try:
+            return json.loads(data)
+        except (json.JSONDecodeError, TypeError):
+            raise forms.ValidationError("Invalid format for observing parameters.")
+
+
+class PhotSchedulingForm(BaseSchedulingForm):
 
     filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']
-    
+    filter_labels = {'muscat_filter': 'gp, rp, ip, zs'}
+
     def __init__(self, *args, **kwargs):
-        super(PhotSchedulingForm, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         initial_data = kwargs.get('initial', {})
         for f in self.filters:
             val = initial_data.get(f)
+            if not val or len(val) == 0:
+                continue
+            if isinstance(val, dict):
+                initial_list = [val.get('exposure_time'), val.get('exposure_count'), val.get('block_num')]
+            else:
+                initial_list = list(val)
+            if not initial_list[0]:
+                continue
+            if f == 'muscat_filter':
+                if len(initial_list) < 3:
+                    initial_list = list(initial_list) + [1]
+                initial_list[2] = 1
+                self.fields[f] = FilterField(label='', initial=initial_list, required=False)
+                self.fields[f].widget.widgets[2] = forms.HiddenInput()
+            else:
+                self.fields[f] = FilterField(label='', initial=initial_list, required=False)
 
-            if val and len(val) > 0:
-                if isinstance(val, dict):
-                    initial_list = [
-                        val.get('exposure_time'), 
-                        val.get('exposure_count'), 
-                        val.get('block_num')
-                    ]
-                else:
-                    initial_list = val
-                if f == 'muscat_filter':
-                    label = 'gp, rp, ip, zs'
-                    
-                    if len(initial_list) < 3:
-                        initial_list = list(initial_list) + [1]
-                    
-                    initial_list[2] = 1
-                    
-                    self.fields[f] = FilterField(
-                        label=label, 
-                        initial=initial_list, 
-                        required=False
-                    )
-                    
-                    self.fields[f].widget.widgets[2] = forms.HiddenInput()
-                else:
-                    label = f
-                    self.fields[f] = FilterField(
-                        label=label, 
-                        initial=initial_list, 
-                        required=False
-                    )
+            self.fields[f].widget.attrs['class'] = 'form-control'
+            self.fields[f].widget.attrs['style'] = ''
 
-        self.fields['cadence_frequency_days'].widget.attrs['class'] = 'cadence-input'
-        self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
+        active_filters = [f for f in self.filters if f in self.fields]
+        row_fields = self.scheduling_fields()
+        if active_filters:
+            section_label = 'Exposure Time, Count'
+            if 'muscat_filter' not in active_filters:
+                section_label += ', Block Number'
+            filter_rows = [
+                Row(PrependedText(f, self.filter_labels.get(f, f), wrapper_class='mb-0'), css_class='scheduling-filter-row')
+                for f in active_filters
+            ]
+            row_fields.append(
+                Column(
+                    HTML(f'<label>{section_label}</label>'),
+                    *filter_rows,
+                    css_class='col'
+                )
+            )
+        self.helper.layout.append(Row(*row_fields, css_class='align-items-start flex-wrap'))
 
-    def clean_observing_parameters(self):
 
-        data = self.cleaned_data['observing_parameters']
+class SpecSchedulingForm(BaseSchedulingForm):
 
-        try:
-            return json.loads(data)
-        except (json.JSONDecodeError, TypeError):
-            raise forms.ValidationError("Invalid format for observing parameters.")
+    exposure_time = forms.IntegerField(min_value=1, label='Exposure Time')
 
-class SpecSchedulingForm(forms.Form):
-
-    name = forms.CharField(widget=forms.HiddenInput())
-    observation_id = forms.IntegerField(widget=forms.HiddenInput())
-    target_id = forms.IntegerField(widget=forms.HiddenInput())
-    facility = forms.CharField(widget=forms.HiddenInput())
-    observation_type = forms.CharField(widget=forms.HiddenInput())
-    cadence_strategy = forms.CharField(widget=forms.HiddenInput(), required=False)
-    observing_parameters = forms.CharField(max_length=1024, widget=forms.HiddenInput()) 
-    
-    cadence_frequency_days = forms.FloatField(min_value=0.0, label='Cadence (Days)')
-    ipp_value = forms.FloatField(min_value=0.5, max_value=2.0, label='')
-    max_airmass = forms.FloatField(min_value=0.0, label='')
-    reminder = forms.FloatField(min_value=0.0, label='')
-    exposure_time = forms.IntegerField(min_value=1, label='')
-    delay_start = forms.FloatField(min_value=0.0, initial=0.0, label='')
-    
     def __init__(self, *args, **kwargs):
-        super(SpecSchedulingForm, self).__init__(*args, **kwargs)
-        self.fields['cadence_frequency_days'].widget.attrs['class'] = 'cadence-input'
-        self.fields['delay_start'].widget.attrs['class'] = 'delay-start-input'
-    
-    def clean_observing_parameters(self):
-
-        data = self.cleaned_data['observing_parameters']
-
-        try:
-            return json.loads(data)
-        except (json.JSONDecodeError, TypeError):
-            raise forms.ValidationError("Invalid format for observing parameters.")
+        super().__init__(*args, **kwargs)
+        row_fields = self.scheduling_fields() + [Column('exposure_time', css_class='col-auto')]
+        self.helper.layout.append(Row(*row_fields, css_class='align-items-start flex-wrap'))
 
 
 class ReferenceStatusForm(forms.Form):

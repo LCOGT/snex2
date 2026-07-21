@@ -1,0 +1,24 @@
+<div class="dropdown">
+  <button class="btn btn-primary dropdown-toggle" type="button" id="proposal-filter-btn"
+          data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+    View by Proposal{% if selected_proposals %} ({{ selected_proposals|length }}){% endif %}
+  </button>
+  <form method="get" class="dropdown-menu p-2" id="proposal-filter-menu"
+        aria-labelledby="proposal-filter-btn"
+        style="max-height: 320px; overflow-y: auto; min-width: 220px; background: #fff !important; color: #212529 !important; border: 1px solid #ccc;"
+        onclick="event.stopPropagation()">
+    {% for code in available_proposals %}
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="proposal" value="{{ code }}"
+             id="proposal-cb-{{ forloop.counter }}" {% if code in selected_proposals %}checked{% endif %}>
+      <label class="form-check-label" for="proposal-cb-{{ forloop.counter }}">{{ code }}</label>
+    </div>
+    {% empty %}
+    <div class="small text-muted">No proposals found</div>
+    {% endfor %}
+    <div class="mt-2">
+      <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+      <a href="{{ request.path }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+    </div>
+  </form>
+</div>

@@ -296,6 +296,9 @@ LOGGING = {
         '': {
             'handlers': ['console'],
             'level': 'INFO'
+        },
+        'tom_observations.facilities.ocs': {
+            'level': 'ERROR'
         }
     }
 }
@@ -423,6 +426,10 @@ TOM_CADENCE_STRATEGIES = [
     'custom_code.cadences.snex_retry_failed_observations.SnexRetryFailedObservationsStrategy',
     'custom_code.cadences.snex_retry_failed_observations.SnexRetryUntilDeadlineStrategy',
     'custom_code.cadences.snex_resume_cadence_after_failure.SnexResumeCadenceAfterFailureStrategy'
+]
+
+PROPOSAL_ROLLOVERS = [
+    {'old_id': 'KEY2023B-002', 'new_id': 'KEY2026B-003', 'semester_start': '2026-08-01'},
 ]
 
 DATA_TYPES = (

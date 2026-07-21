@@ -46,7 +46,6 @@ from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from guardian.mixins import PermissionListMixin
 from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
-from guardian.models import GroupObjectPermission
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct, ReducedDatum
@@ -66,10 +65,10 @@ from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unr
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
-from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, save_comments
+from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups
 import logging
 from urllib.parse import quote_plus
 
@@ -623,6 +622,8 @@ def save_comments_view(request):
 def observation_sequence_cancel_view(request):
     obsr_id = int(float(request.GET['pk']))
     obsr = ObservationRecord.objects.get(id=obsr_id)
+    if request.user not in get_users_with_perms(obsr):
+        return HttpResponseForbidden('Not authorized')
     obs_group = obsr.observationgroup_set.first()
 
     try:
@@ -640,42 +641,51 @@ def observation_sequence_cancel_view(request):
         logger.error('This sequence was not canceled', exc_info=True)
         return JsonResponse({'failure': 'This sequence was not canceled'})
 
-def scheduling_view(request):
-    obs_id = request.GET.get('observation_id')
-    obs = ObservationRecord.objects.get(id=obs_id)
+def scheduling_row_view(request, observation_id):
+    obs = get_object_or_404(ObservationRecord, id=observation_id)
+    if obs.facility != 'LCO':
+        return HttpResponse('')
+    if request.user not in get_users_with_perms(obs):
+        return HttpResponseForbidden('Not authorized')
+    context = custom_code_tags.get_scheduling_row_context(obs, request.user.id)
+    if context is None:
+        return HttpResponse('')
+    context['user'] = request.user
+    return render(request, 'custom_code/partials/scheduling_row.html', context)
+
+def scheduling_action_view(request, observation_id, action):
+    obs = get_object_or_404(ObservationRecord, id=observation_id)
+    if request.user not in get_users_with_perms(obs):
+        return HttpResponseForbidden('Not authorized')
     obs_group = obs.observationgroup_set.first()
+    observation_type = obs.parameters.get('observation_type', '')
+    proposal_choices = get_proposal_choices(obs.facility, observation_type, obs.parameters.get('proposal'))
 
-    if obs.parameters.get('observation_type', '') == 'IMAGING':
-        form = PhotSchedulingForm(request.GET, initial=obs.parameters)
+    if observation_type == 'IMAGING':
+        form = PhotSchedulingForm(request.POST, initial=obs.parameters, proposal_choices=proposal_choices)
     else:
-        form = SpecSchedulingForm(request.GET, initial=obs.parameters)
-    if form.is_valid():
-        action = next((a for a in ['modify', 'continue', 'stop'] if a in request.GET.get('button', '')), None)
+        form = SpecSchedulingForm(request.POST, initial=obs.parameters, proposal_choices=proposal_choices)
+
+    error = None
+    if not form.is_valid():
+        error = 'Invalid form: ' + format_form_errors(form.errors)
+    else:
+        form.cleaned_data['comment'] = request.POST.get('comment', '')
         try:
-            comment_raw = request.GET.get("comment", "")
-
-            if comment_raw.startswith('{'):
-                try:
-                    comment_data = json.loads(comment_raw)
-                    cancel_reason = comment_data.get("cancel", comment_raw)
-                except (json.JSONDecodeError, TypeError):
-                    cancel_reason = comment_raw
-            else:
-                cancel_reason = comment_raw
-            form.cleaned_data['comment'] = cancel_reason
-            response_data = change_obs_from_scheduling(
-                action=action,
-                obs_group=obs_group,
-                user=request.user,
-                data=form.cleaned_data
-            )
-            
-            return HttpResponse(json.dumps(response_data), content_type='application/json')
-
+            result = change_obs_from_scheduling(action=action, obs_group=obs_group, user=request.user, data=form.cleaned_data)
         except Exception as e:
-            return JsonResponse({'failure': str(e)})
-        
-    return JsonResponse({'failure': 'Invalid Form', 'errors': form.errors})
+            logger.error(f'Scheduling action {action} failed for group {obs_group.id}: {e}', exc_info=True)
+            result = {'failure': str(e)}
+        if 'failure' in result:
+            error = result['failure']
+        else:
+            return render(request, 'custom_code/partials/scheduling_action_result.html', {'message': result.get('success', 'Done')})
+
+    return render(request, 'custom_code/partials/scheduling_buttons.html', {
+        'parameter': {'observation_id': observation_id},
+        'form': form,
+        'error': error
+    })
 
 def change_target_known_to_view(request):
     action = request.GET.get('action')
@@ -788,18 +798,16 @@ def async_scheduling_page_view(request):
     all_html = ''
     for obs_id in obs_ids:
         obs = ObservationRecord.objects.get(id=obs_id)
-        response = custom_code_tags.scheduling_list_with_form({'request': request}, obs)
-
-        html = render_to_string(
-            template_name='custom_code/scheduling_list_with_form.html',
-            context=response,
+        if request.user not in get_users_with_perms(obs):
+            continue
+        all_html += render_to_string(
+            template_name='custom_code/partials/scheduling_row_placeholder.html',
+            context=custom_code_tags.scheduling_list_with_form(obs),
             request=request
         )
 
-        all_html += html
-
     data_dict = {'html_from_view': all_html}
-    
+
     return JsonResponse(data=data_dict, safe=False)
 
 
@@ -884,18 +892,33 @@ def change_observing_priority_view(request):
 
 class CustomObservationListView(ObservationListView):
 
-    def get_queryset(self, *args, **kwargs):
-        """
-        Gets the most recent ObservationRecord objects associated with active
-        DynamicCadences that the user has permission to view
-        """
+    def _active_observation_ids(self):
         try:
             obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
         except Exception as e:
             logger.info(e)
             obsrecordlist = []
-        obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
-        return ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+        return [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
+
+    def get_queryset(self, *args, **kwargs):
+        """
+        Gets the most recent ObservationRecord objects associated with active
+        DynamicCadences that the user has permission to view
+        """
+        queryset = ObservationRecord.objects.filter(id__in=self._active_observation_ids())
+        proposals = self.request.GET.getlist('proposal')
+        if proposals:
+            queryset = queryset.filter(parameters__proposal__in=proposals)
+        return queryset
+
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+        proposals = ObservationRecord.objects.filter(id__in=self._active_observation_ids()) \
+            .exclude(parameters__proposal__isnull=True) \
+            .values_list('parameters__proposal', flat=True)
+        context['available_proposals'] = sorted(set(p for p in proposals if p))
+        context['selected_proposals'] = self.request.GET.getlist('proposal')
+        return context
 
 
 class ObservationListExtrasView(ListView):
@@ -908,22 +931,27 @@ class ObservationListExtrasView(ListView):
     strict = False
     context_object_name = 'observation_list'
 
+    def _active_observation_ids_for_extras(self):
+        try:
+            obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
+        except Exception as e:
+            logger.info(e)
+            obsrecordlist = []
+        return [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
+
     def get_queryset(self, *args, **kwargs):
         """
         Get all active cadences and order their observation records in order of IPP or urgency
         """
         val = self.kwargs['key']
-        
+        proposals = self.request.GET.getlist('proposal')
+
         if val == 'ipp':
-            try:
-                obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-            except Exception as e:
-                logger.info(e)
-                obsrecordlist = []
-            obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
-            obsrecords = ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+            obsrecords = ObservationRecord.objects.filter(id__in=self._active_observation_ids_for_extras())
+            if proposals:
+                obsrecords = obsrecords.filter(parameters__proposal__in=proposals)
             return obsrecords.order_by('-parameters__ipp_value')
-        
+
         elif val == 'urgency':
             try:
                 obsrecordlist = [c.observation_group.observation_records.filter(status='COMPLETED').order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
@@ -932,17 +960,23 @@ class ObservationListExtrasView(ListView):
                 obsrecordlist = []
             obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
             obsrecords = ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+            if proposals:
+                obsrecords = obsrecords.filter(parameters__proposal__in=proposals)
             now = datetime.utcnow()
             recent_obs = obsrecords.annotate(days_since=now-Cast(KeyTextTransform('start', 'parameters'), DateTimeField()))
             recent_obs = recent_obs.filter(parameters__cadence_frequency_days__gt=0.0)
             recent_obs = recent_obs.annotate(urgency=ExpressionWrapper(F('days_since')/(Cast(KeyTextTransform('cadence_frequency_days', 'parameters'), FloatField())), DateTimeField()))
             return recent_obs.order_by('-urgency')
 
-    
     def get_context_data(self, *args, **kwargs):
-        
         context = super().get_context_data(*args, **kwargs)
         context['value'] = self.kwargs['key'].upper()
+        obsrecordlist_ids = self._active_observation_ids_for_extras()
+        proposals = ObservationRecord.objects.filter(id__in=obsrecordlist_ids) \
+            .exclude(parameters__proposal__isnull=True) \
+            .values_list('parameters__proposal', flat=True)
+        context['available_proposals'] = sorted(set(p for p in proposals if p))
+        context['selected_proposals'] = self.request.GET.getlist('proposal')
         return context
 
 
@@ -999,12 +1033,7 @@ class CustomObservationCreateView(ObservationCreateView):
         if not settings.TARGET_PERMISSIONS_ONLY:
             groups = form.cleaned_data.get('groups')
             if not groups:
-                target_ct = ContentType.objects.get_for_model(Target)
-                target_group_ids = GroupObjectPermission.objects.filter(
-                    object_pk=target.id,
-                    content_type=target_ct
-                ).values_list('group_id', flat=True).distinct()
-                groups = Group.objects.filter(id__in=target_group_ids)
+                groups = get_target_permission_groups(target.id)
             if groups:
                 if not new_records:
                     new_records = list(
