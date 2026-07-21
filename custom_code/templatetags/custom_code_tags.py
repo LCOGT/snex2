@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
+from custom_code.utils import bind_observation_form_htmx
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -649,8 +650,8 @@ def submit_lco_observations(context, target):
                     'name': get_best_name(target)}
     phot_form = SnexPhotometricSequenceForm(initial=phot_initial, auto_id='phot_%s')
     spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
-    phot_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
-    spec_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
+    bind_observation_form_htmx(phot_form, 'LCO', 'IMAGING')
+    bind_observation_form_htmx(spec_form, 'LCO', 'SPECTRA')
 
     soar_form = None
     if user_can_access_soar(user):
@@ -659,7 +660,7 @@ def submit_lco_observations(context, target):
                         'observation_type': 'SPECTRA',
                         'name': get_best_name(target)}
         soar_form = SOARObservationForm(initial=soar_initial, auto_id='soar_%s')
-        soar_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'SOAR'})
+        bind_observation_form_htmx(soar_form, 'SOAR', 'SPECTRA')
 
     if not settings.TARGET_PERMISSIONS_ONLY:
         phot_form.fields['groups'].queryset = Group.objects.all()

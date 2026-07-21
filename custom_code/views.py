@@ -62,7 +62,7 @@ from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -958,6 +958,16 @@ class CustomObservationCreateView(ObservationCreateView):
             return HttpResponseForbidden('You do not have permission to submit SOAR observations.')
         return super().dispatch(request, *args, **kwargs)
 
+    def _form_prefix(self):
+        source = self.request.POST if self.request.method == 'POST' else self.request.GET
+        return observation_form_prefix(self.kwargs.get('facility'), source.get('observation_type'))
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        if getattr(self.request, 'htmx', False):
+            kwargs['auto_id'] = f'{self._form_prefix()}_%s'
+        return kwargs
+
     def get_form(self):
         """
         Gets an instance of the form appropriate for the request.
@@ -967,10 +977,21 @@ class CustomObservationCreateView(ObservationCreateView):
         form = super().get_form()
         if not settings.TARGET_PERMISSIONS_ONLY and 'groups' in form.fields:
             form.fields['groups'].queryset = Group.objects.all()
-        form.helper.form_action = reverse(
-            'submit-lco-obs', kwargs={'facility': self.kwargs['facility']}
-        )
+        if getattr(self.request, 'htmx', False):
+            source = self.request.POST if self.request.method == 'POST' else self.request.GET
+            bind_observation_form_htmx(form, self.kwargs['facility'], source.get('observation_type'))
+        else:
+            form.helper.form_action = reverse(
+                'submit-lco-obs', kwargs={'facility': self.kwargs['facility']}
+            )
         return form
+
+    def form_invalid(self, form):
+        if getattr(self.request, 'htmx', False):
+            return render(self.request, 'custom_code/partials/target/observation_form.html',
+                          {'form': form, 'form_prefix': self._form_prefix()})
+        return super().form_invalid(form)
+
     def form_valid(self, form):
         form.cleaned_data['start_user'] = self.request.user.username
         target = self.get_target()
@@ -1022,6 +1043,11 @@ class CustomObservationCreateView(ObservationCreateView):
                         assign_perm('tom_observations.view_observationrecord', group, record)
                         assign_perm('tom_observations.change_observationrecord', group, record)
                         assign_perm('tom_observations.delete_observationrecord', group, record)
+
+        if getattr(self.request, 'htmx', False) and response.status_code in (301, 302):
+            htmx_response = HttpResponse(status=204)
+            htmx_response['HX-Redirect'] = response['Location']
+            return htmx_response
         return response
 
 def make_tns_request_view(request):
