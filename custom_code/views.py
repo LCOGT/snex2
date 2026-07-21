@@ -1129,7 +1129,7 @@ def load_single_spectrum_view(request, pk, spectrum_id):
     target = _target_for_user(request, pk)
     spectrum = get_object_or_404(ReducedDatum, id=spectrum_id, target=target)
     entry = custom_code_tags.build_spectrum_entry(target, spectrum)
-    return render(request, 'custom_code/single_spectrum.html', {'entry': entry, 'target': target})
+    return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
 
 
 def fit_lightcurve_view(request):
