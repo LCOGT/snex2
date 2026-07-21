@@ -425,6 +425,10 @@ TOM_CADENCE_STRATEGIES = [
     'custom_code.cadences.snex_resume_cadence_after_failure.SnexResumeCadenceAfterFailureStrategy'
 ]
 
+PROPOSAL_ROLLOVERS = [
+    {'old_id': 'KEY2023B-002', 'new_id': 'KEY2026B-003', 'semester_start': '2026-08-01'},
+]
+
 DATA_TYPES = (
     ('SPECTROSCOPY', 'Spectroscopy'),
     ('PHOTOMETRY', 'Photometry')

@@ -8,7 +8,7 @@ from tom_observations.models import ObservationRecord
 
 from tom_observations.cadences.resume_cadence_after_failure import ResumeCadenceAfterFailureStrategy
 
-from custom_code.scheduling import format_form_errors, sync_group_permissions_to_target
+from custom_code.scheduling import apply_proposal_rollover, format_form_errors, sync_group_permissions_to_target
 
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,7 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
             )
 
         observation_payload = self.update_observation_payload(observation_payload)
+        observation_payload = apply_proposal_rollover(observation_payload, start_keyword=start_keyword)
 
         # Submission of the new observation to the facility
         obs_type = last_obs.parameters.get('observation_type')

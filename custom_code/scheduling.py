@@ -1,3 +1,4 @@
+from dateutil.parser import parse
 from django.core.exceptions import NON_FIELD_ERRORS
 from django.db import transaction
 from guardian.models import GroupObjectPermission
@@ -25,6 +26,27 @@ def format_form_errors(errors):
             else:
                 lines.append(f'{field}: {message}')
     return '; '.join(lines)
+
+def apply_proposal_rollover(observation_payload, start_keyword='start'):
+    rollovers = getattr(settings, 'PROPOSAL_ROLLOVERS', [])
+    if not rollovers:
+        return observation_payload
+    start_value = observation_payload.get(start_keyword)
+    if not start_value:
+        return observation_payload
+    start = parse(start_value) if isinstance(start_value, str) else start_value
+    if timezone.is_naive(start):
+        start = timezone.make_aware(start)
+    for rollover in rollovers:
+        if observation_payload.get('proposal') != rollover['old_id']:
+            continue
+        semester_start = parse(rollover['semester_start'])
+        if timezone.is_naive(semester_start):
+            semester_start = timezone.make_aware(semester_start)
+        if start >= semester_start:
+            logger.info(f"Rolling over proposal {rollover['old_id']} to {rollover['new_id']} for window starting {start_value}")
+            observation_payload['proposal'] = rollover['new_id']
+    return observation_payload
 
 TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target'))
 

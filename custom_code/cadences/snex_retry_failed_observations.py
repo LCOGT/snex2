@@ -15,7 +15,7 @@ from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord
 
 from custom_code.cadences.snex_resume_cadence_after_failure import SnexCadencePermissionMixin
-from custom_code.scheduling import format_form_errors
+from custom_code.scheduling import apply_proposal_rollover, format_form_errors
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +148,8 @@ class BaseRetryStrategy(SnexCadencePermissionMixin, RetryFailedObservationsStrat
                 f'{self.dynamic_cadence.observation_group.id}; deactivated silently'
             )
             return
+
+        observation_payload = apply_proposal_rollover(observation_payload, start_keyword=start_keyword)
 
         obs_type = observation_payload.get('observation_type')
         form = facility.get_form(obs_type)(observation_payload)
