@@ -1201,8 +1201,9 @@ def get_scheduling_form(observation, user_id, start, requested_str):
     target = Target.objects.get(pk=observation.target.id)
     target_names = smart_name_list(observation.target)
 
-    content_type_id = ContentType.objects.get(model='observationgroup').id
-    comment = Comment.objects.filter(object_pk=obsgroup.id, content_type_id=content_type_id).order_by('id').first()
+    content_type = ContentType.objects.get_for_model(ObservationGroup)
+    comment = Comment.objects.filter(
+        object_pk=obsgroup.id, content_type=content_type).order_by('id').select_related('user').first()
     if not comment:
         comment_str = ''
     else:
@@ -1497,9 +1498,9 @@ def build_spectrum_entry(target, spectrum, redshift=None):
             spec_extras['site'] = '(COJ 2m)'
             spec_extras['instrument'] += ' (FLOYDS)'
 
-        content_type_id = ContentType.objects.get(model='reduceddatum').id
+        content_type = ContentType.objects.get_for_model(ReducedDatum)
         comments = Comment.objects.filter(
-            object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+            object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
         spec_extras['comments'] = comments
         spec_extras['comments_list'] = [
             '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
