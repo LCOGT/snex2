@@ -422,20 +422,18 @@ def bin_spectra(waves, fluxes, b):
     """
     Bins spectra given list of wavelengths, fluxes, and binning factor
     """
+    try:
+        b = int(b)
+    except (TypeError, ValueError):
+        b = 1
+    if b < 1 or not fluxes or len(fluxes) < b:
+        return list(waves), list(fluxes)
+
     binned_waves = []
     binned_flux = []
-    newindex = 0
-    for index in range(0, len(fluxes), b):
-        if index + b - 1 <= len(fluxes) - 1:
-            sumx = 0
-            sumy = 0
-            for binindex in range(index, index+b, 1):
-                if binindex < len(fluxes):
-                    sumx += waves[binindex]
-                    sumy += fluxes[binindex]
-
-            sumx = sumx / b
-            sumy = sumy / b
+    for index in range(0, len(fluxes) - b + 1, b):
+        sumx = sum(waves[index:index + b]) / b
+        sumy = sum(fluxes[index:index + b]) / b
         if sumx > 0:
             binned_waves.append(sumx)
             binned_flux.append(sumy)
@@ -463,20 +461,10 @@ def spectra_plot(context, target, dataproduct=None):
     ) for color in colors]
 
     for spectrum in spectral_dataproducts:
-        datum = spectrum.value
-        wavelength = []
-        flux = []
         name = str(spectrum.timestamp).split(' ')[0]
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(float(value['wavelength']))
-                flux.append(float(value['flux']))
+        wavelength, flux = extract_spectrum_arrays(spectrum)
+        if not wavelength or not flux:
+            continue
 
         binned_wavelength, binned_flux = bin_spectra(wavelength, flux, 5)
         spectra.append((binned_wavelength, binned_flux, name))
@@ -513,7 +501,8 @@ def spectra_plot(context, target, dataproduct=None):
     if plot_data:
       return {
           'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False)
+          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
+                               show_link=False, include_plotlyjs=False)
       }
     else:
         return {
@@ -1466,22 +1455,60 @@ def spectra_list(context, target):
     }
 
 
-def build_spectrum_entry(target, spectrum, redshift=None):
-    if redshift is None:
-        redshift = getattr(target, 'redshift', 0) or 0
-
+def extract_spectrum_arrays(spectrum):
     datum = spectrum.value or {}
+    wavelength = []
     flux = []
     if datum.get('photon_flux'):
-        flux = datum.get('photon_flux')
+        wavelength = list(datum.get('wavelength') or [])
+        flux = list(datum.get('photon_flux'))
     elif datum.get('flux'):
-        flux = datum.get('flux')
+        wavelength = list(datum.get('wavelength') or [])
+        flux = list(datum.get('flux'))
     else:
         for value in datum.values():
             try:
+                wavelength.append(float(value['wavelength']))
                 flux.append(float(value['flux']))
             except (KeyError, TypeError, ValueError):
                 continue
+    return wavelength, flux
+
+
+def build_spectrum_plot(spectrum, bin_factor=5):
+    """
+    Server-rendered static preview of a single spectrum. Shares the page's
+    plotly.js rather than instantiating a Dash app per spectrum.
+    """
+    wavelength, flux = extract_spectrum_arrays(spectrum)
+    if not wavelength or not flux:
+        return ''
+
+    binned_wavelength, binned_flux = bin_spectra(wavelength, flux, bin_factor)
+    if not binned_wavelength:
+        return ''
+
+    layout = go.Layout(
+        height=300,
+        hovermode='closest',
+        xaxis=dict(tickformat='d', title='Wavelength (angstroms)', gridcolor='#D3D3D3',
+                   showline=True, linecolor='#D3D3D3', mirror=True),
+        yaxis=dict(tickformat='.1g', title='Flux', gridcolor='#D3D3D3',
+                   showline=True, linecolor='#D3D3D3', mirror=True),
+        plot_bgcolor='white',
+        margin=dict(l=50, r=10, b=40, t=20),
+        showlegend=False,
+    )
+    figure = go.Figure(data=[go.Scatter(x=binned_wavelength, y=binned_flux, line_color='black')],
+                       layout=layout)
+    return offline.plot(figure, output_type='div', show_link=False, include_plotlyjs=False)
+
+
+def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plot=True):
+    if redshift is None:
+        redshift = getattr(target, 'redshift', 0) or 0
+
+    _, flux = extract_spectrum_arrays(spectrum)
 
     max_flux = max(flux) if flux else 0
     min_flux = min(flux) if flux else 0
@@ -1508,6 +1535,7 @@ def build_spectrum_entry(target, spectrum, redshift=None):
     return {
         'dash_context': {
             'spectrum_id': {'value': spectrum.id},
+            'user_id': {'value': getattr(user, 'id', 0) or 0},
             'target_redshift': {'value': redshift},
             'min-flux': {'value': min_flux},
             'max-flux': {'value': max_flux},
@@ -1515,6 +1543,7 @@ def build_spectrum_entry(target, spectrum, redshift=None):
         'time': str(spectrum.timestamp).split('+')[0],
         'spec_extras': spec_extras,
         'spectrum': spectrum,
+        'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
     }
 
 

@@ -1125,15 +1125,27 @@ def load_airmass_plot_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/overview_airmass.html')
 
 
-def load_single_spectrum_view(request, pk, spectrum_id):
+def _spectrum_for_user(request, pk, spectrum_id):
     target = _target_for_user(request, pk)
     spectrum = get_objects_for_user(
         request.user, 'tom_dataproducts.view_reduceddatum',
         klass=ReducedDatum.objects.filter(id=spectrum_id, target=target, data_type='spectroscopy')).first()
     if spectrum is None:
         raise Http404('Spectrum not found or not visible to this user')
-    entry = custom_code_tags.build_spectrum_entry(target, spectrum)
+    return target, spectrum
+
+
+def load_single_spectrum_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    entry = custom_code_tags.build_spectrum_entry(target, spectrum, user=request.user)
     return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
+
+
+def load_spectrum_interactive_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    entry = custom_code_tags.build_spectrum_entry(target, spectrum, user=request.user, include_plot=False)
+    return render(request, 'custom_code/partials/target/spectrum_interactive.html',
+                  {'entry': entry, 'target': target})
 
 
 def fit_lightcurve_view(request):

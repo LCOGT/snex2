@@ -1,4 +1,3 @@
-{% load plotly_dash %}
 {% load bootstrap4 custom_code_tags comments %}
 
 <tr valign="top" id="spectrum-row-{{ entry.spectrum.id }}">
@@ -31,7 +30,23 @@
     </div>
   </td>
   <td width=1000>
-    {% plotly_app name="Spectra_Individual" ratio=0.6 initial_arguments=entry.dash_context %}
+    <div id="spectrum-plot-{{ entry.spectrum.id }}">
+      {% if entry.static_plot %}
+        {{ entry.static_plot|safe }}
+        <div class="text-right">
+          <button type="button" class="btn btn-sm btn-outline-info"
+            hx-get="{% url 'load-spectrum-interactive' entry.spectrum.target.id entry.spectrum.id %}"
+            hx-target="#spectrum-plot-{{ entry.spectrum.id }}"
+            hx-swap="innerHTML"
+            hx-trigger="click once"
+            hx-disabled-elt="this">Interactive tools
+            <span class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+          </button>
+        </div>
+      {% else %}
+        <div style="padding: 30px; color: #999;">No plottable data for this spectrum.</div>
+      {% endif %}
+    </div>
   </td>
 </tr>
 
