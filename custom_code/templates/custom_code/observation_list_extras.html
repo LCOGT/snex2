@@ -8,17 +8,28 @@
       flex: 0 0 100%;
       max-width: 100%;
   }
-  #scheduling-content {
-      overflow-x: hidden;
+  .htmx-indicator {
+      display: none;
   }
-  #scheduling-content table.table {
-      transform-origin: top left;
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+      display: inline-block;
+  }
+  .scheduling-filter-row .input-group-text {
+      min-width: 45px;
+  }
+  .scheduling-filter-row .form-control {
+      margin-left: -1px;
+  }
+  .scheduling-filter-row .form-control:first-of-type {
+      margin-left: 0;
   }
 </style>
 {% endblock %}
 {% block content %}
 <head>
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
 <nav class="navbar navbar-expand-md fixed-top fixed-top-2">
   <div class="collapse navbar-collapse" id="targetInfo">
@@ -27,34 +38,35 @@
 </nav>
 <div class="row">
   <div class="col-md-10" id="scheduling-content">
-    <div class="row">
+    <div class="row align-items-center mb-2">
+      <div class="col-auto">
+        <input type="checkbox" id="checkbox-pessto" onclick="showTable('pessto')" value="Show ePESSTO Sequences">
+        <label for="checkbox-pessto" class="mb-0">Show ePESSTO Sequences</label>
+      </div>
+      <div class="col-auto">
+        <input type="checkbox" id="checkbox-dlt40" onclick="showTable('dlt40')" value="Show DLT40 Sequences">
+        <label for="checkbox-dlt40" class="mb-0">Show DLT40 Sequences</label>
+      </div>
+    </div>
+    <div class="row align-items-center">
       <div class="col-md-6">
         {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
       </div>
       <div class="col-md-6">
 	<div class="row">
-          <div class="col-md-4">
+          <div class="col-auto">
             <a class="btn btn-primary" href="{% url 'observation-list' key='ipp' %}">View by Highest IPP</a>
           </div>
-          <div class="col-md-4">
+          <div class="col-auto">
             <a class="btn btn-primary" href="{% url 'observation-list' key='urgency' %}">View by Most Overdue</a>
           </div>
-	  <div class="col-md-4">
+          <div class="col-auto">
+            {% include 'custom_code/partials/proposal_filter_dropdown.html' %}
+          </div>
+	  <div class="col-auto">
 	    <a class="btn btn-primary" href="{% url 'scheduling' %}">Return to Scheduling</a>
 	  </div>
 	</div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <input type="checkbox" id="checkbox-pessto" onclick="showTable('pessto')" value="Show ePESSTO Sequences">
-        <label for="checkbox-pessto">Show ePESSTO Sequences</label>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <input type="checkbox" id="checkbox-dlt40" onclick="showTable('dlt40')" value="Show DLT40 Sequences">
-        <label for="checkbox-dlt40">Show DLT40 Sequences</label>
       </div>
     </div>
     <div class="row">
@@ -64,9 +76,9 @@
     {% scheduling_list_with_form q %}
     {% if value == 'IPP' %}
     {% if 'SUPA202' in q.parameters.proposal %}
-    <div class="row pessto-table">
+    <div class="row pessto-card">
     {% elif q.parameters.proposal == 'LCO2022A-013' %}
-    <div class="row dlt40-table">
+    <div class="row dlt40-card">
     {% else %}
     <div class="row">
     {% endif %}
@@ -74,9 +86,9 @@
     </div>
     {% elif value == 'URGENCY' %}
     {% if 'SUPA202' in q.parameters.proposal %}
-    <div class="row pessto-table">
+    <div class="row pessto-card">
     {% elif q.parameters.proposal == 'LCO2022A-013' %}
-    <div class="row dlt40-table">
+    <div class="row dlt40-card">
     {% else %}
     <div class="row">
     {% endif %}
@@ -88,89 +100,35 @@
   </div>
 </div>
 <script>
+function promptSchedulingReason(event) {
+  var btn = event.target.closest('button');
+  var reason = window.prompt(btn.dataset.promptMessage, '');
+  if (reason === null) {
+    return false;
+  }
+  window.schedulingReason = reason;
+  return true;
+}
+
 function showTable(groupname) {
-  var sequences = document.getElementsByClassName(groupname + '-table');
-  for (var i = 0; i < sequences.length; i++) {
-    if (sequences[i].style.display != 'block') {
-      sequences[i].style.display = 'block';
-    } else {
-      sequences[i].style.display = 'none';
-    }
+  var rows = document.getElementsByClassName(groupname + '-card');
+  for (var i = 0; i < rows.length; i++) {
+    rows[i].style.display = rows[i].style.display !== 'block' ? 'block' : 'none';
   }
-  fitTables();
 }
-function fitTables() {
-  var container = document.getElementById('scheduling-content');
-  if (!container) return;
-  document.querySelectorAll('#scheduling-content table.table').forEach(function(t) {
-    if (t.offsetParent === null) return
-    t.style.zoom = 1;
-    var avail = t.parentElement.clientWidth;
-    var natural = t.scrollWidth;
-    t.style.zoom = natural > avail ? (avail / natural) : 1;
-  });
-}
-var _fitTimer;
-window.addEventListener('resize', function() {
-  clearTimeout(_fitTimer);
-  _fitTimer = setTimeout(fitTables, 150);
-});
-window.addEventListener('load', fitTables);
-function modify_sequence(clickedId) {
-  var button = document.getElementById(clickedId);
-  var oldval = button.value;
-  button.value = 'Loading...';
-  var thenum = clickedId.replace(/^\D+/g, '');
-  var theformstr = '#scheduling-form-' + thenum;
-  var commentObj;
-  if (clickedId.includes('stop')) {
-    var cancelComment = prompt('Reason for stopping observations:', '');
-    if (cancelComment === null) {
-      button.value = oldval;
-      return;
-    }
-    commentObj = {'cancel': cancelComment};
-  } else if (clickedId.includes('modify')) {
-    var cancelComment = prompt('Reason for modifying this sequence:', '');
-    if (cancelComment === null) {
-      button.value = oldval;
-      return;
-    }
-    commentObj = {'cancel': cancelComment};
-  } else {
-    commentObj = {'none': ''};
-  }
-  var commentJSON = JSON.stringify(commentObj);
-  $.ajax({
-    url: '{% url "custom_code:scheduling" %}',
-    data: $(theformstr).serialize() + "&button=" + clickedId + "&comment=" + encodeURIComponent(commentJSON),
-    dataType: 'json',
-    success: function(response) {
-      if (response.hasOwnProperty('failure')) {
-        alert(response.failure);
-        button.value = oldval;
-      } else {
-        button.value = response.success;
-      }
-    },
-    error: function() {
-      button.value = oldval;
-      alert('Request failed.');
-    }
-  });
-}
+
 $("body").on("input change", ".cadence-input", function() {
-  var table = this.closest(".table");
+  var row = this.closest(".scheduling-row");
   var cadence = parseFloat(this.value) || 0;
-  var delay = parseFloat(table.querySelector('input[name="delay_start"]').value) || 0;
-  var reminder = table.querySelector('input[name="reminder"]');
+  var delay = parseFloat(row.querySelector('input[name="delay_start"]').value) || 0;
+  var reminder = row.querySelector('input[name="reminder"]');
   reminder.value = 2 * cadence + delay + 0.7;
 });
 $("body").on("input change", ".delay-start-input", function() {
-  var table = this.closest(".table");
-  var cadence = parseFloat(table.querySelector('input[name="cadence_frequency_days"]').value) || 0;
+  var row = this.closest(".scheduling-row");
+  var cadence = parseFloat(row.querySelector('input[name="cadence_frequency_days"]').value) || 0;
   var delay = parseFloat(this.value) || 0;
-  var reminder = table.querySelector('input[name="reminder"]');
+  var reminder = row.querySelector('input[name="reminder"]');
   reminder.value = 2 * cadence + delay + 0.7;
 });
 </script>

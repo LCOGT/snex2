@@ -1,3 +1,4 @@
+from django.core.exceptions import NON_FIELD_ERRORS
 from django.db import transaction
 from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm
@@ -15,15 +16,26 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def format_form_errors(errors):
+    lines = []
+    for field, messages in errors.items():
+        for message in messages:
+            if field == NON_FIELD_ERRORS:
+                lines.append(str(message))
+            else:
+                lines.append(f'{field}: {message}')
+    return '; '.join(lines)
+
+def get_proposal_choices(facility, observation_type, current_proposal=None):
+    facility_class = get_service_class(facility)()
+    choices = list(facility_class.get_form(observation_type).proposal_choices(facility_class))
+
+    if current_proposal and current_proposal not in dict(choices):
+        choices = [(current_proposal, current_proposal)] + choices
+
+    return choices
+
 def change_obs_from_scheduling(action, obs_group, user, data):
-    '''
-    Logic of the scheduling page
-    params:
-    action: str, modify, continue, stop
-    obs_group: ObservationGroup instance
-    user: User instance
-    data: cleaned data from PhotSchedulingForm or SpecSchedulingForm
-    '''
     if action == 'stop':
         logger.info(f'User {user.username} stopping sequence for group {obs_group.id}')
         return _stop_sequence(obs_group, user, data)
@@ -171,7 +183,7 @@ def _continue_sequence(obs_group, data):
     
     logger.info(f'Continuing Sequence group {obs_group.id} as-is')
     
-    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
+    for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
         if key in data.keys() and key in obs.parameters.keys():
             if data[key] != obs.parameters[key]:
                 return {'failure': f'Sequence parameter {key} for form: {data[key]} and observation record: {obs.parameters[key]} were modified. If this was intentional, please press the "Modify Sequence" button instead.'}
@@ -207,6 +219,7 @@ def _modify_sequence(obs_group, user, data):
     new_params = obs.parameters.copy()
     
     new_params['comment'] = ''
+    new_params['proposal'] = data['proposal']
     new_params['ipp_value'] = data['ipp_value']
     new_params['max_airmass'] = data['max_airmass']
     new_params['cadence_frequency_days'] = data['cadence_frequency_days']
@@ -239,8 +252,8 @@ def _modify_sequence(obs_group, user, data):
         form = form_class(data=new_params)
         
         if not form.is_valid():
-            logger.error(f"Form validation failed: {form.errors}")
-            raise Exception(f"New parameters invalid for {obs.facility}: {form.errors}")
+            logger.error(f"Form validation failed: {format_form_errors(form.errors)}")
+            raise Exception(f"New parameters invalid for {obs.facility}: {format_form_errors(form.errors)}")
         
         observation_ids = facility.submit_observation(form.observation_payload())
         

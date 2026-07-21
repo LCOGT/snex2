@@ -14,6 +14,8 @@ from tom_observations.models import ObservationRecord
 from tom_observations.cadences.resume_cadence_after_failure import ResumeCadenceAfterFailureStrategy
 from tom_targets.models import Target
 
+from custom_code.scheduling import format_form_errors
+
 
 logger = logging.getLogger(__name__)
 
@@ -155,10 +157,10 @@ class SnexResumeCadenceAfterFailureStrategy(SnexCadencePermissionMixin, ResumeCa
             observation_ids = facility.submit_observation(form.observation_payload())
         else:
             logger.error(
-                msg=f'Unable to submit next cadenced observation: {form.errors} '
+                msg=f'Unable to submit next cadenced observation: {format_form_errors(form.errors)} '
                     f'for ObservationRecord.id: {last_obs.id}'
             )
-            raise Exception(f'Unable to submit next cadenced observation: {form.errors}')
+            raise Exception(f'Unable to submit next cadenced observation: {format_form_errors(form.errors)}')
 
         # Creation of corresponding ObservationRecord objects for the observations
         new_observations = []

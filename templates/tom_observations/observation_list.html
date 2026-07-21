@@ -8,53 +8,26 @@
       flex: 0 0 100%;
       max-width: 100%;
   }
-  #scheduling-content {
-      overflow-x: hidden;
+  .htmx-indicator {
+      display: none;
   }
-  #scheduling-content table.table {
-      transform-origin: top left;
+  .htmx-request .htmx-indicator {
+      display: inline-block;
   }
-  #proposal-filter-menu {
-      background: #fff !important;
-      border: 1px solid #ccc;
+  .scheduling-filter-row .input-group-text {
+      min-width: 45px;
   }
-  #proposal-filter-menu .form-check-label {
-      color: #212529 !important;
+  .scheduling-filter-row .form-control {
+      margin-left: -1px;
   }
-  #proposal-filter-menu #proposal-filter-clear {
-      color: #164560 !important;
-  }
-  #proposal-filter-menu .form-check {
-      margin-bottom: 2px;
-  }
-  #proposal-filter-btn {
-      width: auto !important;
-      min-width: 170px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: space-between;
-      white-space: nowrap;
-      padding: 0.3rem 0.75rem;
-      background: #fff;
-      border: 1px solid #164560;
-      border-radius: 0.25rem;
-      color: #164560;
-      vertical-align: middle;
-  }
-  #proposal-filter-btn:hover,
-  #proposal-filter-btn:focus {
-      background: #164560;
-      color: #fff;
-  }
-  #proposal-filter-btn::after {
-      margin-left: 0.5rem;
+  .scheduling-filter-row .form-control:first-of-type {
+      margin-left: 0;
   }
 </style>
 {% endblock %}
 {% block content %}
-<head>
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-</head>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
 <nav class="navbar navbar-expand-md fixed-top fixed-top-2">
   <div class="collapse navbar-collapse" id="targetInfo">
     <h3>Scheduling</h3>
@@ -62,44 +35,30 @@
 </nav>
 <div class="row">
   <div class="col-md-10" id="scheduling-content">
-    <div class="row">
+    <div class="row align-items-center mb-2">
+      <div class="col-auto">
+        <input type="checkbox" id="checkbox-pessto" onclick="showTable('pessto')" value="Show ePESSTO Sequences">
+        <label for="checkbox-pessto" class="mb-0">Show ePESSTO Sequences</label>
+      </div>
+      <div class="col-auto">
+        <input type="checkbox" id="checkbox-dlt40" onclick="showTable('dlt40')" value="Show DLT40 Sequences">
+        <label for="checkbox-dlt40" class="mb-0">Show DLT40 Sequences</label>
+      </div>
+    </div>
+    <div class="row align-items-center">
       <div class="col-md-6">
         {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
       </div>
       <div class="col-md-6">
         <div class="row">
-          <div class="col-md-6">
+          <div class="col-auto">
             <a class="btn btn-primary" href="{% url 'observation-list' key='ipp' %}">View by Highest IPP</a>
           </div>
-          <div class="col-md-6">
+          <div class="col-auto">
             <a class="btn btn-primary" href="{% url 'observation-list' key='urgency' %}">View by Most Overdue</a>
           </div>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <input type="checkbox" id="checkbox-pessto" onclick="showTable('pessto')" value="Show ePESSTO Sequences">
-        <label for="checkbox-pessto">Show ePESSTO Sequences</label>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <input type="checkbox" id="checkbox-dlt40" onclick="showTable('dlt40')" value="Show DLT40 Sequences">
-        <label for="checkbox-dlt40">Show DLT40 Sequences</label>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col-md-6">
-        <label class="mr-2">Filter by proposal:</label>
-        <div class="dropdown d-inline-block">
-          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                  id="proposal-filter-btn" data-toggle="dropdown"
-                  aria-haspopup="true" aria-expanded="false">All proposals</button>
-          <div class="dropdown-menu p-2" id="proposal-filter-menu"
-               aria-labelledby="proposal-filter-btn"
-               style="max-height: 320px; overflow-y: auto; min-width: 240px;">
-            <a href="#" id="proposal-filter-clear" class="small d-block mb-2">Clear selection</a>
+          <div class="col-auto">
+            {% include 'custom_code/partials/proposal_filter_dropdown.html' %}
           </div>
         </div>
       </div>
@@ -122,85 +81,38 @@
   </div>
 </div>
 <script>
-function showTable(groupname) {
-  var sequences = document.getElementsByClassName(groupname + '-table');
-  for (var i = 0; i < sequences.length; i++) {
-    if (sequences[i].style.display != 'block') {
-      sequences[i].style.display = 'block';
-    } else {
-      sequences[i].style.display = 'none';
-    }
+function promptSchedulingReason(event) {
+  var btn = event.target.closest('button');
+  var reason = window.prompt(btn.dataset.promptMessage, '');
+  if (reason === null) {
+    return false;
   }
-  fitTables();
+  window.schedulingReason = reason;
+  return true;
 }
-function fitTables() {
-  var container = document.getElementById('scheduling-content');
-  if (!container) return;
-  document.querySelectorAll('#scheduling-content table.table').forEach(function(t) {
-    if (t.offsetParent === null) return;
-    t.style.zoom = 1;
-    var avail = t.parentElement.clientWidth;
-    var natural = t.scrollWidth;
-    t.style.zoom = natural > avail ? (avail / natural) : 1;
-  });
+
+function showTable(groupname) {
+  var rows = document.getElementsByClassName(groupname + '-card');
+  for (var i = 0; i < rows.length; i++) {
+    rows[i].style.display = rows[i].style.display !== 'block' ? 'block' : 'none';
+  }
 }
-var _fitTimer;
-window.addEventListener('resize', function() {
-  clearTimeout(_fitTimer);
-  _fitTimer = setTimeout(fitTables, 150);
+
+$("body").on("input change", ".cadence-input", function() {
+  var row = this.closest(".scheduling-row");
+  var cadence = parseFloat(this.value) || 0;
+  var delay = parseFloat(row.querySelector('input[name="delay_start"]').value) || 0;
+  var reminder = row.querySelector('input[name="reminder"]');
+  reminder.value = 2 * cadence + delay + 0.7;
 });
-window.addEventListener('load', fitTables);
-function buildProposalFilter() {
-  var menu = document.getElementById('proposal-filter-menu');
-  if (!menu) return;
-  var checked = {};
-  menu.querySelectorAll('input.proposal-cb:checked').forEach(function(cb) {
-    checked[cb.value] = true;
-  });
-  var seen = {};
-  document.querySelectorAll('table[data-proposal]').forEach(function(t) {
-    var p = t.getAttribute('data-proposal');
-    if (p) seen[p] = true;
-  });
-  menu.querySelectorAll('.proposal-cb-row').forEach(function(el) { el.remove(); });
-  Object.keys(seen).sort().forEach(function(p) {
-    var id = 'prop-cb-' + p.replace(/[^a-zA-Z0-9_-]/g, '_');
-    var row = document.createElement('div');
-    row.className = 'form-check proposal-cb-row';
-    row.innerHTML =
-      '<input class="form-check-input proposal-cb" type="checkbox" id="' + id + '" value="' + p + '">' +
-      '<label class="form-check-label" for="' + id + '">' + p + '</label>';
-    menu.appendChild(row);
-    if (checked[p]) row.querySelector('input').checked = true;
-  });
-  applyProposalFilter();
-}
-function applyProposalFilter() {
-  var menu = document.getElementById('proposal-filter-menu');
-  var btn = document.getElementById('proposal-filter-btn');
-  var selected = Array.prototype.map.call(
-    menu.querySelectorAll('input.proposal-cb:checked'), function(cb) { return cb.value; });
-  var set = new Set(selected);
-  document.querySelectorAll('table[data-proposal]').forEach(function(t) {
-    if (set.size === 0) {
-      t.style.display = '';
-    } else {
-      t.style.display = set.has(t.getAttribute('data-proposal')) ? 'block' : 'none';
-    }
-  });
-  if (set.size === 0) btn.textContent = 'All proposals';
-  else if (set.size === 1) btn.textContent = selected[0];
-  else btn.textContent = set.size + ' proposals';
-  fitTables();
-}
-$("body").on("change", "input.proposal-cb", applyProposalFilter);
-$("body").on("click", "#proposal-filter-menu", function(e) { e.stopPropagation(); });
-$("body").on("click", "#proposal-filter-clear", function(e) {
-  e.preventDefault();
-  document.querySelectorAll('input.proposal-cb').forEach(function(cb) { cb.checked = false; });
-  applyProposalFilter();
+$("body").on("input change", ".delay-start-input", function() {
+  var row = this.closest(".scheduling-row");
+  var cadence = parseFloat(row.querySelector('input[name="cadence_frequency_days"]').value) || 0;
+  var delay = parseFloat(this.value) || 0;
+  var reminder = row.querySelector('input[name="reminder"]');
+  reminder.value = 2 * cadence + delay + 0.7;
 });
-document.addEventListener('DOMContentLoaded', buildProposalFilter);
+
 function loadUpcomingReminders() {
   document.getElementById("load-upcoming-reminders-btn").innerHTML = "Loading...";
   var obs_ids = [];
@@ -218,89 +130,9 @@ function loadUpcomingReminders() {
       var upcomingRow = document.getElementById("load-upcoming-reminders");
       upcomingRow.insertAdjacentHTML('afterend', response['html_from_view']);
       document.getElementById("load-upcoming-reminders-btn").style.display = "none";
-      buildProposalFilter();
-      fitTables();
-      {% with pagenumber=request.GET.urlencode %}
-      {% for q in filter.qs|filter_upcoming_reminders:pagenumber %}
-        $.ajax({
-          url: '{% url "targetlist_collapse" %}',
-          data: {
-            'target_id': {{ q.target_id }},
-            'user_id': {{ request.user.id }}
-          },
-          dataType: 'json',
-          success: function(response) {
-            var lightcurve_plot = response.lightcurve_plot;
-            $('#lightcurve-{{q.id}}').html(lightcurve_plot);
-            var spectra_plot = response.spectra_plot;
-            $('#spectra-{{q.id}}').html(spectra_plot);
-            var airmass_plot = response.airmass_plot;
-            $('#airmass-{{q.id}}').html(airmass_plot);
-            if (window.fitTables) fitTables();
-          }
-        });
-      {% endfor %}
-      {% endwith %}
+      htmx.process(upcomingRow.parentElement);
     }
   });
 }
-function modify_sequence(clickedId) {
-  var button = document.getElementById(clickedId);
-  var oldval = button.value;
-  button.value = 'Loading...';
-  var thenum = clickedId.replace(/^\D+/g, '');
-  var theformstr = '#scheduling-form-' + thenum;
-  var commentObj;
-  if (clickedId.includes('stop')) {
-    var cancelComment = prompt('Reason for stopping observations:', '');
-    if (cancelComment === null) {
-      button.value = oldval;
-      return;
-    }
-    commentObj = {'cancel': cancelComment};
-  } else if (clickedId.includes('modify')) {
-    var cancelComment = prompt('Reason for modifying this sequence:', '');
-    if (cancelComment === null) {
-      button.value = oldval;
-      return;
-    }
-    commentObj = {'cancel': cancelComment};
-
-  } else {
-    commentObj = {'none': ''};
-  }
-  var commentJSON = JSON.stringify(commentObj);
-  $.ajax({
-    url: '{% url "custom_code:scheduling" %}',
-    data: $(theformstr).serialize() + "&button=" + clickedId + "&comment=" + encodeURIComponent(commentJSON),
-    dataType: 'json',
-    success: function(response) {
-      if (response.hasOwnProperty('failure')) {
-        alert(response.failure);
-        button.value = oldval;
-      } else {
-        button.value = response.success;
-      }
-    },
-    error: function() {
-      button.value = oldval;
-      alert('Request failed.');
-    }
-  });
-}
-$("body").on("input change", ".cadence-input", function() {
-  var table = this.closest(".table");
-  var cadence = parseFloat(this.value) || 0;
-  var delay = parseFloat(table.querySelector('input[name="delay_start"]').value) || 0;
-  var reminder = table.querySelector('input[name="reminder"]');
-  reminder.value = 2 * cadence + delay + 0.7;
-});
-$("body").on("input change", ".delay-start-input", function() {
-  var table = this.closest(".table");
-  var cadence = parseFloat(table.querySelector('input[name="cadence_frequency_days"]').value) || 0;
-  var delay = parseFloat(this.value) || 0;
-  var reminder = table.querySelector('input[name="reminder"]');
-  reminder.value = 2 * cadence + delay + 0.7;
-});
 </script>
 {% endblock %}

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from custom_code.views import BulkDownloadView, TNSTargets, PaperCreateView, PaperUpdateView, PaperDeleteView, scheduling_view, ReferenceStatusUpdateView, ObservationGroupDetailView, observation_sequence_cancel_view, AuthorshipInformation, download_photometry_view, get_target_standards_view, SNEx2SpectroscopyTNSSharePassthrough, CustomUserUpdateView, TargetFilteringView, download_data_product_view
+from custom_code.views import BulkDownloadView, TNSTargets, PaperCreateView, PaperUpdateView, PaperDeleteView, scheduling_row_view, scheduling_action_view, ReferenceStatusUpdateView, ObservationGroupDetailView, observation_sequence_cancel_view, AuthorshipInformation, download_photometry_view, get_target_standards_view, SNEx2SpectroscopyTNSSharePassthrough, CustomUserUpdateView, TargetFilteringView, download_data_product_view
 
 app_name = 'custom_code'
 
@@ -9,7 +9,8 @@ urlpatterns = [
     path('create-paper/', PaperCreateView.as_view(), name='create-paper'),
     path('papers/<int:pk>/update/', PaperUpdateView.as_view(), name='update-paper'),
     path('papers/<int:pk>/delete/', PaperDeleteView.as_view(), name='delete-paper'),
-    path('scheduling/', scheduling_view, name='scheduling'),
+    path('scheduling/row/<int:observation_id>/', scheduling_row_view, name='scheduling-row'),
+    path('scheduling/action/<int:observation_id>/<str:action>/', scheduling_action_view, name='scheduling-action'),
     path('update-reference-status/', ReferenceStatusUpdateView.as_view(), name='update-reference-status'),
     path('observationgroup/<int:pk>/', ObservationGroupDetailView.as_view(), name='observationgroup-detail'),
     path('observation/cancel/', observation_sequence_cancel_view, name='observation-sequence-cancel'),

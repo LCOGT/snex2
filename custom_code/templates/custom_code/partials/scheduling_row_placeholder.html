@@ -1,0 +1,7 @@
+{% if observation %}
+<div hx-get="{% url 'custom_code:scheduling-row' observation.id %}" hx-trigger="load" hx-swap="outerHTML">
+  <div class="card scheduling-row mb-3">
+    <div class="card-body text-muted">Loading sequence...</div>
+  </div>
+</div>
+{% endif %}

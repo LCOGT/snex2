@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt
 
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
+from custom_code.scheduling import get_proposal_choices
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -62,13 +63,13 @@ def airmass_collapse(target):
         yaxis=dict(range=[airmass_limit,1.0],gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         margin=dict(l=20,r=10,b=30,t=40),
         hovermode='closest',
-        width=250,
-        height=200,
+        width=340,
+        height=280,
         showlegend=False,
         plot_bgcolor='white'
     )
     visibility_graph = offline.plot(
-            go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs='cdn'
+            go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs=False
     )
     return {
         'target': target,
@@ -341,8 +342,8 @@ def lightcurve_collapse(target, user):
         yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
         margin=dict(l=30, r=10, b=30, t=40),
         hovermode='closest',
-        height=200,
-        width=250,
+        height=280,
+        width=340,
         showlegend=False,
         plot_bgcolor='white',
         shapes=[
@@ -361,7 +362,7 @@ def lightcurve_collapse(target, user):
     if plot_data:
         return {
             'target': target,
-            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs='cdn')
+            'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs=False)
         }
     else:
         return {
@@ -549,8 +550,8 @@ def spectra_collapse(target,user):
             y=spectrum[1]
         ) for spectrum in spectra]
     layout = go.Layout(
-        height=200,
-        width=250,
+        height=280,
+        width=340,
         margin=dict(l=30, r=10, b=30, t=40),
         showlegend=False,
         xaxis=dict(
@@ -571,7 +572,7 @@ def spectra_collapse(target,user):
     if plot_data:
       return {
           'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs='cdn')
+          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div', show_link=False, config={'staticPlot': True}, include_plotlyjs=False)
       }
     else:
         return {
@@ -1162,6 +1163,15 @@ def smart_name_list(target):
     return good_names
     
 
+def _format_scheduling_timestamp(value):
+    if not value:
+        return ''
+    text = str(value).split('.')[0].replace('T', ' ')
+    if '+' in text:
+        text = text.split('+')[0]
+    return text
+
+
 def get_scheduling_form(observation, user_id, start, requested_str):
     '''
     Used to get the initial parameters and form for scheduling current
@@ -1181,11 +1191,11 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         comment_str = '{}: {}'.format(comment.user.first_name, comment.comment)
     
     parameter = observation.parameters
-    facility_class = get_service_class(observation.facility)()
-    prop_choices = dict(facility_class.get_form(parameter.get('observation_type')).proposal_choices(facility_class))
+    proposal_choices = get_proposal_choices(observation.facility, parameter.get('observation_type'), parameter.get('proposal'))
+    prop_choices = dict(proposal_choices)
     if parameter.get('observation_type', '') == 'IMAGING':
 
-        observation_type = 'Phot'
+        observation_type = 'Photometry'
         if '2M' in parameter.get('instrument_type', ''):
             instrument = 'Muscat'
         elif '1M' in parameter.get('instrument_type', ''):
@@ -1198,18 +1208,18 @@ def get_scheduling_form(observation, user_id, start, requested_str):
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
         cadence_frequency = cadence_frequency_days * 24
 
-        end = str(parameter.get('reminder_date', '')).replace('T', ' ')
+        end = _format_scheduling_timestamp(parameter.get('reminder_date', ''))
         if not end:
-            end = str(observation.modified).split('.')[0]
+            end = _format_scheduling_timestamp(observation.modified)
 
         cadence_strategy = parameter.get('cadence_strategy', '')
         if cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
-            cadence_strat = '(Repeating)'
+            cadence_strat = 'Repeating'
         elif cadence_strategy == 'SnexRetryFailedObservationsStrategy':
-            cadence_strat = '(Onetime, retry untill successful)'
+            cadence_strat = 'Onetime, retry until successful'
         elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
-            cadence_strat = '(Onetime)'
-        
+            cadence_strat = 'Onetime'
+
         reminder = parameter.get('reminder', 2 * cadence_frequency_days)
         observing_parameters = {
                    'instrument_type': parameter.get('instrument_type', ''),
@@ -1238,6 +1248,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'observing_parameters': json.dumps(observing_parameters),
                    'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
+                   'proposal': parameter.get('proposal', ''),
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
                    'reminder': reminder
@@ -1248,7 +1259,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
             if parameter.get(f, '') and parameter.get(f, '')[0] != 0.0:
                 initial[f] = parameter.get(f, '')
 
-        form = PhotSchedulingForm(initial=initial)
+        form = PhotSchedulingForm(initial=initial, proposal_choices=proposal_choices)
 
         parameters.append({'observation_id': observation.id,
                            'obsgroup_id': obsgroup.id,
@@ -1269,7 +1280,7 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                         })
     
     else: # For spectra observations
-        observation_type = 'Spec'
+        observation_type = 'Spectroscopy'
         instrument = 'Floyds'
         
         cadence_frequency_days = parameter.get('cadence_frequency_days', '')
@@ -1277,16 +1288,16 @@ def get_scheduling_form(observation, user_id, start, requested_str):
 
         cadence_strategy = parameter.get('cadence_strategy', '')
         if cadence_strategy == 'SnexResumeCadenceAfterFailureStrategy':
-            cadence_strat = '(Repeating)'
+            cadence_strat = 'Repeating'
         elif cadence_strategy == 'SnexRetryFailedObservationsStrategy':
-            cadence_strat = '(Onetime, retry untill successful)'
+            cadence_strat = 'Onetime, retry until successful'
         elif cadence_strategy == 'SnexRetryUntilDeadlineStrategy':
-            cadence_strat = '(Onetime)'
+            cadence_strat = 'Onetime'
 
-        end = str(parameter.get('reminder_date', '')).replace('T', ' ')
+        end = _format_scheduling_timestamp(parameter.get('reminder_date', ''))
         if not end:
-            end = str(observation.modified).split('.')[0]
-        
+            end = _format_scheduling_timestamp(observation.modified)
+
         reminder = parameter.get('reminder', 2 * cadence_frequency_days)
 
         observing_parameters = {
@@ -1316,12 +1327,13 @@ def get_scheduling_form(observation, user_id, start, requested_str):
                    'observing_parameters': json.dumps(observing_parameters),
                    'cadence_frequency_days': cadence_frequency_days,
                    'cadence_frequency': cadence_frequency,
+                   'proposal': parameter.get('proposal', ''),
                    'ipp_value': parameter.get('ipp_value', ''),
                    'max_airmass': parameter.get('max_airmass', ''),
                    'reminder': reminder,
                    'exposure_time': parameter.get('exposure_time', '')
             }
-        form = SpecSchedulingForm(initial=initial)
+        form = SpecSchedulingForm(initial=initial, proposal_choices=proposal_choices)
 
         parameters.append({'observation_id': observation.id,
                            'obsgroup_id': obsgroup.id,
@@ -1346,37 +1358,38 @@ def get_scheduling_form(observation, user_id, start, requested_str):
     }
 
 
-@register.inclusion_tag('custom_code/scheduling_list_with_form.html', takes_context=True)
-def scheduling_list_with_form(context, observation):
-    facility = observation.facility
-    
-    if facility != 'LCO':
-        return {'observations': observation,
-                'parameters': ''}
-         
+def get_scheduling_row_context(observation, viewer_user_id):
     obsgroup = observation.observationgroup_set.first()
-    first_obs = obsgroup.observation_records.order_by('created').first()
+    if not obsgroup:
+        return None
 
-    start_val = first_obs.parameters.get('start', 'Unknown')
-    start = str(start_val).replace('T', ' ')
+    first_obs = obsgroup.observation_records.order_by('created').first()
+    start = _format_scheduling_timestamp(first_obs.created) or 'Unknown'
     username = first_obs.parameters.get('start_user', 'snex_secure')
-    user = User.objects.filter(username = username).first()
-    requested_str = f"{user.first_name} {user.last_name}".strip() or username
-    return get_scheduling_form(observation, context['request'].user.id, start, requested_str)
+    user = User.objects.filter(username=username).first()
+    requested_str = f"{user.first_name} {user.last_name}".strip() or username if user else username
+    return get_scheduling_form(observation, viewer_user_id, start, requested_str)
+
+
+@register.inclusion_tag('custom_code/partials/scheduling_row_placeholder.html')
+def scheduling_list_with_form(observation):
+    if observation.facility != 'LCO':
+        return {'observation': None}
+    return {'observation': observation}
 
 @register.filter
-def filter_current_reminders(_, pagenumber):
+def filter_current_reminders(qs, pagenumber):
     now = timezone.now()
-    queryset = ObservationRecord.objects.filter(
+    queryset = qs.filter(
         id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
         latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
         parameters__reminder_date__lte=now.isoformat()).order_by('parameters__reminder_date')
     return Paginator(queryset, 25).get_page(pagenumber.strip('page='))
 
 @register.filter
-def filter_upcoming_reminders(_, pagenumber):
+def filter_upcoming_reminders(qs, pagenumber):
     now = timezone.now()
-    queryset = ObservationRecord.objects.filter(
+    queryset = qs.filter(
         id__in=ObservationGroup.objects.filter(dynamiccadence__active=True).annotate(
         latest_id=Max('observation_records__id')).values_list('latest_id', flat=True),
         parameters__reminder_date__gte=now.isoformat()).order_by('parameters__reminder_date')
