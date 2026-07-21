@@ -16,6 +16,7 @@ from tom_targets.models import Target, TargetList
 from tom_observations import utils, facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
+from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
 from tom_observations.models import ObservationRecord, ObservationGroup
 from tom_common.hooks import run_hook
 
@@ -631,6 +632,24 @@ def registration_who_you_are(user):
         return user.registration_info.who_you_are or ''
     except (AttributeError, UserRegistrationInfo.DoesNotExist):
         return ''
+
+@register.inclusion_tag('tom_dataproducts/partials/dataproduct_list_for_target.html', takes_context=True)
+def snex_dataproduct_list(context, target):
+    dataproduct_context = dataproduct_list_for_target(context, target)
+    telescopes, instruments = set(), set()
+    for p in dataproduct_context['products']:
+        rde = p.reduceddatumextra_set.first()
+        if rde and rde.value:
+            t = rde.value.get('telescope')
+            i = rde.value.get('instrument')
+            if t:
+                telescopes.add(t)
+            if i:
+                instruments.add(i)
+    dataproduct_context['telescopes'] = sorted(telescopes)
+    dataproduct_context['instruments'] = sorted(instruments)
+    return dataproduct_context
+
 
 @register.inclusion_tag('custom_code/custom_upload_dataproduct.html', takes_context=True)
 def custom_upload_dataproduct(context, obj):
@@ -1400,22 +1419,9 @@ def filter_upcoming_reminders(qs, pagenumber):
         parameters__reminder_date__gte=now.isoformat()).order_by('parameters__reminder_date')
     return Paginator(queryset, 25).get_page(pagenumber)
 
-@register.inclusion_tag('custom_code/dash_spectra_page.html', takes_context=True)
-def dash_spectra_page(context, target):
-    # Support both dict-style access (from views) and attribute access (from templates)
-    if isinstance(context, dict):
-        request = context['request']
-    else:
-        try:
-            request = context['request']
-        except (KeyError, TypeError):
-            request = context.request
-    try:
-        z = target.redshift
-    except:
-        z = 0
-
-    # Setup the data share form for this spectra page
+@register.inclusion_tag('custom_code/partials/target/spectra_container.html', takes_context=True)
+def spectra_list(context, target):
+    request = context['request']
     initial = {
         'submitter': request.user,
         'target': target,
@@ -1428,73 +1434,88 @@ def dash_spectra_page(context, target):
     sharing = getattr(settings, "DATA_SHARING", None)
     hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
 
-    ### Send the min and max flux values
-    user = User.objects.get(username=request.user)
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                 klass=ReducedDatum.objects.filter(
-                                                     target=target, data_type='spectroscopy')).order_by('timestamp')
-    
+    spectra = get_objects_for_user(
+        request.user, 'tom_dataproducts.view_reduceddatum',
+        klass=ReducedDatum.objects.filter(target=target, data_type='spectroscopy')).order_by('timestamp')
 
-    plot_list = []
-    for i in range(len(spectral_dataproducts)):
-    
-        max_flux = 0
-        min_flux = 0
-        
-        spectrum = spectral_dataproducts[i]
-        datum = spectrum.value
-        wavelength = []
-        flux = []
-        name = str(spectrum.timestamp).split(' ')[0]
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(value['wavelength'])
+    extras = {
+        row.data_product_id: row.value or {}
+        for row in ReducedDatumExtra.objects.filter(data_type='spectroscopy', target=target)
+        if row.data_product_id
+    }
+
+    spectra_metadata = []
+    for spectrum in spectra:
+        value = extras.get(spectrum.data_product_id, {})
+        spectra_metadata.append({
+            'spectrum_id': spectrum.id,
+            'time': str(spectrum.timestamp).split('+')[0],
+            'telescope': value.get('telescope', 'Unknown'),
+            'instrument': value.get('instrument', 'Unknown'),
+        })
+
+    return {
+        'target': target,
+        'spectra_metadata': spectra_metadata,
+        'target_data_share_form': form,
+        'sharing_destinations': form.fields['share_destination'].choices,
+        'hermes_sharing': hermes_sharing,
+        'request': request,
+        'user': request.user,
+    }
+
+
+def build_spectrum_entry(target, spectrum, redshift=None):
+    if redshift is None:
+        redshift = getattr(target, 'redshift', 0) or 0
+
+    datum = spectrum.value or {}
+    flux = []
+    if datum.get('photon_flux'):
+        flux = datum.get('photon_flux')
+    elif datum.get('flux'):
+        flux = datum.get('flux')
+    else:
+        for value in datum.values():
+            try:
                 flux.append(float(value['flux']))
-        if max(flux) > max_flux: max_flux = max(flux)
-        if min(flux) < min_flux: min_flux = min(flux)
+            except (KeyError, TypeError, ValueError):
+                continue
 
-        # Query ReducedDatumExtra directly - no object-level permissions needed
-        # (user already has target access if they can view this page)
-        spec_extras_row = ReducedDatumExtra.objects.filter(
-            data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
-        spec_extras = {}
-        if spec_extras_row:
-            spec_extras = spec_extras_row.value
-            if spec_extras.get('instrument', '') == 'en06':
-                spec_extras['site'] = '(OGG 2m)'
-                spec_extras['instrument'] += ' (FLOYDS)'
-            elif spec_extras.get('instrument', '') == 'en12':
-                spec_extras['site'] = '(COJ 2m)'
-                spec_extras['instrument'] += ' (FLOYDS)'
+    max_flux = max(flux) if flux else 0
+    min_flux = min(flux) if flux else 0
 
-            content_type_id = ContentType.objects.get(model='reduceddatum').id
-            comments = Comment.objects.filter(object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
-            comment_list = ['{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
-            spec_extras['comments'] = comment_list
-        else:
-            spec_extras = {}
+    spec_extras_row = ReducedDatumExtra.objects.filter(
+        data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
+    spec_extras = {}
+    if spec_extras_row:
+        spec_extras = spec_extras_row.value or {}
+        if spec_extras.get('instrument', '') == 'en06':
+            spec_extras['site'] = '(OGG 2m)'
+            spec_extras['instrument'] += ' (FLOYDS)'
+        elif spec_extras.get('instrument', '') == 'en12':
+            spec_extras['site'] = '(COJ 2m)'
+            spec_extras['instrument'] += ' (FLOYDS)'
 
-        plot_list.append({'dash_context': {'spectrum_id': {'value': spectrum.id},
-                                           'target_redshift': {'value': z},
-                                           'min-flux': {'value': min_flux},
-                                           'max-flux': {'value': max_flux}
-                                        },
-                          'time': str(spectrum.timestamp).split('+')[0],
-                          'spec_extras': spec_extras,
-                          'spectrum': spectrum
-                        })
-    return {'plot_list': plot_list,
-            'target': target,
-            'target_data_share_form': form,
-            'sharing_destinations': form.fields['share_destination'].choices,
-            'hermes_sharing': hermes_sharing,
-            'request': request}
+        content_type_id = ContentType.objects.get(model='reduceddatum').id
+        comments = Comment.objects.filter(
+            object_pk=spectrum.id, content_type_id=content_type_id).order_by('id')
+        spec_extras['comments'] = comments
+        spec_extras['comments_list'] = [
+            '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+
+    return {
+        'dash_context': {
+            'spectrum_id': {'value': spectrum.id},
+            'target_redshift': {'value': redshift},
+            'min-flux': {'value': min_flux},
+            'max-flux': {'value': max_flux},
+        },
+        'time': str(spectrum.timestamp).split('+')[0],
+        'spec_extras': spec_extras,
+        'spectrum': spectrum,
+    }
+
 
 @register.filter
 def strip_trailing_zeros(value):

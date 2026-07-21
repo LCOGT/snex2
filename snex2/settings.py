@@ -508,9 +508,16 @@ SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
 SNEX1_DB_PASSWORD = os.getenv('SNEX1_DB_PASSWORD', '')
 SNEX1_DB_URL = f'mysql+pymysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
 
+CACHES = {
+    'default': {
+        'BACKEND': os.getenv('CACHE_BACKEND', 'django.core.cache.backends.db.DatabaseCache'),
+        'LOCATION': os.getenv('CACHE_LOCATION', 'django_cache'),
+    }
+}
+
 PLOTLY_DASH = {
-    'cache_arguments': False,
-    #'cache_timeout_initial_arguments': 120,
+    'cache_arguments': True,
+    'cache_timeout_initial_arguments': 3600,
 }
 
 PLOTLY_COMPONENTS = [
@@ -586,13 +593,6 @@ ALERT_STREAMS = [
 ]
 
 DOWNLOAD_TEST_THUMBNAIL = True
-
-CACHES = {
-     'default': {
-         'BACKEND': os.getenv('LOCAL_CACHE_BACKEND', 'django.core.cache.backends.locmem.LocMemCache'),
-         'LOCATION': 'locmem-cache'
-     }
-}
 
 if DEBUG:
     INTERNAL_IPS = [
