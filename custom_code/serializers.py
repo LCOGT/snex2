@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from tom_targets.serializers import TargetSerializer
 from tom_targets.models import Target
+import numpy as np
 
 class SNExTargetSerializer(TargetSerializer):
     def validate(self, data):
@@ -9,10 +10,10 @@ class SNExTargetSerializer(TargetSerializer):
         dec = data.get('dec')
         if ra is not None and dec is not None:
             nearby = Target.objects.filter(
-                ra__gte=ra - 4/3600,
-                ra__lte=ra + 4/3600,
-                dec__gte=dec - 4/3600,
-                dec__lte=dec + 4/3600
+                ra__gte=(ra - 1/3600) * np.cos(dec),
+                ra__lte=(ra + 1/3600) * np.cos(dec),
+                dec__gte=dec - 1/3600,
+                dec__lte=dec + 1/3600
             )
             if self.instance:
                 nearby = nearby.exclude(pk=self.instance.pk)
