@@ -312,7 +312,7 @@ def update_spec(action):
 
                 pipeline_id = spec_row.targetid
                 time = '{} {}'.format(spec_row.dateobs, spec_row.ut)
-                spec_filepath = "/".join(spec_row.filepath.split('/')[3:]) + spec_row.filename.replace('ascii', 'fits')  #remove everything before 'WEB/floyds/date_tel', e.g.: 'WEB/floyds/20240325_2m0-01/SN2024ehs_20240325_redblu_104630.842.fits'
+                spec_filepath = "/".join(spec_row.filepath.split('/')[4:]) + spec_row.filename.replace('ascii', 'fits')  #remove everything before 'floyds/date_tel', e.g.: 'floyds/20240325_2m0-01/SN2024ehs_20240325_redblu_104630.842.fits'
                 spec_filename = os.path.join(spec_row.filepath.replace(settings.SN_DIR, '/snex2/'), spec_row.filename.replace('.fits', '.ascii'))
                 spec = read_spec(spec_filename)
                 spec_groupid = spec_row.groupidcode
