@@ -10,8 +10,8 @@ class SNExTargetSerializer(TargetSerializer):
         dec = data.get('dec')
         if ra is not None and dec is not None:
             nearby = Target.objects.filter(
-                ra__gte=(ra - 1/3600) * np.cos(dec),
-                ra__lte=(ra + 1/3600) * np.cos(dec),
+                ra__gte=ra - 1/3600 * np.cos(dec),
+                ra__lte=ra + 1/3600 * np.cos(dec),
                 dec__gte=dec - 1/3600,
                 dec__lte=dec + 1/3600
             )

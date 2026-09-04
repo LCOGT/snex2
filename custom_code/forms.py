@@ -78,8 +78,8 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
 
         if ra and dec:
             if Target.objects.filter(
-                ra__gte=(ra-1/3600) * np.cos(dec),
-                ra__lte=(ra+1/3600) * np.cos(dec),
+                ra__gte=ra - 1/3600 * np.cos(dec),
+                ra__lte=ra + 1/3600 * np.cos(dec),
                 dec__gte=dec-1/3600,
                 dec__lte=dec+1/3600
             ).exists():
