@@ -10,11 +10,33 @@ from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
 from django.core.exceptions import NON_FIELD_ERRORS
+from django.urls import reverse
 from django.utils import timezone
 
 import logging
 
 logger = logging.getLogger(__name__)
+
+OBSERVATION_FORM_PREFIXES = {('SOAR', 'SPECTRA'): 'soar',
+                             ('LCO', 'IMAGING'): 'phot',
+                             ('LCO', 'SPECTRA'): 'spec'}
+
+
+def observation_form_prefix(facility, observation_type):
+    if facility == 'SOAR':
+        return 'soar'
+    return OBSERVATION_FORM_PREFIXES.get((facility, observation_type), 'phot')
+
+
+def bind_observation_form_htmx(form, facility, observation_type):
+    prefix = observation_form_prefix(facility, observation_type)
+    action = reverse('submit-lco-obs', kwargs={'facility': facility})
+    form.helper.form_action = action
+    form.helper.attrs = {'hx-post': action,
+                         'hx-target': f'#obs-form-{prefix}',
+                         'hx-swap': 'outerHTML show:top'}
+    return prefix
+
 
 def format_form_errors(errors):
     lines = []

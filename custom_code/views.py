@@ -17,7 +17,7 @@ from django.contrib.auth.models import Group, User
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
 from django.core.cache import cache
-from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, OuterRef, Q, Subquery, Sum
+from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
@@ -62,7 +62,7 @@ from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -853,15 +853,32 @@ def change_observing_priority_view(request):
     return HttpResponseRedirect('/targets/targetgrouping/')
 
 
+OBSERVATION_RECORD_PERMS = ['tom_observations.view_observationrecord',
+                            'tom_observations.change_observationrecord',
+                            'tom_observations.delete_observationrecord']
+
+
+def active_observation_ids(user, completed_only=False):
+    records = ObservationGroup.objects.filter(dynamiccadence__active=True)
+    if completed_only:
+        records = records.filter(observation_records__status='COMPLETED')
+    latest_ids = [i for i in records.annotate(latest_id=Max('observation_records__id'))
+                  .values_list('latest_id', flat=True) if i]
+    if not latest_ids:
+        return []
+    viewable = get_objects_for_user(
+        user, OBSERVATION_RECORD_PERMS,
+        klass=ObservationRecord.objects.filter(id__in=latest_ids),
+        any_perm=True, with_superuser=False, accept_global_perms=False)
+    return list(viewable.values_list('id', flat=True))
+
+
 class CustomObservationListView(ObservationListView):
 
     def _active_observation_ids(self):
-        try:
-            obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-        except Exception as e:
-            logger.info(e)
-            obsrecordlist = []
-        return [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
+        if not hasattr(self, '_cached_active_ids'):
+            self._cached_active_ids = active_observation_ids(self.request.user)
+        return self._cached_active_ids
 
     def get_queryset(self, *args, **kwargs):
         """
@@ -895,12 +912,9 @@ class ObservationListExtrasView(ListView):
     context_object_name = 'observation_list'
 
     def _active_observation_ids_for_extras(self):
-        try:
-            obsrecordlist = [c.observation_group.observation_records.order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-        except Exception as e:
-            logger.info(e)
-            obsrecordlist = []
-        return [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
+        if not hasattr(self, '_cached_active_ids'):
+            self._cached_active_ids = active_observation_ids(self.request.user)
+        return self._cached_active_ids
 
     def get_queryset(self, *args, **kwargs):
         """
@@ -916,13 +930,8 @@ class ObservationListExtrasView(ListView):
             return obsrecords.order_by('-parameters__ipp_value')
 
         elif val == 'urgency':
-            try:
-                obsrecordlist = [c.observation_group.observation_records.filter(status='COMPLETED').order_by('-created').first() for c in DynamicCadence.objects.filter(active=True)]
-            except Exception as e:
-                logger.info(e)
-                obsrecordlist = []
-            obsrecordlist_ids = [o.id for o in obsrecordlist if o is not None and self.request.user in get_users_with_perms(o)]
-            obsrecords = ObservationRecord.objects.filter(id__in=obsrecordlist_ids)
+            obsrecords = ObservationRecord.objects.filter(
+                id__in=active_observation_ids(self.request.user, completed_only=True))
             if proposals:
                 obsrecords = obsrecords.filter(parameters__proposal__in=proposals)
             now = datetime.utcnow()
@@ -949,6 +958,16 @@ class CustomObservationCreateView(ObservationCreateView):
             return HttpResponseForbidden('You do not have permission to submit SOAR observations.')
         return super().dispatch(request, *args, **kwargs)
 
+    def _form_prefix(self):
+        source = self.request.POST if self.request.method == 'POST' else self.request.GET
+        return observation_form_prefix(self.kwargs.get('facility'), source.get('observation_type'))
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        if getattr(self.request, 'htmx', False):
+            kwargs['auto_id'] = f'{self._form_prefix()}_%s'
+        return kwargs
+
     def get_form(self):
         """
         Gets an instance of the form appropriate for the request.
@@ -958,10 +977,34 @@ class CustomObservationCreateView(ObservationCreateView):
         form = super().get_form()
         if not settings.TARGET_PERMISSIONS_ONLY and 'groups' in form.fields:
             form.fields['groups'].queryset = Group.objects.all()
-        form.helper.form_action = reverse(
-            'submit-lco-obs', kwargs={'facility': self.kwargs['facility']}
-        )
+        if getattr(self.request, 'htmx', False):
+            source = self.request.POST if self.request.method == 'POST' else self.request.GET
+            bind_observation_form_htmx(form, self.kwargs['facility'], source.get('observation_type'))
+        else:
+            form.helper.form_action = reverse(
+                'submit-lco-obs', kwargs={'facility': self.kwargs['facility']}
+            )
         return form
+
+    def _render_observation_form(self, form, validation_message=None):
+        source = self.request.POST if self.request.method == 'POST' else self.request.GET
+        bind_observation_form_htmx(form, self.kwargs['facility'], source.get('observation_type'))
+        if not settings.TARGET_PERMISSIONS_ONLY and 'groups' in form.fields:
+            form.fields['groups'].queryset = Group.objects.all()
+        return render(self.request, 'custom_code/partials/target/observation_form.html',
+                      {'form': form, 'form_prefix': self._form_prefix(),
+                       'validation_message': validation_message})
+
+    def form_invalid(self, form):
+        if getattr(self.request, 'htmx', False):
+            return self._render_observation_form(form)
+        return super().form_invalid(form)
+
+    def form_validation_valid(self, form):
+        if getattr(self.request, 'htmx', False):
+            return self._render_observation_form(form, form.get_validation_message())
+        return super().form_validation_valid(form)
+
     def form_valid(self, form):
         form.cleaned_data['start_user'] = self.request.user.username
         target = self.get_target()
@@ -1013,6 +1056,11 @@ class CustomObservationCreateView(ObservationCreateView):
                         assign_perm('tom_observations.view_observationrecord', group, record)
                         assign_perm('tom_observations.change_observationrecord', group, record)
                         assign_perm('tom_observations.delete_observationrecord', group, record)
+
+        if getattr(self.request, 'htmx', False) and response.status_code in (301, 302):
+            htmx_response = HttpResponse(status=204)
+            htmx_response['HX-Redirect'] = response['Location']
+            return htmx_response
         return response
 
 def make_tns_request_view(request):

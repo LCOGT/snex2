@@ -51,7 +51,6 @@ except (AttributeError, KeyError):
 
 # Module specific settings.
 PORTAL_URL = LCO_SETTINGS['portal_url']
-TERMINAL_OBSERVING_STATES = ['COMPLETED', 'CANCELED', 'WINDOW_EXPIRED']
 
 # Units of flux and wavelength for converting to Specutils Spectrum1D objects
 FLUX_CONSTANT = (1e-15 * u.erg) / (u.cm ** 2 * u.second * u.angstrom)
@@ -326,6 +325,21 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             key=lambda inst: inst[1]
         )
 
+    def _instrument_configs_by_block(self):
+        blocks = {}
+        for filter_code, _ in self.all_optical_element_choices():
+            values = self.cleaned_data.get(filter_code)
+            if not values or len(values) < 3:
+                continue
+            blocks.setdefault(values[2] or 1, []).append({
+                'exposure_count': values[1],
+                'exposure_time': values[0],
+                'optical_elements': {
+                    'filter': filter_code
+                }
+            })
+        return blocks
+
     def observation_payload(self):
         payload = super().observation_payload()
         instrument_type = self.cleaned_data.get('instrument_type')
@@ -347,6 +361,21 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
                     configuration['instrument_type'] = instrument_type
                     if not configuration.get('type'):
                         configuration['type'] = 'EXPOSE'
+
+            return payload
+
+        blocks = self._instrument_configs_by_block()
+        if len(blocks) > 1 and payload.get('requests'):
+            base_request = payload['requests'][0]
+            requests = []
+            for block_num in sorted(blocks):
+                request = copy.deepcopy(base_request)
+                configurations = request.get('configurations') or []
+                if configurations:
+                    configurations[0]['instrument_configs'] = blocks[block_num]
+                requests.append(request)
+            payload['requests'] = requests
+            payload['operator'] = 'MANY'
 
         return payload
 

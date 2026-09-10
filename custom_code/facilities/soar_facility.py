@@ -26,7 +26,6 @@ except (AttributeError, KeyError):
     }
 
 PORTAL_URL = SOAR_SETTINGS['portal_url']
-TERMINAL_OBSERVING_STATES = ['COMPLETED', 'CANCELED', 'WINDOW_EXPIRED']
 SOAR_GROUP_NAME = SOAR_SETTINGS.get('access_group_name', 'PASSTA')
 logger = logging.getLogger(__name__)
 

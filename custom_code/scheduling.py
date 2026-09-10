@@ -14,6 +14,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+SEQUENCE_FILTERS = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']
+SEQUENCE_PARAMETERS = ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal'] + \
+    SEQUENCE_FILTERS + ['exposure_time']
+
 def refresh_group_statuses(obs_group):
     non_terminal = obs_group.observation_records.filter(status__in=['PENDING', ''])
     first = non_terminal.first()
@@ -169,7 +173,7 @@ def _continue_sequence(obs_group, data):
 
     reference = obs or obs_group.observation_records.order_by('-created').first()
     if reference:
-        for key in ['ipp_value', 'max_airmass', 'cadence_frequency_days', 'proposal', 'U', 'B', 'V', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']:
+        for key in SEQUENCE_PARAMETERS:
             if key in data.keys() and key in reference.parameters.keys():
                 if data[key] != reference.parameters[key]:
                     if key == 'proposal' and any(
@@ -198,11 +202,13 @@ def _continue_sequence(obs_group, data):
 
     logger.info(f'Continuing Sequence group {obs_group.id} as-is')
 
-    obs.parameters['reminder'] = data['reminder']
     now = timezone.now()
     reminder_date = (now + timedelta(days=data['reminder'])).isoformat()
-    obs.parameters['reminder_date'] = reminder_date
-    obs.save()
+    latest = obs_group.observation_records.order_by('-id').first()
+    for record in {r.id: r for r in (obs, latest) if r}.values():
+        record.parameters['reminder'] = data['reminder']
+        record.parameters['reminder_date'] = reminder_date
+        record.save()
 
     try:
         cad = DynamicCadence.objects.get(observation_group=obs_group)
@@ -246,9 +252,7 @@ def _modify_sequence(obs_group, user, data):
     new_params['delay_start'] = False
     new_params['delay_amount'] = 0
     
-    # Update filters
-    filters = ['U', 'B', 'V', 'gp', 'up', 'rp', 'ip', 'zs', 'w', 'muscat_filter', 'exposure_time']
-    for f in filters:
+    for f in SEQUENCE_FILTERS + ['exposure_time']:
         if f in data and data[f]:
             new_params[f] = data[f]
 
@@ -262,14 +266,11 @@ def _modify_sequence(obs_group, user, data):
         logger.error(f'Modify validation failed for group {obs_group.id}: {format_form_errors(form.errors)}')
         return {'failure': f'New parameters invalid for {obs.facility}: {format_form_errors(form.errors)}'}
 
-    result = _stop_sequence(obs_group, user, data)
-    if 'failure' in result:
-        return result
-
     observation_ids = facility.submit_observation(form.observation_payload())
 
     if not observation_ids:
-        raise Exception("Facility did not return any observation IDs")
+        logger.error(f'Facility returned no observation IDs for group {obs_group.id}; original sequence left untouched')
+        return {'failure': f'{obs.facility} did not return any observation IDs. The existing sequence was not changed.'}
 
     new_obs_group = ObservationGroup.objects.create(name=data['name'])
     
@@ -306,5 +307,16 @@ def _modify_sequence(obs_group, user, data):
         logger.info(f'Permissions synced to target for new group {new_obs_group.id}')
     except Exception as e:
         logger.error(f'Failed to sync permissions: {e}', exc_info=True)
+
+    result = _stop_sequence(obs_group, user, data)
+    if 'failure' in result:
+        logger.error(
+            f'MANUAL INTERVENTION REQUIRED: new sequence submitted as {observation_ids} in group '
+            f'{new_obs_group.id}, but the previous sequence in group {obs_group.id} could not be '
+            f'canceled at {obs.facility}. Both sequences are currently active.'
+        )
+        return {'failure': f'The new sequence was submitted as {", ".join(str(i) for i in observation_ids)}, '
+                           f'but the previous sequence could not be canceled and is still active. '
+                           f'Please stop it manually.'}
 
     return {'success': 'Modified'}

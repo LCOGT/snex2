@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
+from custom_code.utils import bind_observation_form_htmx
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -42,7 +43,8 @@ import logging
 import os
 
 logger = logging.getLogger(__name__)
-TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED'}
+TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED',
+                             'FAILURE_LIMIT_REACHED', 'NOT_ATTEMPTED'}
 LIGHTCURVE_CONTROLS_HEIGHT = 580
 
 register = template.Library()
@@ -648,8 +650,8 @@ def submit_lco_observations(context, target):
                     'name': get_best_name(target)}
     phot_form = SnexPhotometricSequenceForm(initial=phot_initial, auto_id='phot_%s')
     spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
-    phot_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
-    spec_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'LCO'})
+    bind_observation_form_htmx(phot_form, 'LCO', 'IMAGING')
+    bind_observation_form_htmx(spec_form, 'LCO', 'SPECTRA')
 
     soar_form = None
     if user_can_access_soar(user):
@@ -658,7 +660,7 @@ def submit_lco_observations(context, target):
                         'observation_type': 'SPECTRA',
                         'name': get_best_name(target)}
         soar_form = SOARObservationForm(initial=soar_initial, auto_id='soar_%s')
-        soar_form.helper.form_action = reverse('submit-lco-obs', kwargs={'facility': 'SOAR'})
+        bind_observation_form_htmx(soar_form, 'SOAR', 'SPECTRA')
 
     if not settings.TARGET_PERMISSIONS_ONLY:
         phot_form.fields['groups'].queryset = Group.objects.all()
@@ -937,12 +939,8 @@ def format_lco_summary(obs, group, is_active):
 
     elif obs_type == 'spectra':
         exp = params.get('exposure_time')
-        exp_count = params.get('exposure_count')
         if exp:
-            if exp_count:
-                summary.append(f"{exp}s x {exp_count}")
-            else:
-                summary.append(f"{exp}s")
+            summary.append(f"{exp}s")
 
     mode = params.get('observation_mode')
     if mode == 'TIME_CRITICAL':
@@ -1491,22 +1489,20 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
 
     spec_extras_row = ReducedDatumExtra.objects.filter(
         data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
-    spec_extras = {}
-    if spec_extras_row:
-        spec_extras = spec_extras_row.value or {}
-        if spec_extras.get('instrument', '') == 'en06':
-            spec_extras['site'] = '(OGG 2m)'
-            spec_extras['instrument'] += ' (FLOYDS)'
-        elif spec_extras.get('instrument', '') == 'en12':
-            spec_extras['site'] = '(COJ 2m)'
-            spec_extras['instrument'] += ' (FLOYDS)'
+    spec_extras = dict(spec_extras_row.value or {}) if spec_extras_row else {}
+    if spec_extras.get('instrument', '') == 'en06':
+        spec_extras['site'] = '(OGG 2m)'
+        spec_extras['instrument'] += ' (FLOYDS)'
+    elif spec_extras.get('instrument', '') == 'en12':
+        spec_extras['site'] = '(COJ 2m)'
+        spec_extras['instrument'] += ' (FLOYDS)'
 
-        content_type = ContentType.objects.get_for_model(ReducedDatum)
-        comments = Comment.objects.filter(
-            object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
-        spec_extras['comments'] = comments
-        spec_extras['comments_list'] = [
-            '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
+    content_type = ContentType.objects.get_for_model(ReducedDatum)
+    comments = Comment.objects.filter(
+        object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
+    spec_extras['comments'] = comments
+    spec_extras['comments_list'] = [
+        '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
 
     return {
         'dash_context': {

@@ -59,7 +59,7 @@ app.layout = html.Div([
     ),
     html.Div(
         id='plotting-options',
-        style={'display': 'none'},
+        style={'display': 'none', 'padding': '0 15px'},
         children=[
             html.H4('Instrument'),
             dcc.Checklist(
@@ -182,9 +182,9 @@ app.layout = html.Div([
 )
 def display_options(n_clicks):
     if (n_clicks % 2) == 0:
-        return {'display': 'none'}
+        return {'display': 'none', 'padding': '0 15px'}
     else:
-        return {}
+        return {'padding': '0 15px'}
 
 
 #Only show manually reduced data if subtracted is selected
