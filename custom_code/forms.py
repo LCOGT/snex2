@@ -21,6 +21,7 @@ from tom_registration.registration_flows.approval_required.forms import Registra
 from tom_targets.forms import SiderealTargetCreateForm
 from tom_targets.models import Target
 from custom_code.models import Papers, ScienceTags, TargetTags, UserRegistrationInfo
+import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -77,10 +78,10 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
 
         if ra and dec:
             if Target.objects.filter(
-                ra__gte=ra-4/3600,
-                ra__lte=ra+4/3600,
-                dec__gte=dec-4/3600,
-                dec__lte=dec+4/3600
+                ra__gte=ra - 1/3600 * np.cos(dec),
+                ra__lte=ra + 1/3600 * np.cos(dec),
+                dec__gte=dec-1/3600,
+                dec__lte=dec+1/3600
             ).exists():
                 raise ValidationError("Target exists near these coordinates.")
 

@@ -5,6 +5,7 @@ from custom_code.utils import _load_table, _return_session
 from sqlalchemy import func
 from datetime import datetime
 from django.conf import settings
+import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,10 +45,10 @@ class SNExTarget(BaseTarget):
         super().clean()
         if self.ra is not None and self.dec is not None:
             nearby = BaseTarget.objects.filter(
-                ra__gte=self.ra - 4/3600,
-                ra__lte=self.ra + 4/3600,
-                dec__gte=self.dec - 4/3600,
-                dec__lte=self.dec + 4/3600
+                ra__gte=self.ra - 1/3600 * np.cos(self.dec),
+                ra__lte=self.ra - 1/3600 * np.cos(self.dec),
+                dec__gte=self.dec - 1/3600,
+                dec__lte=self.dec + 1/3600
             )
             if self.pk:
                 nearby = nearby.exclude(pk=self.pk)
@@ -64,10 +65,10 @@ class SNExTarget(BaseTarget):
             try:
                 # Check if target already exists in pipeline db by coordinates
                 existing = db_session.query(Targets).filter(
-                    Targets.ra0 >= self.ra - 4/3600,
-                    Targets.ra0 <= self.ra + 4/3600,
-                    Targets.dec0 >= self.dec - 4/3600,
-                    Targets.dec0 <= self.dec + 4/3600
+                    Targets.ra0 >= self.ra - 1/3600 * np.cos(self.dec),
+                    Targets.ra0 <= self.ra - 1/3600 * np.cos(self.dec),
+                    Targets.dec0 >= self.dec - 1/3600,
+                    Targets.dec0 <= self.dec + 1/3600
                 ).first()
                 if not existing:
                     existing_name = db_session.query(Targetnames).filter(func.lower(func.trim(Targetnames.name)) == self.name.strip().lower()).first()
