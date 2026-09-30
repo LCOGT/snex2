@@ -12,6 +12,7 @@ from tom_targets.api_views import TargetViewSet
 from custom_code.models import ReducedDatumExtra, Papers
 from custom_code.serializers import SNExTargetSerializer
 from custom_code.utils import format_form_errors, sync_group_permissions_to_target
+from custom_code.filters import SNExTargetFilterSet
 from .processors.data_processor import run_custom_data_processor
 import json
 
@@ -33,6 +34,33 @@ logger = logging.getLogger(__name__)
 
 class SNExTargetViewSet(TargetViewSet):
     serializer_class = SNExTargetSerializer
+    filterset_class = SNExTargetFilterSet
+
+    def get_serializer(self, *args, **kwargs):
+        self._serializer = super().get_serializer(*args, **kwargs)
+        return self._serializer
+
+    def create(self, request, *args, **kwargs):
+        """Get-or-create: 201 new; 200 existing (position-only match adds the POSTed name as an alias)."""
+        try:
+            return super().create(request, *args, **kwargs)
+        except ValidationError:
+            duplicate = getattr(self._serializer, 'duplicate', None)
+            if duplicate is None:
+                raise
+
+        target, matched_by = duplicate
+        alias_added = None
+        new_name = str(request.data.get('name') or '').strip()
+        if matched_by == 'position' and new_name:
+            TargetName.objects.get_or_create(target=target, name=new_name)
+            alias_added = new_name
+            logger.info(f'Added alias {new_name} to target {target.id} ({target.name}) via API position match')
+
+        return Response({'id': target.id, 'name': target.name, 'matched_by': matched_by,
+                         'alias_added': alias_added, 'created': False,
+                         'message': 'Target already exists.'},
+                        status=status.HTTP_200_OK)
 
 class CustomDataProductViewSet(DataProductViewSet):
 

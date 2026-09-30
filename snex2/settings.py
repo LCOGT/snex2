@@ -353,6 +353,7 @@ FACILITIES = {
 }
 
 TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
+MATCH_MANAGERS = {'Target': 'custom_code.match_managers.SNExTargetMatchManager'}
 
 EXTRA_FIELDS = [
     {'name': 'redshift', 'type': 'number'},

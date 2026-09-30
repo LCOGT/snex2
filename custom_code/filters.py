@@ -14,6 +14,10 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout, Div, HTML
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
+class SNExTargetFilterSet(TargetFilterSet):
+    pipeline_id = django_filters.NumberFilter(field_name='pipeline_id')
+
+
 class TNSTargetForm(forms.Form): 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

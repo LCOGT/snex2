@@ -4,6 +4,9 @@ from tom_targets.models import Target
 
 
 class SNExTargetSerializer(TargetSerializer):
+    class Meta(TargetSerializer.Meta):
+        extra_kwargs = {'name': {'validators': []}}
+
     def validate(self, data):
 
         data = super().validate(data)
