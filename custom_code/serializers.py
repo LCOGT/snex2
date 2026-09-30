@@ -1,22 +1,22 @@
 from rest_framework import serializers
 from tom_targets.serializers import TargetSerializer
 from tom_targets.models import Target
-import numpy as np
+
 
 class SNExTargetSerializer(TargetSerializer):
     def validate(self, data):
+
         data = super().validate(data)
-        ra = data.get('ra')
-        dec = data.get('dec')
-        if ra is not None and dec is not None:
-            nearby = Target.objects.filter(
-                ra__gte=ra - 1/3600 * np.cos(dec),
-                ra__lte=ra + 1/3600 * np.cos(dec),
-                dec__gte=dec - 1/3600,
-                dec__lte=dec + 1/3600
+        inst = self.instance
+        self.duplicate = Target.matches.find_duplicate(
+            data.get('name', inst.name if inst else ''),
+            data.get('ra', inst.ra if inst else None),
+            data.get('dec', inst.dec if inst else None),
+            exclude_pk=inst.pk if inst else None,
+        )
+        if self.duplicate:
+            target, matched_by = self.duplicate
+            raise serializers.ValidationError(
+                {'duplicate': {'id': target.id, 'name': target.name, 'matched_by': matched_by}}
             )
-            if self.instance:
-                nearby = nearby.exclude(pk=self.instance.pk)
-            if nearby.exists():
-                raise serializers.ValidationError('Target exists near these coordinates.')
         return data
