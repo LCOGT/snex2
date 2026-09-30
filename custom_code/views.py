@@ -319,11 +319,6 @@ class CustomTargetCreateView(TargetCreateView):
             **dict(self.request.GET.items())
         }
 
-    def get_context_data(self, **kwargs):
-        context = super(CustomTargetCreateView, self).get_context_data(**kwargs)
-        context['type_choices'] = Target.TARGET_TYPES
-        return context
-
 class CustomUserUpdateView(UserUpdateView):
 
     form_class = SNEx2UserCreationForm

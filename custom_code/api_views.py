@@ -16,10 +16,6 @@ from custom_code.filters import SNExTargetFilterSet
 from .processors.data_processor import run_custom_data_processor
 import json
 
-from tom_dataproducts.serializers import DataProductSerializer
-from django_filters import rest_framework as drf_filters
-from tom_dataproducts.filters import DataProductFilter
-from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 
 from tom_observations.facility import get_service_class
@@ -64,13 +60,8 @@ class SNExTargetViewSet(TargetViewSet):
 
 class CustomDataProductViewSet(DataProductViewSet):
 
-    queryset = DataProduct.objects.all()
-    serializer_class = DataProductSerializer
-    filter_backends = (drf_filters.DjangoFilterBackend,)
-    filterset_class = DataProductFilter
     #permission_required = 'tom_dataproducts.view_dataproduct'
     permission_classes = [AllowAny]
-    parser_classes = [MultiPartParser]
 
     def create(self, request, *args, **kwargs):
         # Test if the username exists

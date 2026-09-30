@@ -10,11 +10,6 @@ LASAIR_IRIS_URL = 'https://lasair-iris.roe.ac.uk'
 @dataclass
 class LasairIrisGenericAlert(GenericAlert):
 
-    id: int
-    name: str
-    ra: float
-    dec: float
-    url: str
     phot: dict
     
 

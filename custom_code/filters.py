@@ -1,7 +1,6 @@
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, BrokerTarget
 from tom_targets.models import Target, TargetList
-from tom_targets.filters import filter_for_field, TargetFilterSet
-from django.conf import settings
+from tom_targets.filters import TargetFilterSet
 import django_filters
 from django.db.models import ExpressionWrapper, FloatField, Q
 from math import radians
@@ -78,10 +77,6 @@ class CustomTargetFilter(TargetFilterSet):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in settings.EXTRA_FIELDS:
-            new_filter = filter_for_field(field)
-            new_filter.parent = self
-            self.filters[field['name']] = new_filter
         self.filters['sciencetags'].field.label_from_instance = lambda obj: obj.tag
 
     key = None

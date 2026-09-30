@@ -14,7 +14,6 @@ import numpy as np
 
 class SpecProcessor(SpectroscopyProcessor):
 
-    FITS_MIMETYPES = ['image/fits', 'application/fits']
     PLAINTEXT_MIMETYPES = ['text/plain', 'text/csv', 'text/ascii']
     DEFAULT_FLUX_CONSTANT = (1 * units.erg) / units.cm ** 2 / units.second / units.angstrom
     field_keywords = {
