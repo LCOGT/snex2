@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import re
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
 import zipfile
@@ -62,6 +63,7 @@ from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
+from custom_code.target_names import TNS_PREFIX_RE
 from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
@@ -159,90 +161,47 @@ class TargetListView(PermissionListMixin, FilterView):
         return context
 
 def target_redirect_view(request):
- 
-    search_entry = request.GET['name'] 
+    search_entry = request.GET['name'].strip()
     logger.info('Redirecting search for %s', search_entry)
 
-    target_search_coords = None
+    # Coordinate search: "ra dec" or "ra,dec", decimal degrees or sexagesimal
     if ':' in search_entry or '.' in search_entry:
-        search_entry = search_entry.replace(',', ' ')
-        target_search_coords = search_entry.split()
+        ra, dec = search_entry.replace(',', ' ').split()[:2]
+        coord = SkyCoord(ra, dec, unit=(u.hourangle if ':' in ra else u.deg, u.deg))
+        ra, dec = coord.ra.deg, coord.dec.deg
+        radius = 1.0 / 60.0  # deg
+        matches = list(Target.matches.match_cone_search(ra, dec, radius * 3600)[:2])
+        if len(matches) == 1:
+            return redirect(f'/targets/{matches[0].id}/')
+        if matches:
+            return redirect(f'/targets/?cone_search={ra}%2C{dec}%2C{radius}')
+        return redirect(f'/create-target/?ra={ra}&dec={dec}')
 
-    if target_search_coords is not None:
-        ra = target_search_coords[0]
-        dec = target_search_coords[1]
-        radius = 1.0/60.0 #1 arcmin search radius
+    # Name search: exact (fuzzy) match first, same rule as the duplicate check
+    canonical = _normalize_view_object_name(search_entry)
+    exact = list(Target.matches.match_name(canonical))
+    if len(exact) == 1:
+        return redirect(f'/targets/{exact[0].id}/')
+    if exact:
+        return redirect('/targets/?name=' + quote_plus(','.join(t.name for t in exact)))
 
-        if ':' in ra and ':' in dec:
-            ra_hms = ra.split(':')
-            ra_hour = float(ra_hms[0])
-            ra_min = float(ra_hms[1])
-            ra_sec = float(ra_hms[2])
-
-            dec_dms = dec.split(':')
-            dec_deg = float(dec_dms[0])
-            dec_min = float(dec_dms[1])
-            dec_sec = float(dec_dms[2])
-
-            # Convert to degree
-            ra = (ra_hour*15) + (ra_min*15/60) + (ra_sec*15/3600)
-            if dec_deg > 0:
-                dec = dec_deg + (dec_min/60) + (dec_sec/3600)
-            else:
-                dec = dec_deg - (dec_min/60) - (dec_sec/3600)
-
-        else:
-            ra = float(ra)
-            dec = float(dec)
-
-        target_match_list = Target.objects.filter(ra__gte=ra-radius, ra__lte=ra+radius, dec__gte=dec-radius, dec__lte=dec+radius)
-
-        if len(target_match_list) == 1:
-            target_id = target_match_list[0].id
-            return(redirect('/targets/{}/'.format(target_id)))
-        
-        elif len(target_match_list) > 1:
-            return(redirect('/targets/?cone_search={ra}%2C{dec}%2C{radius}'.format(ra=ra,dec=dec,radius=radius)))
-        else:
-            return(redirect('/create-target/?ra={ra}&dec={dec}'.format(ra=ra,dec=dec)))
-
-    else:
-        # Name resolution mode
-        original_clean = (search_entry or '').strip()
-        original_compact = original_clean.replace(' ', '')
-
-        canonical = _normalize_view_object_name(search_entry)
-
-        candidates = set()
-        if original_clean:
-            candidates.add(original_clean)
-        if original_compact:
-            candidates.add(original_compact)
-        if canonical:
-            candidates.add(canonical)
-            candidates.add(_format_prefixed_name_for_create(canonical))
-            # Allow matching when user enters just the year+label (e.g. `2024ggi`)
-            if canonical.upper().startswith('SN') or canonical.upper().startswith('AT'):
-                candidates.add(canonical[2:])
-
-        match_q = Q()
+    # A full TNS designation with no exact match is a new object (AT2024gg != AT2024ggi);
+    # anything else falls back to a substring search.
+    if not re.fullmatch(r'(AT|SN)\d{4}[A-Za-z]{1,4}', canonical):
+        core = TNS_PREFIX_RE.sub('', canonical)
+        candidates = {c.lower() for c in (search_entry, search_entry.replace(' ', ''), canonical, core) if c}
+        q = Q()
         for c in candidates:
-            if c:
-                match_q |= Q(name__icontains=c) | Q(aliases__name__icontains=c)
+            q |= Q(name__icontains=c) | Q(aliases__name__icontains=c)
+        partial = list(Target.objects.filter(q).distinct()[:2])
+        if len(partial) == 1:
+            return redirect(f'/targets/{partial[0].id}/')
+        if partial:
+            # Shortest terms only; the list page ORs comma-separated terms with icontains
+            terms = sorted(t for t in candidates if not any(o != t and o in t for o in candidates))
+            return redirect('/targets/?name=' + quote_plus(','.join(terms)))
 
-        target_match_list = Target.objects.filter(match_q).distinct()
-
-        if len(target_match_list) == 1:
-            target_id = target_match_list[0].id
-            return redirect('/targets/{}/'.format(target_id))
-
-        elif len(target_match_list) > 1:
-            # Feed existing target filtering UX with a canonical compact name.
-            return redirect('/targets/?name={}'.format(canonical or original_clean))
-
-        # No match -> create with spaced prefix for better form UX.
-        create_name = _format_prefixed_name_for_create(canonical or original_clean)
-        return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
+    return redirect('/create-target/?name=' + quote_plus(_format_prefixed_name_for_create(canonical)))
 
 
 def view_object_view(request):

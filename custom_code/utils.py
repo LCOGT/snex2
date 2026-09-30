@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 import logging
+from custom_code.target_names import TNS_PREFIX_RE
 
 logger = logging.getLogger(__name__)
 
@@ -182,16 +183,14 @@ def _normalize_view_object_name(name: str) -> str:
     if not s_clean:
         return s_clean
 
-    s_upper = s_clean.upper()
-    if s_upper.startswith('SN'):
-        prefix = 'SN'
+    if TNS_PREFIX_RE.match(s_clean):
+        prefix = s_clean[:2].upper()
         tail = s_clean[2:]
-    elif s_upper.startswith('AT'):
-        prefix = 'AT'
-        tail = s_clean[2:]
-    else:
+    elif s_clean[0].isdigit():
         prefix = 'AT'
         tail = s_clean
+    else:
+        return s_clean
 
     # Find the first alphabetic character in `tail`; digits before that are the year.
     first_alpha_idx = None
@@ -240,11 +239,8 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
       - `AT2024GGI` -> `AT 2024GGI`
     """
     s = (canonical_name or '').strip()
-    s_upper = s.upper()
-    if s_upper.startswith('SN'):
-        return 'SN ' + s[2:]
-    if s_upper.startswith('AT'):
-        return 'AT ' + s[2:]
+    if TNS_PREFIX_RE.match(s):
+        return s[:2].upper() + ' ' + s[2:]
     return s
 
 def _return_session(db_address=settings.SNEX1_DB_URL):

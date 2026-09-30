@@ -1,11 +1,10 @@
 from django.db import models
 from tom_targets.models import BaseTarget
-from django.core.exceptions import ValidationError
 from custom_code.utils import _load_table, _return_session
-from sqlalchemy import func
+from custom_code.target_names import MATCH_RADIUS_ARCSEC, angular_separation, ra_ranges
+from sqlalchemy import func, or_
 from datetime import datetime
 from django.conf import settings
-import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -41,20 +40,6 @@ class SNExTarget(BaseTarget):
             ('delete_target', 'Delete Target'),
         )
 
-    def clean(self):
-        super().clean()
-        if self.ra is not None and self.dec is not None:
-            nearby = BaseTarget.objects.filter(
-                ra__gte=self.ra - 1/3600 * np.cos(self.dec),
-                ra__lte=self.ra - 1/3600 * np.cos(self.dec),
-                dec__gte=self.dec - 1/3600,
-                dec__lte=self.dec + 1/3600
-            )
-            if self.pk:
-                nearby = nearby.exclude(pk=self.pk)
-            if nearby.exists():
-                raise ValidationError('Target exists near these coordinates.')
-
     def save(self, *args, **kwargs):
         created = self.pk is None
         if created and self.pipeline_id is None:
@@ -64,12 +49,15 @@ class SNExTarget(BaseTarget):
             
             try:
                 # Check if target already exists in pipeline db by coordinates
-                existing = db_session.query(Targets).filter(
-                    Targets.ra0 >= self.ra - 1/3600 * np.cos(self.dec),
-                    Targets.ra0 <= self.ra - 1/3600 * np.cos(self.dec),
-                    Targets.dec0 >= self.dec - 1/3600,
-                    Targets.dec0 <= self.dec + 1/3600
-                ).first()
+                existing = None
+                if self.ra is not None and self.dec is not None:
+                    r = MATCH_RADIUS_ARCSEC / 3600
+                    query = db_session.query(Targets).filter(Targets.dec0.between(self.dec - r, self.dec + r))
+                    ranges = ra_ranges(self.ra, self.dec, r)
+                    if ranges:
+                        query = query.filter(or_(*[Targets.ra0.between(lo, hi) for lo, hi in ranges]))
+                    existing = next((t for t in query.all()
+                                     if angular_separation(self.ra, self.dec, t.ra0, t.dec0) <= r), None)
                 if not existing:
                     existing_name = db_session.query(Targetnames).filter(func.lower(func.trim(Targetnames.name)) == self.name.strip().lower()).first()
                     if existing_name:
