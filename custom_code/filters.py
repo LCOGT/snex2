@@ -1,6 +1,7 @@
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, BrokerTarget
 from tom_targets.models import Target, TargetList
 from tom_targets.filters import TargetFilterSet
+from tom_dataproducts.filters import ReducedDatumFilter
 import django_filters
 from django.db.models import ExpressionWrapper, FloatField, Q
 from math import radians
@@ -15,6 +16,16 @@ from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
 class SNExTargetFilterSet(TargetFilterSet):
     pipeline_id = django_filters.NumberFilter(field_name='pipeline_id')
+
+
+class SNExReducedDatumFilter(ReducedDatumFilter):
+    basename = django_filters.CharFilter(field_name='value__basename')
+    background_subtracted = django_filters.BooleanFilter(method='filter_background_subtracted')
+
+    def filter_background_subtracted(self, queryset, name, value):
+        if value:
+            return queryset.filter(value__background_subtracted=True)
+        return queryset.filter(Q(value__background_subtracted=False) | ~Q(value__has_key='background_subtracted'))
 
 
 class TNSTargetForm(forms.Form): 

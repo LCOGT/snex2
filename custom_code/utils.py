@@ -188,16 +188,36 @@ def dataproduct_view_groups(dp):
     return set(perms.values_list('group__name', flat=True))
 
 
-def set_dataproduct_view_groups(dp, groups):
-    """Make exactly `groups` able to view the DataProduct and all of its ReducedDatums (kept in sync)."""
-    datums = dp.reduceddatum_set.all()
+def _set_view_groups(codename, queryset, groups):
     for group in groups:
-        assign_perm('tom_dataproducts.view_dataproduct', group, dp)
-        assign_perm('tom_dataproducts.view_reduceddatum', group, datums)
-    selected = [group.pk for group in groups]
-    for group in Group.objects.filter(name__in=dataproduct_view_groups(dp)).exclude(pk__in=selected):
-        remove_perm('tom_dataproducts.view_dataproduct', group, dp)
-        remove_perm('tom_dataproducts.view_reduceddatum', group, datums)
+        assign_perm(f'tom_dataproducts.{codename}', group, queryset)
+    current = GroupObjectPermission.objects.filter(
+        content_type=ContentType.objects.get_for_model(queryset.model), permission__codename=codename,
+        object_pk__in=[str(pk) for pk in queryset.values_list('pk', flat=True)]).values_list('group', flat=True)
+    for group in Group.objects.filter(pk__in=current).exclude(pk__in=[group.pk for group in groups]):
+        remove_perm(f'tom_dataproducts.{codename}', group, queryset)
+
+
+def set_dataproduct_view_groups(dp, groups):
+    _set_view_groups('view_dataproduct', type(dp).objects.filter(pk=dp.pk), groups)
+    _set_view_groups('view_reduceddatum', dp.reduceddatum_set.all(), groups)
+
+
+def set_reduceddatum_view_groups(datums, groups):
+    from tom_dataproducts.models import DataProduct
+    for dp in DataProduct.objects.filter(pk__in=datums.exclude(data_product=None).values('data_product')):
+        set_dataproduct_view_groups(dp, groups)
+    _set_view_groups('view_reduceddatum', datums.filter(data_product=None), groups)
+
+
+def reduceddatum_view_groups(datums):
+    perms = GroupObjectPermission.objects.filter(
+        content_type=ContentType.objects.get_for_model(datums.model), permission__codename='view_reduceddatum',
+        object_pk__in=[str(pk) for pk in datums.values_list('pk', flat=True)]).values_list('object_pk', 'group__name')
+    visible = {}
+    for pk, name in perms:
+        visible.setdefault(int(pk), []).append(name)
+    return {pk: sorted(names) for pk, names in visible.items()}
 
 
 def _normalize_view_object_name(name: str) -> str:

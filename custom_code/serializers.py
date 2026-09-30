@@ -12,7 +12,7 @@ class SNExReducedDatumSerializer(ReducedDatumSerializer):
     groups = GroupSerializer(many=True, required=False, write_only=True)
 
     class Meta(ReducedDatumSerializer.Meta):
-        fields = ReducedDatumSerializer.Meta.fields + ('groups',)
+        fields = ('id',) + ReducedDatumSerializer.Meta.fields + ('groups',)
 
     def validate_groups(self, groups):
         found = []
@@ -24,13 +24,21 @@ class SNExReducedDatumSerializer(ReducedDatumSerializer):
                 raise serializers.ValidationError(f'Group {group} does not exist.')
         return found
 
-    def create(self, validated_data):
-        groups = validated_data.pop('groups', [])
-        rd = super().create(validated_data)
+    def _grant_view(self, rd, groups):
         if not settings.TARGET_PERMISSIONS_ONLY:
             for group in groups:
                 assign_perm('tom_dataproducts.view_reduceddatum', group, rd)
         return rd
+
+    def create(self, validated_data):
+        groups = validated_data.pop('groups', [])
+        return self._grant_view(super().create(validated_data), groups)
+
+    def update(self, instance, validated_data):
+        groups = validated_data.pop('groups', [])
+        if self.partial and 'value' in validated_data:
+            validated_data['value'] = {**instance.value, **validated_data['value']}
+        return self._grant_view(super().update(instance, validated_data), groups)
 
 
 class SNExTargetSerializer(TargetSerializer):

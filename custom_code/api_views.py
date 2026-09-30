@@ -5,14 +5,14 @@ from tom_dataproducts.api_views import DataProductViewSet, ReducedDatumViewSet
 from tom_observations.api_views import ObservationRecordViewSet
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.mixins import CreateModelMixin
+from rest_framework.mixins import CreateModelMixin, UpdateModelMixin
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_targets.models import Target, TargetName
 from tom_targets.api_views import TargetViewSet
 from custom_code.models import ReducedDatumExtra, Papers
 from custom_code.serializers import SNExReducedDatumSerializer, SNExTargetSerializer
 from custom_code.utils import format_form_errors, sync_group_permissions_to_target
-from custom_code.filters import SNExTargetFilterSet
+from custom_code.filters import SNExReducedDatumFilter, SNExTargetFilterSet
 from .processors.data_processor import run_custom_data_processor
 import json
 
@@ -58,8 +58,14 @@ class SNExTargetViewSet(TargetViewSet):
                          'message': 'Target already exists.'},
                         status=status.HTTP_200_OK)
 
-class SNExReducedDatumViewSet(ReducedDatumViewSet):
+class SNExReducedDatumViewSet(UpdateModelMixin, ReducedDatumViewSet):
     serializer_class = SNExReducedDatumSerializer
+    filterset_class = SNExReducedDatumFilter
+
+    def update(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response({'detail': 'Only admins can update reduced datums.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
 
 
 class CustomDataProductViewSet(DataProductViewSet):

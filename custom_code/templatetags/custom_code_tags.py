@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import bind_observation_form_htmx, dataproduct_view_groups, viewable_dataproducts
+from custom_code.utils import bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -617,6 +617,10 @@ def snex_dataproduct_list(context, target):
                 instruments.add(i)
     dataproduct_context['telescopes'] = sorted(telescopes)
     dataproduct_context['instruments'] = sorted(instruments)
+    dates = [timezone.localtime(p.created).date() for p in dataproduct_context['products'] if p.data]
+    one_day = datetime.timedelta(days=1)
+    dataproduct_context['date_min'] = (min(dates) - one_day).isoformat() if dates else ''
+    dataproduct_context['date_max'] = (max(dates) + one_day).isoformat() if dates else ''
     return dataproduct_context
 
 
@@ -847,6 +851,36 @@ def dash_spectra(context, target):
 
     return {'dash_context': dash_context,
             'request': request}
+
+@register.inclusion_tag('custom_code/partials/target/photometry_data_list.html', takes_context=True)
+def photometry_data_list(context, target):
+    user = context['request'].user
+    datums = ReducedDatum.objects.filter(target=target, data_type='photometry')
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
+    datums = list(datums.order_by('-timestamp'))
+    visible = reduceddatum_view_groups(ReducedDatum.objects.filter(pk__in=[d.pk for d in datums])) if user.is_superuser else {}
+    rows = []
+    for d in datums:
+        v, basename = d.value, d.value.get('basename') or ''
+        magnitude = v.get('magnitude')
+        rows.append({'datum': d, 'groups': visible.get(d.pk, []), 'basename': basename,
+                     'magnitude': magnitude if magnitude is not None and float(magnitude) < 9999 else None,
+                     'filter': v.get('filter') or '',
+                     'instrument': v.get('instrument') or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
+    dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
+    one_day = datetime.timedelta(days=1)
+    return {'target': target,
+            'rows': rows,
+            'date_min': (min(dates) - one_day).isoformat() if dates else '',
+            'date_max': (max(dates) + one_day).isoformat() if dates else '',
+            'filters': sorted({r['filter'] for r in rows if r['filter']}),
+            'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
+            'groups': list(Group.objects.values_list('name', flat=True)),
+            'is_admin': user.is_superuser,
+            'archive_root': settings.FACILITIES['LCO']['archive_url'],
+            'archive_token': settings.FACILITIES['LCO']['api_key']}
+
 
 @register.inclusion_tag('custom_code/dataproduct_update.html')
 def dataproduct_update(dataproduct):

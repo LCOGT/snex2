@@ -1,0 +1,164 @@
+{% load static %}
+<script src="{% static 'custom_code/archive_download.js' %}"></script>
+<h4>Photometry</h4>
+<div class="row mb-3 bg-light p-3 rounded">
+  <div class="col-md-2">
+    <label for="phot-start" class="font-weight-bold">Start Date:</label>
+    <input type="date" id="phot-start" class="form-control phot-filter" value="{{ date_min }}" min="{{ date_min }}" max="{{ date_max }}">
+  </div>
+  <div class="col-md-2">
+    <label for="phot-end" class="font-weight-bold">End Date:</label>
+    <input type="date" id="phot-end" class="form-control phot-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
+  </div>
+  <div class="col-md-2">
+    <label for="phot-band" class="font-weight-bold">Filter:</label>
+    <select id="phot-band" class="form-control phot-filter">
+      <option value="">-- All --</option>
+      {% for f in filters %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label for="phot-instrument" class="font-weight-bold">Instrument:</label>
+    <select id="phot-instrument" class="form-control phot-filter">
+      <option value="">-- All --</option>
+      {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-1 d-flex align-items-end">
+    <button type="button" id="phot-clear" class="btn btn-secondary btn-block">Clear</button>
+  </div>
+  {% if is_admin %}
+  <div class="col-md-3">
+    <label class="font-weight-bold">Visible to (selected rows):</label>
+    <div class="d-flex">
+      <div class="dropdown flex-grow-1 mr-1">
+        <button type="button" class="btn btn-outline-primary btn-block dropdown-toggle" data-toggle="dropdown">Groups</button>
+        <div class="dropdown-menu p-2" style="max-height: 250px; overflow-y: auto;" onclick="event.stopPropagation()">
+          {% for group in groups %}<label class="dropdown-item mb-0"><input type="checkbox" class="phot-group" value="{{ group }}"> {{ group }}</label>{% endfor %}
+        </div>
+      </div>
+      <button type="button" id="phot-apply-groups" class="btn btn-primary">Apply</button>
+    </div>
+  </div>
+  {% endif %}
+</div>
+<div class="mb-3">
+  <select id="phot-format" class="form-control d-inline-block w-auto">
+    <option value="fits">fits</option>
+    <option value="ascii">ascii</option>
+  </select>
+  <button type="button" id="phot-download" class="btn btn-success">Download</button>
+  <span class="text-muted ml-2" id="phot-status">fits: LCO frames of the selected rows. Requires a "Frame" value. ascii: the selected reduced photometric points as a .txt file</span>
+</div>
+<table class="table table-striped table-sm" id="phot-table">
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="phot-select-all" checked></th>
+      <th>Date</th>
+      <th>Filter</th>
+      <th>Mag</th>
+      <th>Err</th>
+      <th>Telescope</th>
+      <th>Instrument</th>
+      <th>Frame</th>
+      {% if is_admin %}<th>Visible to</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+  {% with v=row.datum.value %}
+    <tr class="phot-row" data-id="{{ row.datum.pk }}" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}"
+        data-band="{{ row.filter }}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}">
+      <td><input type="checkbox" class="phot-check" checked></td>
+      <td>{{ row.datum.timestamp|date:'Y-m-d H:i' }}</td>
+      <td>{{ row.filter }}</td>
+      <td>{% if row.magnitude is not None %}{{ row.magnitude|floatformat:3 }}{% elif v.limit %}&gt;{{ v.limit|floatformat:3 }}{% else %}&mdash;{% endif %}</td>
+      <td>{% if row.magnitude is not None and v.error is not None %}{{ v.error|floatformat:3 }}{% endif %}</td>
+      <td>{{ v.telescope|default:'' }}</td>
+      <td>{{ row.instrument }}</td>
+      <td>{{ row.basename }}</td>
+      {% if is_admin %}<td class="phot-groups">{{ row.groups|join:", " }}</td>{% endif %}
+    </tr>
+  {% endwith %}
+  {% empty %}
+    <tr><td colspan="9">No photometry you can view for this target.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<script>
+(function () {
+  const table = document.getElementById('phot-table');
+  const status = document.getElementById('phot-status');
+  const val = (id) => document.getElementById(id).value;
+  const rows = () => Array.from(table.querySelectorAll('.phot-row'));
+  const selected = () => rows().filter((r) => r.style.display !== 'none' && r.querySelector('.phot-check').checked);
+  const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1];
+
+  function applyFilters() {
+    const start = val('phot-start'), end = val('phot-end'), band = val('phot-band'), inst = val('phot-instrument');
+    rows().forEach(function (r) {
+      const d = r.dataset.date;
+      const show = (!start || d >= start) && (!end || d <= end) &&
+                   (!band || r.dataset.band === band) && (!inst || r.dataset.instrument === inst);
+      r.style.display = show ? '' : 'none';
+    });
+  }
+  document.querySelectorAll('.phot-filter').forEach((el) => el.addEventListener('change', applyFilters));
+  document.getElementById('phot-clear').addEventListener('click', function () {
+    // dates go back to the full range they were filled with; dropdowns back to "All"
+    ['phot-start', 'phot-end'].forEach((id) => { const el = document.getElementById(id); el.value = el.defaultValue; });
+    ['phot-band', 'phot-instrument'].forEach((id) => { document.getElementById(id).value = ''; });
+    applyFilters();
+  });
+  document.getElementById('phot-select-all').addEventListener('change', function (ev) {
+    rows().filter((r) => r.style.display !== 'none').forEach((r) => { r.querySelector('.phot-check').checked = ev.target.checked; });
+  });
+
+  function post(url, fields) {
+    const body = new FormData();
+    Object.keys(fields).forEach((k) => body.append(k, fields[k]));
+    return fetch(url, { method: 'POST', body: body, headers: { 'X-CSRFToken': csrf() } });
+  }
+
+  document.getElementById('phot-download').addEventListener('click', async function () {
+    const sel = selected();
+    if (!sel.length) { alert('No rows selected.'); return; }
+    if (val('phot-format') === 'ascii') {
+      const resp = await post('{% url "custom_code:download-photometry" target.id %}',
+                              { datum_ids: JSON.stringify(sel.map((r) => Number(r.dataset.id))) });
+      if (!resp.ok) { alert('Download failed.'); return; }
+      const url = URL.createObjectURL(await resp.blob());
+      const a = document.createElement('a');
+      a.href = url; a.download = '{{ target.name|cut:" " }}_photometry.txt';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      return;
+    }
+    const basenames = Array.from(new Set(sel.map((r) => r.dataset.basename).filter(Boolean)));
+    if (!basenames.length) { alert('None of the selected rows have a frame basename.'); return; }
+    status.textContent = 'Finding ' + basenames.length + ' frames in the LCO archive...';
+    const resp = await post('{% url "get-frame-ids" %}', { target_id: '{{ target.id }}', basenames: JSON.stringify(basenames) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) { status.textContent = 'Could not look up frames: ' + (data.error || resp.status); return; }
+    status.textContent = 'Found ' + data.count + ' of ' + basenames.length + ' frames. Downloads open in new tab(s); enable pop-ups.';
+    if (data.count) { await downloadZip(data.frame_ids, false, '{{ archive_root }}', '{{ archive_token }}'); }
+  });
+
+  const apply = document.getElementById('phot-apply-groups');
+  if (apply) {
+    apply.addEventListener('click', async function () {
+      const sel = selected();
+      if (!sel.length) { alert('No rows selected.'); return; }
+      const groups = Array.from(document.querySelectorAll('.phot-group:checked')).map((c) => c.value);
+      if (!confirm('Make ' + sel.length + ' points visible to exactly: ' + (groups.join(', ') || 'no groups (admins only)') + '?')) { return; }
+      const resp = await post('{% url "update-photometry-groups" %}',
+                              { datum_ids: JSON.stringify(sel.map((r) => Number(r.dataset.id))), groups: JSON.stringify(groups) });
+      if (!resp.ok) { alert('Could not update visibility (' + resp.status + ').'); return; }
+      const data = await resp.json();
+      rows().forEach(function (r) {
+        if (r.dataset.id in data.visible_to) { r.querySelector('.phot-groups').textContent = data.visible_to[r.dataset.id].join(', '); }
+      });
+      status.textContent = 'Updated visibility of ' + data.updated + ' points.';
+    });
+  }
+})();
+</script>

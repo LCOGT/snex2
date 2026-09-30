@@ -23,7 +23,6 @@ from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
-from django.views.decorators.http import require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView
@@ -64,7 +63,7 @@ from custom_code.scheduling import cancel_observation, change_obs_from_schedulin
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
 from custom_code.target_names import TNS_PREFIX_RE
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -1083,6 +1082,25 @@ def load_manage_data_tab_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_data.html')
 
 
+def load_manage_photometry_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_photometry.html')
+
+
+@require_http_methods(["POST"])
+def update_photometry_groups_view(request):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can change photometry visibility')
+    datums = ReducedDatum.objects.filter(pk__in=json.loads(request.POST.get('datum_ids', '[]')), data_type='photometry')
+    pks = list(datums.values_list('pk', flat=True))
+    groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
+    set_reduceddatum_view_groups(datums, groups)
+    affected = ReducedDatum.objects.filter(
+        Q(pk__in=pks) | Q(data_product__in=datums.exclude(data_product=None).values('data_product')))
+    visible = reduceddatum_view_groups(affected)
+    return JsonResponse({'updated': len(pks),
+                         'visible_to': {pk: visible.get(pk, []) for pk in affected.values_list('pk', flat=True)}})
+
+
 def load_observing_runs_tab_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/tab_observing_runs.html')
 
@@ -1469,9 +1487,10 @@ class BulkDownloadView(LoginRequiredMixin, View):
         return response
 
 
-@require_GET
+@require_http_methods(["GET", "POST"])
 def get_frame_ids_view(request):
-    target_id = request.GET.get('target_id')
+    target_id = request.GET.get('target_id') or request.POST.get('target_id')
+    basenames = set(json.loads(request.POST['basenames'])) if 'basenames' in request.POST else None
     target = Target.objects.get(id = target_id)
     token = settings.FACILITIES['LCO']['api_key']
     url = settings.FACILITIES['LCO']['archive_url']
@@ -1486,13 +1505,18 @@ def get_frame_ids_view(request):
         }
         next_url = url
         while next_url:
-            resp = requests.get(
+            response = requests.get(
                 next_url,
                 headers = {'Authorization': f'Token {token}'},
                 params = params if next_url == url else None
-            ).json()
+            )
+            if not response.ok:
+                logger.error(f'LCO archive frame lookup failed for {target.name}: {response.status_code} {response.text[:200]}')
+                return JsonResponse({'error': f'LCO archive returned {response.status_code}: {response.text[:200]}'}, status=502)
+            resp = response.json()
             for r in resp['results']:
-                frame_ids.append(r['id'])
+                if basenames is None or r.get('basename') in basenames:
+                    frame_ids.append(r['id'])
             next_url = resp['next']
 
     unique_ids = list(set(frame_ids))
@@ -1658,6 +1682,9 @@ def download_photometry_view(request, targetid):
                                       klass=ReducedDatum.objects.filter(
                                         target=target,
                                         data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+
+    if 'datum_ids' in request.POST:
+        datums = datums.filter(pk__in=json.loads(request.POST['datum_ids']))
 
     datums = datums.order_by('timestamp')
     newfile = StringIO()
