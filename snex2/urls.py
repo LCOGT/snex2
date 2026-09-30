@@ -18,7 +18,7 @@ from django.conf import settings
 
 from django.urls import include
 from custom_code.views import *
-from custom_code.api_views import CustomDataProductViewSet, CustomObservationRecordViewSet, SNExTargetViewSet
+from custom_code.api_views import CustomDataProductViewSet, CustomObservationRecordViewSet, SNExReducedDatumViewSet, SNExTargetViewSet
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
@@ -30,6 +30,7 @@ custom_router.register(r'photometry-upload', CustomDataProductViewSet, 'photomet
 custom_router.register(r'submit-observation', CustomObservationRecordViewSet, 'submit-observation')
 api_router = DefaultRouter()
 api_router.register(r'targets', SNExTargetViewSet, basename='targets')
+api_router.register(r'reduceddatums', SNExReducedDatumViewSet, basename='reduceddatums')
 urlpatterns = [
     path('accounts/register/', SNEx2ApprovalRegistrationView.as_view(), name='register'),
     path('accounts/login/', auth_views.LoginView.as_view(authentication_form=SafeAuthenticationForm), name='login'),

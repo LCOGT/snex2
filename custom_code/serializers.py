@@ -1,6 +1,36 @@
+from django.conf import settings
+from django.contrib.auth.models import Group
+from guardian.shortcuts import assign_perm
 from rest_framework import serializers
+from tom_common.serializers import GroupSerializer
+from tom_dataproducts.serializers import ReducedDatumSerializer
 from tom_targets.serializers import TargetSerializer
 from tom_targets.models import Target
+
+
+class SNExReducedDatumSerializer(ReducedDatumSerializer):
+    groups = GroupSerializer(many=True, required=False, write_only=True)
+
+    class Meta(ReducedDatumSerializer.Meta):
+        fields = ReducedDatumSerializer.Meta.fields + ('groups',)
+
+    def validate_groups(self, groups):
+        found = []
+        for group in groups:
+            lookup = {'pk': group['id']} if group.get('id') else {'name': group.get('name')}
+            try:
+                found.append(Group.objects.get(**lookup))
+            except Group.DoesNotExist:
+                raise serializers.ValidationError(f'Group {group} does not exist.')
+        return found
+
+    def create(self, validated_data):
+        groups = validated_data.pop('groups', [])
+        rd = super().create(validated_data)
+        if not settings.TARGET_PERMISSIONS_ONLY:
+            for group in groups:
+                assign_perm('tom_dataproducts.view_reduceddatum', group, rd)
+        return rd
 
 
 class SNExTargetSerializer(TargetSerializer):
