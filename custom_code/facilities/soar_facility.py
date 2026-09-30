@@ -114,6 +114,12 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
         ],
     }
 
+    INSTRUMENT_SHORT_NAMES = {
+        'SOAR_GHTS_REDCAM': 'Goodman Red',
+        'SOAR_GHTS_BLUECAM': 'Goodman Blue',
+        'SOAR_TRIPLESPEC': 'TripleSpec',
+    }
+
     HIDDEN_FIELDS = (
         'name',
         'facility',
@@ -305,7 +311,8 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
         if target_id:
             try:
                 target = Target.objects.get(pk=target_id)
-                cleaned_data['name'] = target.name
+                instrument_label = self.INSTRUMENT_SHORT_NAMES.get(instrument_type)
+                cleaned_data['name'] = f'{target.name} - {instrument_label}' if instrument_label else target.name
             except Target.DoesNotExist:
                 self.add_error(None, 'Selected target no longer exists.')
                 return cleaned_data
