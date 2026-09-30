@@ -220,15 +220,20 @@ def reduceddatum_view_groups(datums):
     return {pk: sorted(names) for pk, names in visible.items()}
 
 
+def measured(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if value >= 9999 else value
+
+
 def unsubtracted_q():
-    """Photometry that is not background-subtracted: stored as False, or no key at all."""
     from django.db.models import Q
     return Q(value__background_subtracted=False) | ~Q(value__has_key='background_subtracted')
 
 
 def download_archive_frame(basename):
-    """(archive filename, bytes) of an LCO frame from the LCO archive by basename, or None if unavailable.
-    Archive frames are usually fpacked (.fits.fz)."""
     import requests
     response = requests.get(settings.FACILITIES['LCO']['archive_url'],
                             headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"},

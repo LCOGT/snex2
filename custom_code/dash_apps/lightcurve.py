@@ -11,6 +11,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra, Papers
+from custom_code.utils import measured
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
@@ -373,11 +374,9 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             if isinstance(value, str):
                 value = json.loads(value)
 
-            ### Check if the value contains a magnitude (may not if the entry is 9999 in snex1)
-            if not value.get('magnitude', ''):
+            if measured(value.get('magnitude')) is None:
                 continue
 
-            ### Get subtracted or unsubtracted data
             if value.get('background_subtracted', '') == True:
                 if value.get('subtraction_algorithm', '') in selected_algorithm and value.get('template_source', '') in selected_template and reduction_type == 'manual':
                     

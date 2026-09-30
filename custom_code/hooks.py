@@ -11,7 +11,7 @@ from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
 from custom_code.scheduling import save_comments
-from custom_code.utils import _return_session, _load_table, _get_session, unsubtracted_q
+from custom_code.utils import _return_session, _load_table, _get_session, measured, unsubtracted_q
 
 from sqlalchemy import create_engine, pool, and_, or_, not_
 from sqlalchemy.orm import sessionmaker, aliased
@@ -154,7 +154,7 @@ def find_images(target, username, allimages=False):
         return [], [], [], [], [], [], [], [], [], []
 
     def pixel(v):
-        return int(round(float(v))) if v is not None and float(v) < 9999 else 9999
+        return int(round(measured(v))) if measured(v) is not None else 9999
 
     def wcs_label(w):
         return '' if w is None else ('Good' if int(w) == 0 else 'Failed')
@@ -168,7 +168,7 @@ def find_images(target, username, allimages=False):
             [f"{float(rd.value['exptime']):.2f}s" if rd.value.get('exptime') not in (None, '') else '' for rd in datums],
             [pixel(rd.value.get('psfx')) for rd in datums],
             [pixel(rd.value.get('psfy')) for rd in datums],
-            [f"{float(rd.value['fwhm']):.2f}\"" if rd.value.get('fwhm') not in (None, '') else '' for rd in datums],
+            [f"{measured(rd.value.get('fwhm')):.2f}\"" if measured(rd.value.get('fwhm')) is not None else '' for rd in datums],
             [wcs_label(rd.value.get('wcs')) for rd in datums])
 
 def get_unreduced_spectra(allspec=True):

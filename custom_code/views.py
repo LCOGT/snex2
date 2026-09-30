@@ -63,7 +63,7 @@ from custom_code.scheduling import cancel_observation, change_obs_from_schedulin
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
 from custom_code.target_names import TNS_PREFIX_RE
-from custom_code.utils import download_archive_frame, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import measured, download_archive_frame, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -1687,7 +1687,7 @@ def download_photometry_view(request, targetid):
     newfile.write('mjd mag err filter subtracted?\n')
 
     for d in datums:
-        if all(k in d.value.keys() for k in ['magnitude', 'error', 'filter']):
+        if all(k in d.value.keys() for k in ['magnitude', 'error', 'filter']) and measured(d.value['magnitude']) is not None:
             newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 2), d.value['magnitude'], d.value['error'], d.value['filter'], d.value.get('background_subtracted', False)))
 
     response = HttpResponse(newfile.getvalue(), content_type='text/plain')

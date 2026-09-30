@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.utils import measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -274,14 +274,13 @@ def generic_lightcurve_plot(target, user):
                                         target=target,
                                         data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
     for rd in datums:
-    #for rd in ReducedDatum.objects.filter(target=target, data_type='photometry'):
         value = rd.value
         if not value:  # empty
             continue
         if isinstance(value, str):
             value = json.loads(value)
 
-        if value.get('magnitude') is None:  # failed reductions / limits: nothing to plot
+        if measured(value.get('magnitude')) is None:
             continue
         filt = filter_translate.get(value.get('filter', ''), '')
    
@@ -865,13 +864,12 @@ def photometry_data_list(context, target):
     rows = []
     for d in datums:
         v, basename = d.value, d.value.get('basename') or ''
-        magnitude = v.get('magnitude')
         rows.append({'datum': d, 'groups': visible.get(d.pk, []), 'basename': basename,
-                     'magnitude': magnitude if magnitude is not None and float(magnitude) < 9999 else None,
+                     'magnitude': measured(v.get('magnitude')),
                      'filter': v.get('filter') or '',
                      'wcs': v.get('wcs'),
                      'exptime': v.get('exptime'),
-                     'fwhm': v.get('fwhm'),
+                     'fwhm': measured(v.get('fwhm')),
                      'instrument': v.get('instrument') or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
     dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
     one_day = datetime.timedelta(days=1)
@@ -1863,7 +1861,7 @@ def lightcurve_fits(target, user, filt=False, days=None):
         if isinstance(value, str):
             value = json.loads(value)
 
-        if value.get('magnitude') is None:  # failed reductions / limits: nothing to plot
+        if measured(value.get('magnitude')) is None:
             continue
         current_filt = filter_translate.get(value.get('filter', ''), '')
    
@@ -2225,8 +2223,8 @@ def snex2_get_photometry_data(context, target, target_share=False):
                                     value__has_key='filter')).order_by('timestamp')
     data = []
     for reduced_datum in photometry:
-        if 'magnitude' not in reduced_datum.value and 'limit' not in reduced_datum.value:
-            continue  # failed reduction (frame only, no measurement)
+        if 'limit' not in reduced_datum.value and measured(reduced_datum.value.get('magnitude')) is None:
+            continue
         rd_data = {'id': reduced_datum.pk,
                    'timestamp': reduced_datum.timestamp,
                    'source': reduced_datum.source_name,
