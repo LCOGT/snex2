@@ -7,6 +7,12 @@ class SNExTargetSerializer(TargetSerializer):
     class Meta(TargetSerializer.Meta):
         extra_kwargs = {'name': {'validators': []}}
 
+    def update(self, instance, validated_data):
+        for field in instance._meta.local_concrete_fields:
+            if not field.primary_key and field.name in validated_data:
+                setattr(instance, field.name, validated_data[field.name])
+        return super().update(instance, validated_data)
+
     def validate(self, data):
 
         data = super().validate(data)
