@@ -43,11 +43,11 @@ class SNExTarget(BaseTarget):
     def save(self, *args, **kwargs):
         created = self.pk is None
         if created and self.pipeline_id is None:
-            db_session = _return_session(settings.SNEX1_DB_URL)
-            Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-            Targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-            
+            db_session = None
             try:
+                db_session = _return_session(settings.SNEX1_DB_URL)
+                Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
+                Targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
                 # Check if target already exists in pipeline db by coordinates
                 existing = None
                 if self.ra is not None and self.dec is not None:
@@ -77,7 +77,9 @@ class SNExTarget(BaseTarget):
                     db_session.commit()
             except Exception as e:
                 logger.error(f'Failed to create target in the pipeline database for {self.name}: {e}')
-                db_session.rollback()
+                if db_session is not None:
+                    db_session.rollback()
             finally:
-                db_session.close()
+                if db_session is not None:
+                    db_session.close()
         super().save(*args, **kwargs)
