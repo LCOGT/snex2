@@ -11,14 +11,15 @@ from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
 from custom_code.scheduling import save_comments
-from custom_code.utils import _return_session, _load_table, _get_session
+from custom_code.utils import _return_session, _load_table, _get_session, unsubtracted_q
 
-from sqlalchemy import create_engine, pool, and_, or_, not_, text
+from sqlalchemy import create_engine, pool, and_, or_, not_
 from sqlalchemy.orm import sessionmaker, aliased
 from sqlalchemy.ext.automap import automap_base
 from contextlib import contextmanager
 from collections import OrderedDict
-from guardian.shortcuts import get_groups_with_perms
+from guardian.shortcuts import get_groups_with_perms, get_objects_for_user
+from tom_dataproducts.models import ReducedDatum
 
 logger = logging.getLogger(__name__)
 
@@ -137,52 +138,38 @@ def _get_tns_params(target):
 
     return response_data
         
-def find_images_from_snex1(pipeline_id, username, allimages=False):
-    '''
-    Hook to find filenames of images in SNEx1,
-    given a target ID
-    '''
-    
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        # now queries the snex1 database directly as .execute instead of .query, so don't need to load in Photlco as a table
-        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
-        Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-        
-        this_user = User.objects.get(username = username)
-        user_groups = this_user.groups.all()
-        if user_groups:
-            groupidcode = 0
-            for group_name in user_groups:
-                groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
-        this_target = db_session.query(Targets).filter(Targets.id==pipeline_id).first()
+def find_images(target, username, allimages=False):
+    user = username if isinstance(username, User) else User.objects.get(username=username)
+    datums = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename').filter(unsubtracted_q())
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
 
-        if not allimages:
-            query = db_session.execute(
-                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
-                            "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
-                            {'tid':pipeline_id, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
-        else:
-            query = db_session.execute(
-                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
-                            "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
-                            {'tid':pipeline_id, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
-        
-        filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
-        if len(filepaths)==0:
-            logger.info(f'No images found for target {pipeline_id}')
-            return [], [], [], [], [], [], [], [], []
-        filenames = [q.filename.replace('.fits', '') for q in query]
-        dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
-        teles = [q.telescope[:3] for q in query]
-        instr = [q.instrument for q in query]
-        filters = [q.filter for q in query]
-        exptimes = [str(round(float(q.exptime))) + 's' for q in query]
-        psfxs = [int(round(q.psfx)) for q in query]
-        psfys = [int(round(q.psfy)) for q in query]
+    frames = OrderedDict()
+    for rd in datums.order_by('-timestamp'):
+        frames.setdefault(rd.value['basename'], rd)
+        if not allimages and len(frames) == 8:
+            break
+    if not frames:
+        logger.info(f'No images found for target {target}')
+        return [], [], [], [], [], [], [], [], [], []
 
-    logger.info('Found file names for target {}'.format(pipeline_id))
+    def pixel(v):
+        return int(round(float(v))) if v is not None and float(v) < 9999 else 9999
 
-    return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
+    def wcs_label(w):
+        return '' if w is None else ('Good' if int(w) == 0 else 'Failed')
+
+    basenames, datums = list(frames), list(frames.values())
+    return (basenames,
+            [rd.timestamp.strftime('%m/%d/%Y') for rd in datums],
+            [str(rd.value.get('telescope', ''))[:3] for rd in datums],
+            [rd.value.get('instrument') or b.split('-')[1] for b, rd in zip(basenames, datums)],
+            [rd.value.get('filter', '') for rd in datums],
+            [f"{float(rd.value['exptime']):.2f}s" if rd.value.get('exptime') not in (None, '') else '' for rd in datums],
+            [pixel(rd.value.get('psfx')) for rd in datums],
+            [pixel(rd.value.get('psfy')) for rd in datums],
+            [f"{float(rd.value['fwhm']):.2f}\"" if rd.value.get('fwhm') not in (None, '') else '' for rd in datums],
+            [wcs_label(rd.value.get('wcs')) for rd in datums])
 
 def get_unreduced_spectra(allspec=True):
     '''

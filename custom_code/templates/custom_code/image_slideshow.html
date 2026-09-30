@@ -18,6 +18,14 @@
       <div class="col-md-6"><b>Exptime: </b></div>
       <div class="col-md-6" id="thumb-exptime">{{ exptime }}</div>
     </div>
+    <div class="row">
+      <div class="col-md-6"><b>FWHM: </b></div>
+      <div class="col-md-6" id="thumb-fwhm" title="PSF FWHM in arcsec. Lower is sharper.">{{ fwhm }}</div>
+    </div>
+    <div class="row">
+      <div class="col-md-6"><b>WCS: </b></div>
+      <div class="col-md-6" id="thumb-wcs" title="Failed means the WCS pipeline stage failed">{{ wcs }}</div>
+    </div>
   </div>
   <div class="col-md-8">
     <div class="row" id="form-thumbnail">
@@ -91,6 +99,8 @@
         $('#thumb-instrument').html(response.instrument);
         $('#thumb-filter').html(response.filter);
         $('#thumb-exptime').html(response.exptime);
+        $('#thumb-fwhm').html(response.fwhm);
+        $('#thumb-wcs').html(response.wcs);
       }
     });
   };

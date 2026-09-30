@@ -2,6 +2,7 @@ from custom_code.models import TNSTarget, ScienceTags, TargetTags, BrokerTarget
 from tom_targets.models import Target, TargetList
 from tom_targets.filters import TargetFilterSet
 from tom_dataproducts.filters import ReducedDatumFilter
+from custom_code.utils import unsubtracted_q
 import django_filters
 from django.db.models import ExpressionWrapper, FloatField, Q
 from math import radians
@@ -25,7 +26,7 @@ class SNExReducedDatumFilter(ReducedDatumFilter):
     def filter_background_subtracted(self, queryset, name, value):
         if value:
             return queryset.filter(value__background_subtracted=True)
-        return queryset.filter(Q(value__background_subtracted=False) | ~Q(value__has_key='background_subtracted'))
+        return queryset.filter(unsubtracted_q())
 
 
 class TNSTargetForm(forms.Form): 

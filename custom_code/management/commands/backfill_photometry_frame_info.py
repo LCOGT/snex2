@@ -7,17 +7,17 @@ from tom_dataproducts.models import ReducedDatum
 
 logger = logging.getLogger(__name__)
 
-PHOTLCO_QUERY = text('SELECT id, filename, wcs, psfx, psfy FROM photlco WHERE id IN :ids').bindparams(
+PHOTLCO_QUERY = text('SELECT id, filename, filter, exptime, fwhm, wcs, psfx, psfy FROM photlco WHERE id IN :ids').bindparams(
     bindparam('ids', expanding=True)
 )
 
 
-def _pixel(value):
+def _measured(value):
     return None if value is None or float(value) >= 9999 else float(value)
 
 
 class Command(BaseCommand):
-    help = ('One-off backfill: copy basename, wcs flag and psfx/psfy from SNEx1 photlco into '
+    help = ('One-off backfill: copy basename, filter, exptime, fwhm, wcs flag and psfx/psfy from SNEx1 photlco into '
             'photometry ReducedDatum values, matched on value["snex_id"] (= photlco.id).')
 
     def add_arguments(self, parser):
@@ -50,9 +50,13 @@ class Command(BaseCommand):
                     rd.value.update({
                         'basename': row.filename.split('.')[0] if row.filename else None,
                         'wcs': None if row.wcs is None else int(row.wcs),
-                        'psfx': _pixel(row.psfx),
-                        'psfy': _pixel(row.psfy),
+                        'exptime': None if row.exptime is None else float(row.exptime),
+                        'fwhm': _measured(row.fwhm),  # arcsec
+                        'psfx': _measured(row.psfx),
+                        'psfy': _measured(row.psfy),
                     })
+                    if row.filter and not rd.value.get('filter'):
+                        rd.value['filter'] = row.filter  # failed reductions were synced without one
                     changed.append(rd)
 
                 if changed and not options['dry_run']:

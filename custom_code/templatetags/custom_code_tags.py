@@ -281,6 +281,8 @@ def generic_lightcurve_plot(target, user):
         if isinstance(value, str):
             value = json.loads(value)
 
+        if value.get('magnitude') is None:  # failed reductions / limits: nothing to plot
+            continue
         filt = filter_translate.get(value.get('filter', ''), '')
    
         photometry_data.setdefault(filt, {})
@@ -867,6 +869,9 @@ def photometry_data_list(context, target):
         rows.append({'datum': d, 'groups': visible.get(d.pk, []), 'basename': basename,
                      'magnitude': magnitude if magnitude is not None and float(magnitude) < 9999 else None,
                      'filter': v.get('filter') or '',
+                     'wcs': v.get('wcs'),
+                     'exptime': v.get('exptime'),
+                     'fwhm': v.get('fwhm'),
                      'instrument': v.get('instrument') or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
     dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
     one_day = datetime.timedelta(days=1)
@@ -1777,8 +1782,8 @@ def image_slideshow(context, target):
     if not settings.DEBUG:
         #NOTE: Production
         
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username, allimages=True)
-        if not filepaths:
+        filenames, dates, teles, instr, filters, exptimes, psfxs, psfys, fwhms, wcs = run_hook('find_images', target, username, allimages=True)
+        if not filenames:
             logger.info(f'No images found for target {target}')
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
@@ -1789,12 +1794,13 @@ def image_slideshow(context, target):
             }
     
     thumbdict = [(json.dumps({'filename': filenames[i],
-                   'filepath': filepaths[i],
                    'date': dates[i],
                    'tele': teles[i],
                    'instr': instr[i],
                    'filter': filters[i],
                    'exptime': exptimes[i],
+                   'fwhm': fwhms[i],
+                   'wcs': wcs[i],
                    'psfx': psfxs[i],
                    'psfy': psfys[i]
                 }),
@@ -1810,10 +1816,9 @@ def image_slideshow(context, target):
 
     ### Make the initial thumbnail
     if psfxs[0] < 9999 and psfys[0] < 9999:
-        print(os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits'))
-        f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits')], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
+        f = make_thumb([filenames[0]], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
     else:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)
+        f = make_thumb([filenames[0]], grow=1.0, x=1024, y=1024, ticks=False)
 
     with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:        
         b64_image = base64.b64encode(imagefile.read())
@@ -1826,6 +1831,8 @@ def image_slideshow(context, target):
             'instrument': instr[0],
             'filter': filters[0],
             'exptime': exptimes[0],
+            'fwhm': fwhms[0],
+            'wcs': wcs[0],
             'archive_root': settings.FACILITIES['LCO']['archive_url'],
             'archive_token': settings.FACILITIES['LCO']['api_key']}
 
@@ -1856,6 +1863,8 @@ def lightcurve_fits(target, user, filt=False, days=None):
         if isinstance(value, str):
             value = json.loads(value)
 
+        if value.get('magnitude') is None:  # failed reductions / limits: nothing to plot
+            continue
         current_filt = filter_translate.get(value.get('filter', ''), '')
    
         photometry_data.setdefault(current_filt, {})
@@ -2052,8 +2061,8 @@ def display_thumbnails(context, target):
     
     if not settings.DEBUG:
         #NOTE: Production
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username)
-        if not filepaths:
+        filenames, dates, teles, instr, filters, exptimes, psfxs, psfys, fwhms, wcs = run_hook('find_images', target, username)
+        if not filenames:
             logger.info(f'No images found for target {target}')
             return {'top_images': [],
                     'bottom_images': [], 'no_images': True}
@@ -2086,9 +2095,9 @@ def display_thumbnails(context, target):
         else:
             # Generate the thumbnail and save the image
             if psfxs[i] < 9999 and psfys[i] < 9999:
-                f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[i].lstrip('/'),currentfile+'.fits')], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
+                f = make_thumb([currentfile], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
             else:
-                f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[i].lstrip('/'),currentfile+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)
+                f = make_thumb([currentfile], grow=1.0, x=1024, y=1024, ticks=False)
             thumbfiles.append(f[0])
         
         thumbdates.append(dates[i])
@@ -2216,6 +2225,8 @@ def snex2_get_photometry_data(context, target, target_share=False):
                                     value__has_key='filter')).order_by('timestamp')
     data = []
     for reduced_datum in photometry:
+        if 'magnitude' not in reduced_datum.value and 'limit' not in reduced_datum.value:
+            continue  # failed reduction (frame only, no measurement)
         rd_data = {'id': reduced_datum.pk,
                    'timestamp': reduced_datum.timestamp,
                    'source': reduced_datum.source_name,

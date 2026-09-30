@@ -220,6 +220,28 @@ def reduceddatum_view_groups(datums):
     return {pk: sorted(names) for pk, names in visible.items()}
 
 
+def unsubtracted_q():
+    """Photometry that is not background-subtracted: stored as False, or no key at all."""
+    from django.db.models import Q
+    return Q(value__background_subtracted=False) | ~Q(value__has_key='background_subtracted')
+
+
+def download_archive_frame(basename):
+    """(archive filename, bytes) of an LCO frame from the LCO archive by basename, or None if unavailable.
+    Archive frames are usually fpacked (.fits.fz)."""
+    import requests
+    response = requests.get(settings.FACILITIES['LCO']['archive_url'],
+                            headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"},
+                            params={'basename_exact': basename, 'include_related_frames': False})
+    if not response.ok:
+        logger.error(f'LCO archive lookup for {basename} failed: {response.status_code} {response.text[:200]}')
+        return None
+    results = response.json().get('results', [])
+    if not results:
+        return None
+    return results[0]['filename'], requests.get(results[0]['url']).content
+
+
 def _normalize_view_object_name(name: str) -> str:
     """
     Normalize likely target short names into a canonical compact form without spaces.

@@ -13,6 +13,7 @@ from struct import pack, unpack
 from django.conf import settings
 import tempfile
 import logging
+from custom_code.utils import download_archive_frame
 
 logger = logging.getLogger(__name__)
 
@@ -388,21 +389,27 @@ def getdata(filename, region=None, skip=0, ext=0):
 
 
 # ***************************************************************************
-def make_thumb(files, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, height=250, ticks=False, spansig=4, skip=0, fixscale=None):
+def make_thumb(basenames, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, height=250, ticks=False, spansig=4, skip=0, fixscale=None):
     """
-    Make thumbnails from a FITS image
+    Make thumbnails of LCO frames, downloaded from the LCO archive by basename (nothing is read from local disk)
     """
     region = [round(x-(width/grow)), round(x+(width/grow)), round(y-(height/grow)), round(y+(height/grow))]
     # make the thumbnails
     outfiles = []
-    for filename in files:
-        # See if fits file needs to be funpacked
+    for basename in basenames:
         with tempfile.TemporaryDirectory() as tmpdir:
-            tmpfile = os.path.join(tmpdir, os.path.basename(filename))
-            if os.path.exists(filename):
-                tmpfile = filename
+            tmpfile = os.path.join(tmpdir, basename + '.fits')
+            frame = download_archive_frame(basename)
+            if frame is None:
+                raise FileNotFoundError(f'{basename} is not in the LCO archive')
+            archive_name, content = frame
+            if archive_name.endswith('.fz'):
+                with open(tmpfile + '.fz', 'wb') as f:
+                    f.write(content)
+                os.system(f'funpack -O "{tmpfile}" "{tmpfile}.fz"')
             else:
-                r = os.system(f'funpack -O "{tmpfile}" "{filename}.fz"')
+                with open(tmpfile, 'wb') as f:
+                    f.write(content)
 
             # load in the image data
             thumb = ImageThumb(tmpfile, skip=skip, grow=grow, verbose=True, region=region)

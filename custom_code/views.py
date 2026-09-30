@@ -63,7 +63,7 @@ from custom_code.scheduling import cancel_observation, change_obs_from_schedulin
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
 from custom_code.target_names import TNS_PREFIX_RE
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import download_archive_frame, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -1379,9 +1379,9 @@ def make_thumbnail_view(request):
     sigma = float(request.GET['sigma'])
 
     if filename_dict['psfx'] < 9999 and filename_dict['psfy'] < 9999:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'].lstrip('/'),filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
+        f = make_thumb([filename_dict['filename']], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
     else:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'].lstrip('/'),filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
+        f = make_thumb([filename_dict['filename']], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
 
     with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:
         b64_image = base64.b64encode(imagefile.read())
@@ -1392,7 +1392,9 @@ def make_thumbnail_view(request):
                         'telescope': filename_dict['tele'],
                         'instrument': filename_dict['instr'],
                         'filter': filename_dict['filter'],
-                        'exptime': filename_dict['exptime']
+                        'exptime': filename_dict['exptime'],
+                        'fwhm': filename_dict.get('fwhm', ''),
+                        'wcs': filename_dict.get('wcs', '')
                     }
 
     return HttpResponse(json.dumps(content_response), content_type='application/json')
@@ -1408,18 +1410,11 @@ def download_data_product_view(request, pk):
                         filename=os.path.basename(dp.data.name))
 
 def download_fits_view(request):
-    token = settings.FACILITIES['LCO']['api_key']
-    url = settings.FACILITIES['LCO']['archive_url']
-    
     object_basename = json.loads(request.GET.get('filename'))['filename']
-
-    results = requests.get(url,
-                           headers={'Authorization': f'Token {token}'}, 
-                           params={'basename_exact': object_basename, 'include_related_frames': False}).json()["results"]
-    
-    data = requests.get(results[0]["url"]).content
-
-    return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
+    frame = download_archive_frame(object_basename)
+    if frame is None:
+        raise Http404(f'{object_basename} not found in the LCO archive')
+    return FileResponse(BytesIO(frame[1]), filename=object_basename+'.fits', as_attachment=True)
 
 
 class BulkDownloadView(LoginRequiredMixin, View):

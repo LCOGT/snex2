@@ -54,14 +54,17 @@
   <thead>
     <tr>
       <th><input type="checkbox" id="phot-select-all" checked></th>
-      <th>Date</th>
+      <th>Date <span class="text-muted" style="cursor: help;" title="Observation time in local time">&#9432;</span></th>
       <th>Filter</th>
-      <th>Mag</th>
+      <th>Mag <span class="text-muted" style="cursor: help;" title="&mdash; means the reduction failed (9999 in the pipeline). &gt; is an upper limit.">&#9432;</span></th>
       <th>Err</th>
       <th>Telescope</th>
       <th>Instrument</th>
-      <th>Frame</th>
-      {% if is_admin %}<th>Visible to</th>{% endif %}
+      <th>Exp time (s)</th>
+      <th>FWHM (&Prime;) <span class="text-muted" style="cursor: help;" title="PSF FWHM from the pipeline. Lower is sharper.">&#9432;</span></th>
+      <th>Frame <span class="text-muted" style="cursor: help;" title="LCO archive frame name">&#9432;</span></th>
+      <th>WCS <span class="text-muted" style="cursor: help;" title="Failed means the WCS pipeline stage failed. Blank means not reduced yet.">&#9432;</span></th>
+      {% if is_admin %}<th>Visible to <span class="text-muted" style="cursor: help;" title="Groups that can see this point">&#9432;</span></th>{% endif %}
     </tr>
   </thead>
   <tbody>
@@ -76,12 +79,15 @@
       <td>{% if row.magnitude is not None and v.error is not None %}{{ v.error|floatformat:3 }}{% endif %}</td>
       <td>{{ v.telescope|default:'' }}</td>
       <td>{{ row.instrument }}</td>
+      <td>{% if row.exptime is not None %}{{ row.exptime|floatformat:2 }}{% endif %}</td>
+      <td>{% if row.fwhm is not None %}{{ row.fwhm|floatformat:2 }}{% endif %}</td>
       <td>{{ row.basename }}</td>
+      <td>{% if row.wcs == 0 %}Good{% elif row.wcs is not None %}Failed{% endif %}</td>
       {% if is_admin %}<td class="phot-groups">{{ row.groups|join:", " }}</td>{% endif %}
     </tr>
   {% endwith %}
   {% empty %}
-    <tr><td colspan="9">No photometry you can view for this target.</td></tr>
+    <tr><td colspan="12">No photometry you can view for this target.</td></tr>
   {% endfor %}
   </tbody>
 </table>
