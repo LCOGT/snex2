@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 from dateutil.parser import parse
 from guardian.models import GroupObjectPermission
-from guardian.shortcuts import assign_perm, remove_perm
+from guardian.shortcuts import assign_perm, get_objects_for_user, remove_perm
 from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
@@ -163,6 +163,42 @@ def sync_group_permissions_to_target(obs_group, records, target):
             assign_perm(f'tom_observations.view_{codename_model}', group, obj)
             assign_perm(f'tom_observations.change_{codename_model}', group, obj)
             assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
+
+def viewable_dataproducts(user, queryset):
+    """DataProducts the user can view directly or through any of their ReducedDatums
+    (spectra synced from SNEx1 only grant view_reduceddatum to the uploader's groups)."""
+    from django.db.models import Q
+    from tom_dataproducts.models import ReducedDatum
+    direct = get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset)
+    via_datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                      klass=ReducedDatum.objects.filter(data_product__in=queryset))
+    return queryset.filter(Q(pk__in=direct.values('pk')) | Q(pk__in=via_datums.values('data_product_id')))
+
+
+def dataproduct_view_groups(dp):
+    """Names of groups that can view a DataProduct directly or through any of its ReducedDatums."""
+    from django.db.models import Q
+    from tom_dataproducts.models import ReducedDatum
+    datum_pks = [str(pk) for pk in dp.reduceddatum_set.values_list('pk', flat=True)]
+    perms = GroupObjectPermission.objects.filter(
+        Q(content_type=ContentType.objects.get_for_model(dp), object_pk=str(dp.pk),
+          permission__codename='view_dataproduct') |
+        Q(content_type=ContentType.objects.get_for_model(ReducedDatum), object_pk__in=datum_pks,
+          permission__codename='view_reduceddatum'))
+    return set(perms.values_list('group__name', flat=True))
+
+
+def set_dataproduct_view_groups(dp, groups):
+    """Make exactly `groups` able to view the DataProduct and all of its ReducedDatums (kept in sync)."""
+    datums = dp.reduceddatum_set.all()
+    for group in groups:
+        assign_perm('tom_dataproducts.view_dataproduct', group, dp)
+        assign_perm('tom_dataproducts.view_reduceddatum', group, datums)
+    selected = [group.pk for group in groups]
+    for group in Group.objects.filter(name__in=dataproduct_view_groups(dp)).exclude(pk__in=selected):
+        remove_perm('tom_dataproducts.view_dataproduct', group, dp)
+        remove_perm('tom_dataproducts.view_reduceddatum', group, datums)
+
 
 def _normalize_view_object_name(name: str) -> str:
     """

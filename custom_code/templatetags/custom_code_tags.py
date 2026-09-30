@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import bind_observation_form_htmx
+from custom_code.utils import bind_observation_form_htmx, dataproduct_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -603,6 +603,8 @@ def registration_who_you_are(user):
 @register.inclusion_tag('tom_dataproducts/partials/dataproduct_list_for_target.html', takes_context=True)
 def snex_dataproduct_list(context, target):
     dataproduct_context = dataproduct_list_for_target(context, target)
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        dataproduct_context['products'] = viewable_dataproducts(context['request'].user, target.dataproduct_set.all())
     telescopes, instruments = set(), set()
     for p in dataproduct_context['products']:
         rde = p.reduceddatumextra_set.first()
@@ -848,16 +850,9 @@ def dash_spectra(context, target):
 
 @register.inclusion_tag('custom_code/dataproduct_update.html')
 def dataproduct_update(dataproduct):
-    group_query = Group.objects.all()
-    groups = [i.name for i in group_query]
-    return{'dataproduct': dataproduct,
-           'groups': groups}
-
-@register.filter
-def get_dataproduct_groups(dataproduct):
-    # Query all the groups with permission for this dataproduct
-    groups = ','.join([g.name for g in get_groups_with_perms(dataproduct)])
-    return json.dumps(groups)
+    return {'dataproduct': dataproduct,
+            'groups': list(Group.objects.values_list('name', flat=True)),
+            'visible_groups': dataproduct_view_groups(dataproduct)}
 
 
 @register.inclusion_tag('tom_observations/partials/observation_plan.html')

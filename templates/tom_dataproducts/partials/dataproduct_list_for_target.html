@@ -38,7 +38,7 @@
       <option value="fits">fits</option>
       <option value="ascii">ascii</option>
     </select>
-    <button type="submit" class="btn btn-success">Download</button>
+    <button type="submit" class="btn btn-success" id="bulkDownloadSubmit">Download</button>
   </div>
   <span class="text-muted ml-2">Download spectra as a filetype if available</span>
   <table class="table table-striped" id="dataproductsTable">
@@ -146,6 +146,8 @@
   document.addEventListener('submit', function (ev) {
     if (ev.target.id !== 'bulkDownloadForm') return;
     ev.preventDefault();
+    // Update/Apply/JS9 buttons in the rows default to type=submit; only the Download button downloads
+    if (ev.submitter && ev.submitter.id !== 'bulkDownloadSubmit') return;
     const form = ev.target;
     if (!document.querySelectorAll('.product-checkbox:checked').length) {
       alert("No items selected. Please check at least one data product before downloading.");

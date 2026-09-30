@@ -64,7 +64,7 @@ from custom_code.scheduling import cancel_observation, change_obs_from_schedulin
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import make_thumb
 from custom_code.target_names import TNS_PREFIX_RE
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -464,20 +464,14 @@ class CustomDataProductUploadView(DataProductUploadView):
 
         return redirect(form.cleaned_data.get('referrer', '/'))
 
+@require_http_methods(["POST"])
 def save_dataproduct_groups_view(request):
-    group_names = json.loads(request.GET.get('groups', None))
-    dataproduct_id = request.GET.get('dataproductid', None)
-    dp = DataProduct.objects.get(id=dataproduct_id)
-    data = ReducedDatum.objects.filter(data_product=dp)
-    successful_groups = ''
-    for i in group_names:
-        group = Group.objects.get(name=i)
-        assign_perm('tom_dataproducts.view_dataproduct', group, dp)
-        for datum in data:
-            assign_perm('tom_dataproducts.view_reduceddatum', group, datum)
-        successful_groups += i
-    response_data = {'success': successful_groups}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+    dp = get_object_or_404(DataProduct, id=request.POST.get('dataproductid'))
+    if not viewable_dataproducts(request.user, DataProduct.objects.filter(pk=dp.pk)).exists():
+        return HttpResponseForbidden('Not authorized')
+    groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
+    set_dataproduct_view_groups(dp, groups)
+    return JsonResponse({'success': sorted(group.name for group in groups)})
 
 
 class Snex1ConnectionError(Exception):
@@ -1387,7 +1381,7 @@ def make_thumbnail_view(request):
 
 def download_data_product_view(request, pk):
     dp = get_object_or_404(DataProduct, pk=pk)
-    if not request.user.has_perm('tom_dataproducts.view_dataproduct', dp):
+    if not viewable_dataproducts(request.user, DataProduct.objects.filter(pk=dp.pk)).exists():
         return HttpResponseForbidden('Not authorized')
     if not dp.data or not os.path.exists(dp.data.path):
         raise Http404('File not found on disk')
@@ -1430,10 +1424,7 @@ class BulkDownloadView(LoginRequiredMixin, View):
         download_format = request.POST.get('download_format', 'fits')
         if not product_ids:
             return HttpResponse('No items selected.', status=400)
-        allowed = get_objects_for_user(
-            request.user, 'tom_dataproducts.view_dataproduct',
-            klass=DataProduct.objects.filter(id__in=product_ids),
-        )
+        allowed = viewable_dataproducts(request.user, DataProduct.objects.filter(id__in=product_ids))
         zip_buffer = BytesIO()
         written = 0
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
