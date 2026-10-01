@@ -13,6 +13,7 @@ from django.core.cache import cache
 from django.core.paginator import Paginator
 
 from tom_targets.models import Target, TargetList
+from tom_targets.permissions import targets_for_user
 from tom_observations import facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
@@ -22,6 +23,7 @@ from tom_common.hooks import run_hook
 
 from astroplan import Observer, FixedTarget, time_grid_from_range, moon_illumination
 import datetime
+import re
 from django.utils import timezone
 import json
 from astropy.time import Time
@@ -882,6 +884,62 @@ def photometry_data_list(context, target):
             'filters': sorted({r['filter'] for r in rows if r['filter']}),
             'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
             'groups': list(Group.objects.values_list('name', flat=True)),
+            'is_admin': user.is_superuser,
+            'archive_root': settings.FACILITIES['LCO']['archive_url'],
+            'archive_token': settings.FACILITIES['LCO']['api_key']}
+
+
+@register.inclusion_tag('tom_targets/partials/recent_targets.html', takes_context=True)
+def snex_recent_targets(context, limit=10):
+    user = context['request'].user
+    return {
+        'empty_database': not Target.objects.exists(),
+        'authenticated': user.is_authenticated,
+        'targets': targets_for_user(user, Target.objects.filter(standard=False), 'view_target').order_by('-created')[:limit]
+    }
+
+
+def _frame_setups(basename, filt):
+    parts = (basename or '').split('-')
+    if len(parts) < 3 or len(parts[0]) < 6:
+        return None, None
+    instrument_type = re.match(r'[a-z]*', parts[1]).group()
+    return (parts[0], parts[1], parts[2], filt), (parts[0][:3], parts[0][3:6], instrument_type, parts[2], filt)
+
+
+@register.inclusion_tag('custom_code/partials/target/photometric_standards_list.html', takes_context=True)
+def photometric_standards_list(context, target):
+    user = context['request'].user
+    photometry = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename')
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        photometry = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=photometry)
+    exact_setups, site_setups, times = set(), set(), []
+    for value, timestamp in photometry.values_list('value', 'timestamp'):
+        exact, site = _frame_setups(value['basename'], value.get('filter'))
+        if exact:
+            exact_setups.add(exact)
+            site_setups.add(site)
+            times.append(timestamp)
+
+    rows = []
+    one_day = datetime.timedelta(days=1)
+    if site_setups:
+        standards = ReducedDatum.objects.filter(data_type='photometric_standard', value__has_key='basename',
+                                                timestamp__gte=min(times) - one_day, timestamp__lte=max(times) + one_day)
+        for rd in standards.select_related('target').order_by('-timestamp'):
+            v = rd.value
+            exact, site = _frame_setups(v['basename'], v.get('filter'))
+            if site in site_setups:
+                rows.append({'datum': rd, 'name': rd.target.name, 'basename': v['basename'], 'filter': v.get('filter') or '',
+                             'same_telescope': exact in exact_setups,
+                             'telescope': v.get('telescope') or '', 'instrument': v.get('instrument') or v['basename'].split('-')[1]})
+    dates = [timezone.localtime(r['datum'].timestamp).date() for r in rows]
+    return {'target': target,
+            'rows': rows,
+            'date_min': (min(dates) - one_day).isoformat() if dates else '',
+            'date_max': (max(dates) + one_day).isoformat() if dates else '',
+            'filters': sorted({r['filter'] for r in rows if r['filter']}),
+            'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
             'is_admin': user.is_superuser,
             'archive_root': settings.FACILITIES['LCO']['archive_url'],
             'archive_token': settings.FACILITIES['LCO']['api_key']}

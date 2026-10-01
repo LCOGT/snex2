@@ -443,6 +443,7 @@ DATA_PRODUCT_TYPES = {
     'spectroscopy': ('spectroscopy', 'Spectroscopy'),
     'image_file': ('image_file', 'Image File'),
     'raw_spectrum': ('raw_spectrum', 'Raw Spectrum'),
+    'photometric_standard': ('photometric_standard', 'Photometric Standard'),
 }
 
 DATA_PROCESSORS = {

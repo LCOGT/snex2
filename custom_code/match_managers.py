@@ -18,15 +18,16 @@ class SNExTargetMatchManager(TargetMatchManager):
         queryset = self.match_name(target.name)
         if target.ra is not None and target.dec is not None:
             queryset = queryset | self.match_cone_search(target.ra, target.dec, MATCH_RADIUS_ARCSEC)
-        return queryset.distinct()
+        return queryset.filter(standard=getattr(target, 'standard', False)).distinct()
 
-    def find_duplicate(self, name, ra, dec, exclude_pk=None):
-        by_name = self.match_name(name).exclude(pk=exclude_pk) if name else self.none()
+    def find_duplicate(self, name, ra, dec, exclude_pk=None, standard=False):
+        by_name = self.match_name(name).filter(standard=standard).exclude(pk=exclude_pk) if name else self.none()
         target = by_name.first()
         if target is not None:
             return target, 'name'
         if ra is not None and dec is not None:
-            target = self.match_cone_search(ra, dec, MATCH_RADIUS_ARCSEC).exclude(pk=exclude_pk).order_by('separation').first()
+            target = (self.match_cone_search(ra, dec, MATCH_RADIUS_ARCSEC).filter(standard=standard)
+                      .exclude(pk=exclude_pk).order_by('separation').first())
             if target is not None:
                 return target, 'position'
         return None

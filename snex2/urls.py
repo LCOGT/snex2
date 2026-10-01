@@ -61,6 +61,7 @@ urlpatterns = [
     path('targets/<int:pk>/tab/observations/', load_observations_tab_view, name='load-observations-tab'),
     path('targets/<int:pk>/tab/manage-data/', load_manage_data_tab_view, name='load-manage-data-tab'),
     path('targets/<int:pk>/tab/manage-photometry/', load_manage_photometry_view, name='load-manage-photometry'),
+    path('targets/<int:pk>/tab/manage-standards/', load_manage_standards_view, name='load-manage-standards'),
     path('targets/<int:pk>/tab/observing-runs/', load_observing_runs_tab_view, name='load-observing-runs-tab'),
     path('targets/<int:pk>/tab/images/', load_images_tab_view, name='load-images-tab'),
     path('targets/<int:pk>/tab/photometry/', load_photometry_tab_view, name='load-photometry-tab'),

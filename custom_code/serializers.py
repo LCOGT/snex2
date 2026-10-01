@@ -54,6 +54,7 @@ class SNExTargetSerializer(TargetSerializer):
             data.get('ra', inst.ra if inst else None),
             data.get('dec', inst.dec if inst else None),
             exclude_pk=inst.pk if inst else None,
+            standard=data.get('standard', inst.standard if inst else False),
         )
         if self.duplicate:
             target, matched_by = self.duplicate

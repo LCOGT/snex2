@@ -1082,6 +1082,10 @@ def load_manage_photometry_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_photometry.html')
 
 
+def load_manage_standards_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_standards.html')
+
+
 @require_http_methods(["POST"])
 def update_photometry_groups_view(request):
     if not request.user.is_superuser:

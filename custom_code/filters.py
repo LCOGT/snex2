@@ -99,9 +99,16 @@ class CustomTargetFilter(TargetFilterSet):
     def filter_sciencetags(self, queryset, name, value):
         return queryset.filter(targettags__tag=value).distinct()
 
+    standard = django_filters.BooleanFilter(label='Photometric standard')
+
+    def filter_queryset(self, queryset):
+        if self.form.cleaned_data.get('standard') is None:
+            queryset = queryset.exclude(standard=True)
+        return super().filter_queryset(queryset)
+
     class Meta:
         model = Target
-        fields = ['name', 'cone_search', 'targetlist__name', 'sciencetags']
+        fields = ['name', 'cone_search', 'targetlist__name', 'sciencetags', 'standard']
 
 
 class BrokerTargetForm(forms.Form): 
