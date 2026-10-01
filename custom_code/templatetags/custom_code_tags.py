@@ -616,6 +616,7 @@ def snex_dataproduct_list(context, target):
                 telescopes.add(t)
             if i:
                 instruments.add(i)
+    dataproduct_context['is_admin'] = context['request'].user.is_superuser
     dataproduct_context['telescopes'] = sorted(telescopes)
     dataproduct_context['instruments'] = sorted(instruments)
     dates = [timezone.localtime(p.created).date() for p in dataproduct_context['products'] if p.data]

@@ -50,7 +50,7 @@
         <th>Filename</th>
         <th>Type</th>
         <th>Date</th>
-        <th>Update</th>
+        {% if is_admin %}<th>Update</th>{% endif %}
         <th>Delete</th>
       </tr>
     </thead>
@@ -87,7 +87,7 @@
             {{ rd.timestamp|date:"Y-m-d" }}
           {% endwith %}
         </td>
-        <td>{% dataproduct_update product %}</td>
+        {% if is_admin %}<td>{% dataproduct_update product %}</td>{% endif %}
         <td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>
       </tr>
       {% endwith %}
@@ -135,6 +135,21 @@
     }
   });
   document.addEventListener('click', function (ev) {
+    if (ev.target.classList.contains('dp-apply-groups')) {
+      const menu = ev.target.closest('.dropdown-menu');
+      const groups = Array.from(menu.querySelectorAll('.dp-group:checked')).map(function (cb) { return cb.value; });
+      const body = new FormData();
+      body.append('dataproductid', ev.target.dataset.dp);
+      body.append('groups', JSON.stringify(groups));
+      fetch('{% url "save_dataproduct_groups" %}', {
+        method: 'POST', body: body,
+        headers: { 'X-CSRFToken': (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1] },
+      }).then(function (resp) {
+        if (!resp.ok) { alert('Could not update groups: ' + resp.status); return; }
+        menu.classList.remove('show');
+      });
+      return;
+    }
     if (ev.target.id === 'clearFilters') {
       ['startDateFilter', 'endDateFilter', 'telescopeFilter', 'instrumentFilter'].forEach(function (id) {
         const el = document.getElementById(id);

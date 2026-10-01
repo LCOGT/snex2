@@ -461,9 +461,9 @@ class CustomDataProductUploadView(DataProductUploadView):
 
 @require_http_methods(["POST"])
 def save_dataproduct_groups_view(request):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can change data product visibility')
     dp = get_object_or_404(DataProduct, id=request.POST.get('dataproductid'))
-    if not viewable_dataproducts(request.user, DataProduct.objects.filter(pk=dp.pk)).exists():
-        return HttpResponseForbidden('Not authorized')
     groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
     set_dataproduct_view_groups(dp, groups)
     return JsonResponse({'success': sorted(group.name for group in groups)})
