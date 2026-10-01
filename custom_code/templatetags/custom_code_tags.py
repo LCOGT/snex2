@@ -859,8 +859,8 @@ def photometry_data_list(context, target):
     datums = ReducedDatum.objects.filter(target=target, data_type='photometry')
     if not settings.TARGET_PERMISSIONS_ONLY:
         datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
+    visible = reduceddatum_view_groups(datums) if user.is_superuser else {}
     datums = list(datums.order_by('-timestamp'))
-    visible = reduceddatum_view_groups(ReducedDatum.objects.filter(pk__in=[d.pk for d in datums])) if user.is_superuser else {}
     rows = []
     for d in datums:
         v, basename = d.value, d.value.get('basename') or ''

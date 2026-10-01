@@ -9,7 +9,7 @@ def ra_ranges(ra, dec, radius):
 
     if abs(dec) + radius >= 90:
         return None
-    dra = math.degrees(math.asin(min(1.0, math.sin(math.radians(radius)) / math.cos(math.radians(dec)))))
+    dra = math.degrees(math.asin(math.sin(math.radians(radius)) / math.cos(math.radians(dec))))
     dra = dra * 1.001 + 1e-9
     ra %= 360
     return [(ra - dra + shift, ra + dra + shift) for shift in (0, 360, -360)]

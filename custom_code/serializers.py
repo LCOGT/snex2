@@ -1,11 +1,12 @@
 from django.conf import settings
-from django.contrib.auth.models import Group
 from guardian.shortcuts import assign_perm
 from rest_framework import serializers
 from tom_common.serializers import GroupSerializer
 from tom_dataproducts.serializers import ReducedDatumSerializer
 from tom_targets.serializers import TargetSerializer
 from tom_targets.models import Target
+
+from custom_code.utils import groups_from_payload
 
 
 class SNExReducedDatumSerializer(ReducedDatumSerializer):
@@ -15,14 +16,7 @@ class SNExReducedDatumSerializer(ReducedDatumSerializer):
         fields = ('id',) + ReducedDatumSerializer.Meta.fields + ('groups',)
 
     def validate_groups(self, groups):
-        found = []
-        for group in groups:
-            lookup = {'pk': group['id']} if group.get('id') else {'name': group.get('name')}
-            try:
-                found.append(Group.objects.get(**lookup))
-            except Group.DoesNotExist:
-                raise serializers.ValidationError(f'Group {group} does not exist.')
-        return found
+        return groups_from_payload(groups)
 
     def _grant_view(self, rd, groups):
         if not settings.TARGET_PERMISSIONS_ONLY:

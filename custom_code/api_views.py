@@ -2,7 +2,6 @@ import json
 import logging
 
 from django.conf import settings
-from django.contrib.auth.models import Group
 from django.db import transaction
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
@@ -18,7 +17,7 @@ from custom_code.filters import SNExReducedDatumFilter, SNExTargetFilterSet
 from custom_code.models import ReducedDatumExtra
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.serializers import SNExReducedDatumSerializer, SNExTargetSerializer
-from custom_code.utils import set_dataproduct_view_groups
+from custom_code.utils import groups_from_payload, set_dataproduct_view_groups
 
 logger = logging.getLogger(__name__)
 
@@ -67,11 +66,7 @@ class SNExDataProductViewSet(DataProductViewSet):
     def create(self, request, *args, **kwargs):
         data = request.data
         data['data'] = request.FILES['file']
-        group_names = [g.get('name') for g in json.loads(data.pop('groups', ['[]'])[0])]
-        groups = list(Group.objects.filter(name__in=group_names))
-        missing = set(group_names) - {g.name for g in groups}
-        if missing:
-            return Response({'groups': f'Unknown groups: {sorted(missing)}'}, status=status.HTTP_400_BAD_REQUEST)
+        groups = groups_from_payload(json.loads(data.pop('groups', ['[]'])[0]))
 
         product_id = data.get('product_id')
         existing = DataProduct.objects.filter(product_id=product_id).first() if product_id else None

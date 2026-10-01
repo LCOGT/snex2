@@ -14,6 +14,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 import logging
+import requests
+from django.db.models import Q
+from rest_framework.exceptions import ValidationError
 from custom_code.target_names import TNS_PREFIX_RE
 
 logger = logging.getLogger(__name__)
@@ -165,7 +168,6 @@ def sync_group_permissions_to_target(obs_group, records, target):
             assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
 def viewable_dataproducts(user, queryset):
-    from django.db.models import Q
     from tom_dataproducts.models import ReducedDatum
     direct = get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset)
     via_datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
@@ -174,7 +176,6 @@ def viewable_dataproducts(user, queryset):
 
 
 def dataproduct_view_groups(dp):
-    from django.db.models import Q
     from tom_dataproducts.models import ReducedDatum
     datum_pks = [str(pk) for pk in dp.reduceddatum_set.values_list('pk', flat=True)]
     perms = GroupObjectPermission.objects.filter(
@@ -217,6 +218,17 @@ def reduceddatum_view_groups(datums):
     return {pk: sorted(names) for pk, names in visible.items()}
 
 
+def groups_from_payload(groups):
+    found = []
+    for group in groups:
+        lookup = {'pk': group['id']} if group.get('id') else {'name': group.get('name')}
+        try:
+            found.append(Group.objects.get(**lookup))
+        except Group.DoesNotExist:
+            raise ValidationError({'groups': f'Group {group} does not exist.'})
+    return found
+
+
 def measured(value):
     try:
         value = float(value)
@@ -226,12 +238,10 @@ def measured(value):
 
 
 def unsubtracted_q():
-    from django.db.models import Q
     return Q(value__background_subtracted=False) | ~Q(value__has_key='background_subtracted')
 
 
 def download_archive_frame(basename):
-    import requests
     response = requests.get(settings.FACILITIES['LCO']['archive_url'],
                             headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"},
                             params={'basename_exact': basename, 'include_related_frames': False})

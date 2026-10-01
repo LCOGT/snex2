@@ -60,12 +60,12 @@ class Command(BaseCommand):
         with engine.connect() as conn:
             for start in range(0, len(pks), size):
                 batch = list(ReducedDatum.objects.filter(pk__in=pks[start:start + size]))
-                ids = sorted({int(rd.value['snex_id']) for rd in batch})
+                ids = sorted({rd.value['snex_id'] for rd in batch})
                 rows = {row.id: row for row in conn.execute(PHOTLCO_QUERY, {'ids': ids})}
 
                 changed = []
                 for rd in batch:
-                    row = rows.get(int(rd.value['snex_id']))
+                    row = rows.get(rd.value['snex_id'])
                     if row is None:
                         missing += 1
                         continue

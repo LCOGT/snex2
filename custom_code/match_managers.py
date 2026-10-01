@@ -36,7 +36,6 @@ class SNExTargetMatchManager(TargetMatchManager):
         if ra is None or dec is None or radius is None or not -90 <= dec <= 90:
             return self.get_queryset().none()
 
-        ra = ra % 360
         r = radius / 3600.0
         queryset = self.get_queryset().filter(dec__gte=dec - r, dec__lte=dec + r)
         ranges = ra_ranges(ra, dec, r)

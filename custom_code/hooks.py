@@ -138,8 +138,7 @@ def _get_tns_params(target):
 
     return response_data
         
-def find_images(target, username, allimages=False):
-    user = username if isinstance(username, User) else User.objects.get(username=username)
+def find_images(target, user, allimages=False):
     datums = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename').filter(unsubtracted_q())
     if not settings.TARGET_PERMISSIONS_ONLY:
         datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
@@ -154,21 +153,26 @@ def find_images(target, username, allimages=False):
         return [], [], [], [], [], [], [], [], [], []
 
     def pixel(v):
-        return int(round(measured(v))) if measured(v) is not None else 9999
+        v = measured(v)
+        return 9999 if v is None else round(v)
+
+    def fwhm_label(v):
+        v = measured(v)
+        return '' if v is None else f'{v:.2f}"'
 
     def wcs_label(w):
-        return '' if w is None else ('Good' if int(w) == 0 else 'Failed')
+        return '' if w is None else ('Good' if w == 0 else 'Failed')
 
     basenames, datums = list(frames), list(frames.values())
     return (basenames,
             [rd.timestamp.strftime('%m/%d/%Y') for rd in datums],
-            [str(rd.value.get('telescope', ''))[:3] for rd in datums],
+            [(rd.value.get('telescope') or '')[:3] for rd in datums],
             [rd.value.get('instrument') or b.split('-')[1] for b, rd in zip(basenames, datums)],
             [rd.value.get('filter', '') for rd in datums],
-            [f"{float(rd.value['exptime']):.2f}s" if rd.value.get('exptime') not in (None, '') else '' for rd in datums],
+            ['' if rd.value.get('exptime') is None else f"{rd.value['exptime']:.2f}s" for rd in datums],
             [pixel(rd.value.get('psfx')) for rd in datums],
             [pixel(rd.value.get('psfy')) for rd in datums],
-            [f"{measured(rd.value.get('fwhm')):.2f}\"" if measured(rd.value.get('fwhm')) is not None else '' for rd in datums],
+            [fwhm_label(rd.value.get('fwhm')) for rd in datums],
             [wcs_label(rd.value.get('wcs')) for rd in datums])
 
 def get_unreduced_spectra(allspec=True):
