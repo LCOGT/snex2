@@ -56,7 +56,7 @@ from tom_targets.views import TargetCreateView
 from custom_code.facilities.soar_facility import user_can_access_soar
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
-from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unreduced_spectra
+from custom_code.hooks import _get_tns_params, get_standards_from_snex1
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
@@ -1609,31 +1609,23 @@ class FloydsInboxView(TemplateView):
     template_name = 'custom_code/floyds_inbox.html'
 
     def get_context_data(self, **kwargs):
-
         context = super().get_context_data(**kwargs)
-
-        pipeline_ids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
-
         inbox_rows = []
-        for i in range(len(pipeline_ids)):
-            current_dict = {}
-            t = Target.objects.get(pipeline_id=pipeline_ids[i])
-            current_dict['targetid'] = t.id
-            current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
-            current_dict['propid'] = propids[i]
-            current_dict['dateobs'] = dateobs[i]
-            current_dict['path'] = paths[i]
-            current_dict['filename'] = filenames[i]
-            
-            with open(imgpaths[i], 'rb') as imagefile:
-                b64_image = base64.b64encode(imagefile.read())
-                thumb = b64_image.decode('utf-8')
-            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
-            
-            inbox_rows.append(current_dict)
-
+        raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', reduceddatum__isnull=True)
+        for dp in raw_spectra.select_related('target').order_by('-created'):
+            info = json.loads(dp.extra_data) if dp.extra_data else {}
+            img = ''
+            if dp.thumbnail:
+                with dp.thumbnail.open('rb') as f:
+                    img = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('utf-8')
+            inbox_rows.append({'targetid': dp.target_id,
+                               'targetnames': custom_code_tags.smart_name_list(dp.target),
+                               'propid': info.get('propid', ''),
+                               'dateobs': info.get('dateobs', ''),
+                               'path': info.get('path', ''),
+                               'filename': info.get('filename') or dp.product_id,
+                               'img': img})
         context['inbox_rows'] = inbox_rows
-
         return context
 
 

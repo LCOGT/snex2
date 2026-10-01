@@ -13,7 +13,7 @@ import urllib
 from custom_code.scheduling import save_comments
 from custom_code.utils import _return_session, _load_table, _get_session, measured, unsubtracted_q
 
-from sqlalchemy import create_engine, pool, and_, or_, not_
+from sqlalchemy import create_engine, pool, and_
 from sqlalchemy.orm import sessionmaker, aliased
 from sqlalchemy.ext.automap import automap_base
 from contextlib import contextmanager
@@ -174,62 +174,6 @@ def find_images(target, user, allimages=False):
             [pixel(rd.value.get('psfy')) for rd in datums],
             [fwhm_label(rd.value.get('fwhm')) for rd in datums],
             [wcs_label(rd.value.get('wcs')) for rd in datums])
-
-def get_unreduced_spectra(allspec=True):
-    '''
-    Hook to find unreduced spectra for FLOYDS inbox
-    '''
-    token = os.environ['LCO_APIKEY']
-
-    response = requests.get('https://observe.lco.global/api/proposals?active=True&limit=50/',
-                             headers={'Authorization': 'Token ' + token}).json()
-
-    proposals = [prop['id'] for prop in response['results']]
-    
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
-        targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-        classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
-        spec = _load_table('spec', db_address=settings.SNEX1_DB_URL)
-
-        original_filenames = [s.original for s in db_session.query(spec).filter(and_(spec.original!='None', spec.original!=None))]
-
-        unreduced_spectra = db_session.query(speclcoraw).join(
-                targets, speclcoraw.targetid==targets.id
-        ).join(
-                targetnames, speclcoraw.targetid==targetnames.targetid
-        ).join(
-                classifications, targets.classificationid==classifications.id, isouter=True
-        ).filter(
-            and_(
-                not_(speclcoraw.filename.in_(original_filenames)), 
-                speclcoraw.propid.in_(proposals),
-                speclcoraw.filename.contains('e00.fits'),
-                or_(
-                    classifications.name != 'Standard', 
-                    classifications.name == None
-                ), 
-                or_(
-                    and_(
-                        speclcoraw.type != 'LAMPFLAT', 
-                        speclcoraw.type != 'ARC'
-                    ), 
-                speclcoraw.type == None
-            ), 
-            not_(speclcoraw.filepath.contains('bad')), 
-            not_(targetnames.name.contains('test_'))
-            )
-        )
-        pipeline_ids = [s.targetid for s in unreduced_spectra]
-        propids = [s.propid for s in unreduced_spectra]
-        dateobs = [s.dateobs for s in unreduced_spectra]
-        paths = [s.filepath for s in unreduced_spectra]
-        filenames = [s.filename for s in unreduced_spectra]
-        imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in unreduced_spectra]
-
-    return pipeline_ids, propids, dateobs, paths, filenames, imgpaths
-
 
 def get_standards_from_snex1(pipeline_id):
     

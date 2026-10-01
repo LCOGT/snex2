@@ -66,7 +66,12 @@ class SNExDataProductViewSet(DataProductViewSet):
 
     def create(self, request, *args, **kwargs):
         data = request.data
-        data['data'] = request.FILES['file']
+        raw = data.get('data_product_type') == 'raw_spectrum'
+        file, thumbnail = request.FILES.get('file'), request.FILES.get('thumbnail')
+        if file:
+            data['data'] = file
+        elif not raw:
+            return Response({'file': 'This field is required.'}, status=status.HTTP_400_BAD_REQUEST)
         groups = groups_from_payload(json.loads(data.pop('groups', ['[]'])[0]))
 
         posted = {key: data[key] for key in SpecProcessor.field_keywords if data.get(key)}
@@ -80,30 +85,50 @@ class SNExDataProductViewSet(DataProductViewSet):
         if existing and str(existing.target_id) != str(data.get('target')):
             return Response({'product_id': f'{product_id} already belongs to target {existing.target_id}'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if raw and existing and existing.reduceddatum_set.exists():
+            return Response({'id': existing.id, 'product_id': product_id, 'already_reduced': True},
+                            status=status.HTTP_200_OK)
 
         with transaction.atomic():
             if existing:
-                existing.delete()
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            dp = serializer.save()
-            try:
-                reduced_data, rd_extras = run_custom_data_processor(dp, {}, {'data_product_id': dp.id, **posted})
-            except Exception as e:
-                transaction.set_rollback(True)
-                if isinstance(e, InvalidFileFormatException):
-                    return Response({'file': f'Invalid file format: {e}'}, status=status.HTTP_400_BAD_REQUEST)
-                logger.exception(f'Processing failed for uploaded data product {dp.data.name}')
-                return Response({'file': f'Could not process file: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                dp = existing
+                replaced = dp.reduceddatum_set.exists()
+                dp.reduceddatum_set.all().delete()
+                ReducedDatumExtra.objects.filter(data_product=dp).delete()
+                dp.data_product_type = data['data_product_type']
+                if file:
+                    dp.data = file
+                if data.get('extra_data'):
+                    dp.extra_data = data['extra_data']
+                dp.save()
+            else:
+                replaced = False
+                serializer = self.get_serializer(data=data)
+                serializer.is_valid(raise_exception=True)
+                dp = serializer.save()
+            if thumbnail:
+                dp.thumbnail.save(thumbnail.name, thumbnail)
 
-            ReducedDatumExtra.objects.create(target_id=dp.target_id, data_product=dp, data_type=dp.data_product_type,
-                                             key='upload_extras', value=rd_extras)
-            if dp.data_product_type == 'spectroscopy':
-                DataProduct.objects.filter(pk=dp.pk).update(created=reduced_data.first().timestamp)
+            reduceddatums, rd_extras = [], {}
+            if not raw:
+                try:
+                    reduced_data, rd_extras = run_custom_data_processor(dp, {}, {'data_product_id': dp.id, **posted})
+                except Exception as e:
+                    transaction.set_rollback(True)
+                    if isinstance(e, InvalidFileFormatException):
+                        return Response({'file': f'Invalid file format: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+                    logger.exception(f'Processing failed for uploaded data product {dp.data.name}')
+                    return Response({'file': f'Could not process file: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                reduceddatums = list(reduced_data.values_list('id', flat=True))
+                ReducedDatumExtra.objects.create(target_id=dp.target_id, data_product=dp, data_type=dp.data_product_type,
+                                                 key='upload_extras', value=rd_extras)
+                if dp.data_product_type == 'spectroscopy':
+                    DataProduct.objects.filter(pk=dp.pk).update(created=reduced_data.first().timestamp)
             if not settings.TARGET_PERMISSIONS_ONLY:
                 set_dataproduct_view_groups(dp, groups)
 
         return Response({'id': dp.id, 'product_id': dp.product_id, 'target': dp.target_id,
-                         'data': dp.data.name, 'reduceddatums': list(reduced_data.values_list('id', flat=True)),
-                         'extras': rd_extras, 'groups': sorted(g.name for g in groups), 'replaced': existing is not None},
-                        status=status.HTTP_201_CREATED)
+                         'data': dp.data.name or None, 'thumbnail': dp.thumbnail.name or None,
+                         'reduceddatums': reduceddatums, 'extras': rd_extras,
+                         'groups': sorted(g.name for g in groups), 'replaced': replaced},
+                        status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)

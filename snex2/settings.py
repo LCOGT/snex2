@@ -441,7 +441,8 @@ DATA_PRODUCT_TYPES = {
     'photometry': ('photometry', 'Photometry'),
     'fits_file': ('fits_file', 'FITS File'),
     'spectroscopy': ('spectroscopy', 'Spectroscopy'),
-    'image_file': ('image_file', 'Image File')
+    'image_file': ('image_file', 'Image File'),
+    'raw_spectrum': ('raw_spectrum', 'Raw Spectrum'),
 }
 
 DATA_PROCESSORS = {
