@@ -237,14 +237,14 @@ def download_archive_frame(basename):
     import requests
     response = requests.get(settings.FACILITIES['LCO']['archive_url'],
                             headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"},
-                            params={'basename_exact': basename, 'include_related_frames': False}, timeout=30)
+                            params={'basename_exact': basename, 'include_related_frames': False})
     if not response.ok:
         logger.error(f'LCO archive lookup for {basename} failed: {response.status_code} {response.text[:200]}')
         return None
     results = response.json().get('results', [])
     if not results:
         return None
-    return results[0]['filename'], requests.get(results[0]['url'], timeout=120).content
+    return results[0]['filename'], requests.get(results[0]['url']).content
 
 
 def _normalize_view_object_name(name: str) -> str:
