@@ -1830,9 +1830,7 @@ def image_slideshow(context, target):
             'filter': filters[0],
             'exptime': exptimes[0],
             'fwhm': fwhms[0],
-            'wcs': wcs[0],
-            'archive_root': settings.FACILITIES['LCO']['archive_url'],
-            'archive_token': settings.FACILITIES['LCO']['api_key']}
+            'wcs': wcs[0]}
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')

@@ -1,4 +1,5 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
@@ -1482,41 +1483,29 @@ class BulkDownloadView(LoginRequiredMixin, View):
         return response
 
 
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["POST"])
 def get_frame_ids_view(request):
-    target_id = request.GET.get('target_id') or request.POST.get('target_id')
-    basenames = set(json.loads(request.POST['basenames'])) if 'basenames' in request.POST else None
-    target = Target.objects.get(id = target_id)
+    """LCO archive frame ids for the posted basenames."""
+    basenames = set(json.loads(request.POST.get('basenames', '[]')))
     token = settings.FACILITIES['LCO']['api_key']
     url = settings.FACILITIES['LCO']['archive_url']
-    frame_ids = []
-    for target_name in list(set(target.names)):
-        params = {
-            'reduction_level': 91,
-            'target_name_exact': target_name,
-            'configuration_type': 'EXPOSE',
-            'pagination_style': 'cursor',
-            'limit': 100
-        }
-        next_url = url
-        while next_url:
-            response = requests.get(
-                next_url,
-                headers = {'Authorization': f'Token {token}'},
-                params = params if next_url == url else None
-            )
-            if not response.ok:
-                logger.error(f'LCO archive frame lookup failed for {target.name}: {response.status_code} {response.text[:200]}')
-                return JsonResponse({'error': f'LCO archive returned {response.status_code}: {response.text[:200]}'}, status=502)
-            resp = response.json()
-            for r in resp['results']:
-                if basenames is None or r.get('basename') in basenames:
-                    frame_ids.append(r['id'])
-            next_url = resp['next']
 
-    unique_ids = list(set(frame_ids))
-    logger.info(f'Total unique frame IDs for {target.name}: {len(unique_ids)}')
-    return JsonResponse({'frame_ids': unique_ids, 'count': len(unique_ids)})
+    def lookup(basename):
+        return requests.get(url, headers={'Authorization': f'Token {token}'},
+                            params={'basename_exact': basename, 'include_related_frames': False})
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        responses = list(pool.map(lookup, basenames))
+
+    frame_ids = set()
+    for response in responses:
+        if not response.ok:
+            logger.error(f'LCO archive frame lookup failed: {response.status_code} {response.text[:200]}')
+            return JsonResponse({'error': f'LCO archive returned {response.status_code}: {response.text[:200]}'}, status=502)
+        frame_ids.update(r['id'] for r in response.json()['results'])
+
+    logger.info(f'Found {len(frame_ids)} of {len(basenames)} frames in the LCO archive')
+    return JsonResponse({'frame_ids': list(frame_ids), 'count': len(frame_ids)})
 
 class InterestingTargetsView(ListView):
 

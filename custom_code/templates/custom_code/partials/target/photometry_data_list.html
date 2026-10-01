@@ -142,7 +142,7 @@
     const basenames = Array.from(new Set(sel.map((r) => r.dataset.basename).filter(Boolean)));
     if (!basenames.length) { alert('None of the selected rows have a frame basename.'); return; }
     status.textContent = 'Finding ' + basenames.length + ' frames in the LCO archive...';
-    const resp = await post('{% url "get-frame-ids" %}', { target_id: '{{ target.id }}', basenames: JSON.stringify(basenames) });
+    const resp = await post('{% url "get-frame-ids" %}', { basenames: JSON.stringify(basenames) });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) { status.textContent = 'Could not look up frames: ' + (data.error || resp.status); return; }
     status.textContent = 'Found ' + data.count + ' of ' + basenames.length + ' frames. Downloads open in new tab(s); enable pop-ups.';

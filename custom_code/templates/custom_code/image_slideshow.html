@@ -1,5 +1,4 @@
 {% load bootstrap4 static %}
-<script src="{% static 'custom_code/archive_download.js' %}"></script>
 <div class="row" style="padding-top: 50px;">
   <div class="col-md-2">
     <div class="row">
@@ -36,15 +35,6 @@
     <div class="row justify-content-center mt-3">
       <input type="hidden" id="download-filename" name="filename">
       <button type="button" class="btn btn-primary" onclick="downloadFile(event)">Download Fits</button>
-    </div>
-    <div class="row justify-content-center mt-3">
-      <input type="hidden" id="target-id" value="{{ target.id }}">
-      <input type="hidden" id="archive-root" value="{{ archive_root }}">
-      <input type="hidden" id="archive-token" value="{{ archive_token }}">
-      <button type="button" class="btn btn-primary" onclick="downloadAll(event)">Download All Images</button>
-    </div>
-    <div class="row justify-content-center mt-2">
-      <div id="download-status" class="text-center"></div>
     </div>
   </div>
   <div class="col-md-2">
@@ -161,28 +151,4 @@
     hiddenInput.value = filenameSelect.value;
     makeThumbnail();
   });
-  async function downloadAll(event) {
-    const statusDiv = document.getElementById("download-status");
-    const targetId = document.getElementById("target-id").value;
-    const downloadButton = document.querySelector("button[onclick='downloadAll(event)']");
-    statusDiv.innerHTML = "Fetching images...";
-    downloadButton.disabled = true;
-
-    const response = await fetch(`{% url 'get-frame-ids' %}?target_id=${targetId}`);
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      statusDiv.innerHTML = `Could not look up images: ${data.error || response.status}`;
-      downloadButton.disabled = false;
-      return;
-    }
-
-    const numZips = Math.ceil(data.frame_ids.length / 500);
-    statusDiv.innerHTML = `Found ${data.count} images${numZips > 1 ? ` — downloading as ${numZips} zip files` : ''}.`;
-
-    const archiveRoot = document.getElementById("archive-root").value;
-    const archiveToken = document.getElementById("archive-token").value;
-    await downloadZip(data.frame_ids, false, archiveRoot, archiveToken);
-    statusDiv.innerHTML = `${numZips > 1 ? `${numZips} zip files opening` : 'Download starting'} in new tab(s). Enable pop-ups and check your browser downloads.`;
-    downloadButton.disabled = false;
-  }
 </script>
