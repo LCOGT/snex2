@@ -10,18 +10,26 @@
     <label for="phot-end" class="font-weight-bold">End Date:</label>
     <input type="date" id="phot-end" class="form-control phot-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
-  <div class="col-md-2">
+  <div class="col-md-1">
     <label for="phot-band" class="font-weight-bold">Filter:</label>
     <select id="phot-band" class="form-control phot-filter">
       <option value="">-- All --</option>
       {% for f in filters %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
     </select>
   </div>
-  <div class="col-md-2">
+  <div class="col-md-1">
     <label for="phot-instrument" class="font-weight-bold">Instrument:</label>
     <select id="phot-instrument" class="form-control phot-filter">
       <option value="">-- All --</option>
       {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label for="phot-type" class="font-weight-bold">Type:</label>
+    <select id="phot-type" class="form-control phot-filter">
+      <option value="">-- All --</option>
+      <option value="unsubtracted">Unsubtracted</option>
+      <option value="subtracted">Subtracted</option>
     </select>
   </div>
   <div class="col-md-1 d-flex align-items-end">
@@ -56,6 +64,7 @@
       <th><input type="checkbox" id="phot-select-all" checked></th>
       <th>Date <span class="text-muted" style="cursor: help;" title="Observation time in local time">&#9432;</span></th>
       <th>Filter</th>
+      <th>Type</th>
       <th>Mag <span class="text-muted" style="cursor: help;" title="&mdash; means the reduction failed (9999 in the pipeline). &gt; is an upper limit.">&#9432;</span></th>
       <th>Err</th>
       <th>Telescope</th>
@@ -71,10 +80,11 @@
   {% for row in rows %}
   {% with v=row.datum.value %}
     <tr class="phot-row" data-id="{{ row.datum.pk }}" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}"
-        data-band="{{ row.filter }}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}">
+        data-band="{{ row.filter }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}">
       <td><input type="checkbox" class="phot-check" checked></td>
       <td>{{ row.datum.timestamp|date:'Y-m-d H:i' }}</td>
       <td>{{ row.filter }}</td>
+      <td>{% if row.subtracted %}Subtracted{% else %}Unsubtracted{% endif %}</td>
       <td>{% if row.magnitude is not None %}{{ row.magnitude|floatformat:3 }}{% elif v.limit %}&gt;{{ v.limit|floatformat:3 }}{% else %}&mdash;{% endif %}</td>
       <td>{% if row.magnitude is not None and v.error is not None %}{{ v.error|floatformat:3 }}{% endif %}</td>
       <td>{{ v.telescope|default:'' }}</td>
@@ -87,7 +97,7 @@
     </tr>
   {% endwith %}
   {% empty %}
-    <tr><td colspan="12">No photometry you can view for this target.</td></tr>
+    <tr><td colspan="13">No photometry you can view for this target.</td></tr>
   {% endfor %}
   </tbody>
 </table>
@@ -101,11 +111,12 @@
   const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1];
 
   function applyFilters() {
-    const start = val('phot-start'), end = val('phot-end'), band = val('phot-band'), inst = val('phot-instrument');
+    const start = val('phot-start'), end = val('phot-end'), band = val('phot-band'), inst = val('phot-instrument'), type = val('phot-type');
     rows().forEach(function (r) {
       const d = r.dataset.date;
       const show = (!start || d >= start) && (!end || d <= end) &&
-                   (!band || r.dataset.band === band) && (!inst || r.dataset.instrument === inst);
+                   (!band || r.dataset.band === band) && (!inst || r.dataset.instrument === inst) &&
+                   (!type || r.dataset.type === type);
       r.style.display = show ? '' : 'none';
     });
   }
@@ -113,7 +124,7 @@
   document.getElementById('phot-clear').addEventListener('click', function () {
     // dates go back to the full range they were filled with; dropdowns back to "All"
     ['phot-start', 'phot-end'].forEach((id) => { const el = document.getElementById(id); el.value = el.defaultValue; });
-    ['phot-band', 'phot-instrument'].forEach((id) => { document.getElementById(id).value = ''; });
+    ['phot-band', 'phot-instrument', 'phot-type'].forEach((id) => { document.getElementById(id).value = ''; });
     applyFilters();
   });
   document.getElementById('phot-select-all').addEventListener('change', function (ev) {
