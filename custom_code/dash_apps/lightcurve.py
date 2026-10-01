@@ -85,7 +85,21 @@ app.layout = html.Div([
                                 style={'display': 'none'},
                             ))
                         ], 
-                    width=6),
+                    width=4),
+                    dbc.Col(
+                        [
+                            dbc.Row(html.H4('Magnitude Type')),
+                            dbc.Row(dcc.RadioItems(
+                                id='magnitude-type-radio',
+                                options=[{'label': 'Apparent', 'value': 'Apparent'},
+                                         {'label': 'PSF', 'value': 'PSF'},
+                                         {'label': 'Aperture', 'value': 'Aperture'}
+                                ],
+                                value='Apparent',
+                                inputStyle={"margin-right": "5px", "margin-left": "5px"},
+                            ))
+                        ],
+                    width=4),
                     dbc.Col(html.Div(
                         id='subtracted-extras',
                         children=[
@@ -110,7 +124,7 @@ app.layout = html.Div([
                             )
                         ],
                         style={'display': 'none'}
-                    ), width=6)
+                    ), width=4)
                     ], style={'margin-left': '1px'}
             ),
             html.Hr(),
@@ -269,8 +283,9 @@ def update_template_value(selected_subtraction):
          Input('reducer-group-checklist', 'value'),
          Input('target_id', 'value'),
          Input('user_id', 'value'),
-         Input('plot-height', 'value')])
-def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, target_id, user_id, height):
+         Input('plot-height', 'value'),
+         Input('magnitude-type-radio', 'value')])
+def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, target_id, user_id, height, magnitude_type):
     def get_color(filter_name, filter_translate):
         colors = {'U': 'rgb(59,0,113)',
             'u': 'rgb(59,0,113)',
@@ -301,6 +316,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         'zs': 'zs', 'z': 'zs', 'w': 'w',
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2',
         'UVW1': 'UVW1'}
+    magnitude_key, error_key = {'PSF': ('psfmag', 'psfdmag'), 'Aperture': ('apmag', 'dapmag')}.get(magnitude_type, ('magnitude', 'error'))
     photometry_data = {}
     subtracted_photometry_data = {}
     target = Target.objects.get(id=target_id)
@@ -374,7 +390,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             if isinstance(value, str):
                 value = json.loads(value)
 
-            if measured(value.get('magnitude')) is None:
+            if measured(value.get(magnitude_key)) is None:
                 continue
 
             if value.get('background_subtracted', '') == True:
@@ -385,8 +401,8 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
 
                     subtracted_photometry_data.setdefault(subtracted_filt, {})
                     subtracted_photometry_data[subtracted_filt].setdefault('time', []).append(rd.timestamp)
-                    subtracted_photometry_data[subtracted_filt].setdefault('magnitude', []).append(value.get('magnitude',None))
-                    subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(value.get('error', None))
+                    subtracted_photometry_data[subtracted_filt].setdefault('magnitude', []).append(value.get(magnitude_key))
+                    subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(measured(value.get(error_key)) or 0)
             elif value.get('reduction_type', '') == reduction_type or reduction_type == 'all':
 
                 raw_filter = value.get('filter', '')
@@ -394,8 +410,8 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
 
                 photometry_data.setdefault(filt, {})
                 photometry_data[filt].setdefault('time', []).append(rd.timestamp)
-                photometry_data[filt].setdefault('magnitude', []).append(value.get('magnitude',None))
-                photometry_data[filt].setdefault('error', []).append(value.get('error', None))
+                photometry_data[filt].setdefault('magnitude', []).append(value.get(magnitude_key))
+                photometry_data[filt].setdefault('error', []).append(measured(value.get(error_key)) or 0)
 
     if subtracted_value == 'Unsubtracted':
         selected_photometry = photometry_data

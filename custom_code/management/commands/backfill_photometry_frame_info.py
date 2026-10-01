@@ -27,6 +27,10 @@ def photlco_value(row):
         'wcs': None if row.wcs is None else int(row.wcs),
         'psfx': row.psfx,
         'psfy': row.psfy,
+        'psfmag': row.psfmag,
+        'psfdmag': row.psfdmag,
+        'apmag': row.apmag,
+        'dapmag': row.dapmag,
         'background_subtracted': row.filetype == 3,
     }
     if value['background_subtracted']:

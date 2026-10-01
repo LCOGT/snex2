@@ -110,12 +110,33 @@
   const selected = () => rows().filter((r) => r.style.display !== 'none' && r.querySelector('.phot-check').checked);
   const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1];
 
+  const groupList = document.createElement('div');
+  groupList.className = 'dropdown-menu p-2';
+  groupList.style.cssText = 'max-height: 250px; overflow-y: auto;';
+  document.body.appendChild(groupList);
+  document.addEventListener('click', function () { groupList.classList.remove('show'); });
+
   function showGroups(cell, names) {
     cell.innerHTML = '';
-    const count = document.createElement('span');
+    const count = document.createElement('a');
+    count.href = '#';
     count.textContent = names.length;
-    count.title = names.length ? names.join(', ') : 'Admins only';
-    count.style.cssText = 'cursor: help; border-bottom: 1px dotted;';
+    count.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      groupList.innerHTML = '';
+      (names.length ? names : ['Admins only']).forEach(function (name) {
+        const item = document.createElement('div');
+        item.className = 'dropdown-item';
+        item.textContent = name;
+        groupList.appendChild(item);
+      });
+      const box = count.getBoundingClientRect();
+      groupList.style.top = (box.bottom + window.scrollY) + 'px';
+      groupList.style.left = 'auto';
+      groupList.style.right = (document.documentElement.clientWidth - box.right - window.scrollX) + 'px';
+      groupList.classList.add('show');
+    });
     cell.appendChild(count);
   }
   table.querySelectorAll('.phot-groups').forEach((cell) => showGroups(cell, cell.dataset.groups ? cell.dataset.groups.split('|') : []));
