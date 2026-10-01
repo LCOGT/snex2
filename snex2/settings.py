@@ -380,7 +380,6 @@ OPEN_URLS = [
     '/api/*/',
     '/api/',
     '/accounts/register/',
-    '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
 ]
 if DEBUG:

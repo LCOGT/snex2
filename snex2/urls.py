@@ -18,25 +18,22 @@ from django.conf import settings
 
 from django.urls import include
 from custom_code.views import *
-from custom_code.api_views import CustomDataProductViewSet, CustomObservationRecordViewSet, SNExReducedDatumViewSet, SNExTargetViewSet
+from custom_code.api_views import SNExDataProductViewSet, SNExReducedDatumViewSet, SNExTargetViewSet
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
 from django.contrib.auth import views as auth_views
 from custom_code.forms import SafeAuthenticationForm
 
-custom_router = DefaultRouter()
-custom_router.register(r'photometry-upload', CustomDataProductViewSet, 'photometry-upload')
-custom_router.register(r'submit-observation', CustomObservationRecordViewSet, 'submit-observation')
 api_router = DefaultRouter()
 api_router.register(r'targets', SNExTargetViewSet, basename='targets')
 api_router.register(r'reduceddatums', SNExReducedDatumViewSet, basename='reduceddatums')
+api_router.register(r'dataproducts', SNExDataProductViewSet, basename='dataproducts')
 urlpatterns = [
     path('accounts/register/', SNEx2ApprovalRegistrationView.as_view(), name='register'),
     path('accounts/login/', auth_views.LoginView.as_view(authentication_form=SafeAuthenticationForm), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('api/', include(api_router.urls)),
-    path('pipeline-upload/', include(custom_router.urls)),
     path('', include('tom_common.urls')),
     path('view_object/', view_object_view, name='view-object'),
     path('targets/', TargetListView.as_view(), name='list'),
