@@ -165,8 +165,6 @@ def sync_group_permissions_to_target(obs_group, records, target):
             assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
 def viewable_dataproducts(user, queryset):
-    """DataProducts the user can view directly or through any of their ReducedDatums
-    (spectra synced from SNEx1 only grant view_reduceddatum to the uploader's groups)."""
     from django.db.models import Q
     from tom_dataproducts.models import ReducedDatum
     direct = get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset)
@@ -176,7 +174,6 @@ def viewable_dataproducts(user, queryset):
 
 
 def dataproduct_view_groups(dp):
-    """Names of groups that can view a DataProduct directly or through any of its ReducedDatums."""
     from django.db.models import Q
     from tom_dataproducts.models import ReducedDatum
     datum_pks = [str(pk) for pk in dp.reduceddatum_set.values_list('pk', flat=True)]

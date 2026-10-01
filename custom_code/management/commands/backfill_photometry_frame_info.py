@@ -13,34 +13,26 @@ PHOTLCO_QUERY = text(
 ).bindparams(bindparam('ids', expanding=True))
 
 
-def _number(value):
-    return None if value is None else float(value)
-
-
 def photlco_value(row):
-    """
-    ReducedDatum value for a photlco row, in the structure the pipeline posts. Failed reductions
-    keep photlco's 9999 values; sync_databases stored those as {'snex_id': id} placeholders.
-    """
     value = {
-        'snex_id': int(row.id),
-        'magnitude': _number(row.mag),
-        'error': _number(row.dmag),
+        'snex_id': row.id,
+        'magnitude': row.mag,
+        'error': row.dmag,
         'filter': row.filter,
         'telescope': row.telescope,
         'instrument': row.instrument,
         'basename': row.filename.split('.')[0] if row.filename else None,
-        'exptime': _number(row.exptime),
-        'fwhm': _number(row.fwhm),  # arcsec
+        'exptime': row.exptime,
+        'fwhm': row.fwhm,
         'wcs': None if row.wcs is None else int(row.wcs),
-        'psfx': _number(row.psfx),
-        'psfy': _number(row.psfy),
-        'background_subtracted': row.filetype is not None and int(row.filetype) == 3,
+        'psfx': row.psfx,
+        'psfy': row.psfy,
+        'background_subtracted': row.filetype == 3,
     }
     if value['background_subtracted']:
         value['reduction_type'] = 'manual'
         value['template_source'] = 'SDSS' if row.filename and 'SDSS' in row.filename else 'LCO'
-        algorithm = {0: 'Hotpants', 1: 'PyZOGY'}.get(None if row.difftype is None else int(row.difftype))
+        algorithm = {0: 'Hotpants', 1: 'PyZOGY'}.get(row.difftype)
         if algorithm:
             value['subtraction_algorithm'] = algorithm
     return value

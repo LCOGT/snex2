@@ -21,7 +21,6 @@ class SNExTargetMatchManager(TargetMatchManager):
         return queryset.distinct()
 
     def find_duplicate(self, name, ra, dec, exclude_pk=None):
-        """(target, 'name' | 'position') for the best existing match, or None. Name wins; else nearest."""
         by_name = self.match_name(name).exclude(pk=exclude_pk) if name else self.none()
         target = by_name.first()
         if target is not None:

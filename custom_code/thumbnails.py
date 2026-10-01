@@ -391,7 +391,7 @@ def getdata(filename, region=None, skip=0, ext=0):
 # ***************************************************************************
 def make_thumb(basenames, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, height=250, ticks=False, spansig=4, skip=0, fixscale=None):
     """
-    Make thumbnails of LCO frames, downloaded from the LCO archive by basename (nothing is read from local disk)
+    Make thumbnails from a FITS image downloaded from LCO archive
     """
     region = [round(x-(width/grow)), round(x+(width/grow)), round(y-(height/grow)), round(y+(height/grow))]
     # make the thumbnails

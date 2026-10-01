@@ -32,7 +32,6 @@ class SNExTargetViewSet(TargetViewSet):
         return self._serializer
 
     def create(self, request, *args, **kwargs):
-        """Get-or-create: 201 new; 200 existing (position-only match adds the POSTed name as an alias)."""
         try:
             return super().create(request, *args, **kwargs)
         except ValidationError:
@@ -66,11 +65,6 @@ class SNExReducedDatumViewSet(UpdateModelMixin, ReducedDatumViewSet):
 class SNExDataProductViewSet(DataProductViewSet):
 
     def create(self, request, *args, **kwargs):
-        """
-        Multipart upload of one file (`file`) for `target`, processed with the SNEx2 data processors.
-        `groups` is a JSON list like [{"name": "gsp"}] of groups that can view it. A `product_id` that
-        already exists for the same target is replaced (re-reduction of the same raw frame).
-        """
         data = request.data
         data['data'] = request.FILES['file']
         group_names = [g.get('name') for g in json.loads(data.pop('groups', ['[]'])[0])]
@@ -85,7 +79,7 @@ class SNExDataProductViewSet(DataProductViewSet):
             return Response({'product_id': f'{product_id} already belongs to target {existing.target_id}'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        with transaction.atomic():  # a failed re-upload keeps the existing data product
+        with transaction.atomic():
             if existing:
                 existing.delete()
             serializer = self.get_serializer(data=data)
@@ -103,7 +97,6 @@ class SNExDataProductViewSet(DataProductViewSet):
             ReducedDatumExtra.objects.create(target=dp.target, data_product=dp, data_type=dp.data_product_type,
                                              key='upload_extras', value=rd_extras)
             if dp.data_product_type == 'spectroscopy':
-                # Date the spectrum by its observation, as sync_databases did
                 DataProduct.objects.filter(pk=dp.pk).update(created=reduced_data.first().timestamp)
             if not settings.TARGET_PERMISSIONS_ONLY:
                 set_dataproduct_view_groups(dp, groups)

@@ -136,7 +136,6 @@
   });
   document.addEventListener('click', function (ev) {
     if (ev.target.id === 'clearFilters') {
-      // dates go back to the full range they were filled with; dropdowns back to "All"
       ['startDateFilter', 'endDateFilter', 'telescopeFilter', 'instrumentFilter'].forEach(function (id) {
         const el = document.getElementById(id);
         if (el) { el.value = el.type === 'date' ? el.defaultValue : ''; }
@@ -147,7 +146,6 @@
   document.addEventListener('submit', function (ev) {
     if (ev.target.id !== 'bulkDownloadForm') return;
     ev.preventDefault();
-    // Update/Apply/JS9 buttons in the rows default to type=submit; only the Download button downloads
     if (ev.submitter && ev.submitter.id !== 'bulkDownloadSubmit') return;
     const form = ev.target;
     if (!document.querySelectorAll('.product-checkbox:checked').length) {

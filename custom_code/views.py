@@ -164,12 +164,11 @@ def target_redirect_view(request):
     search_entry = request.GET['name'].strip()
     logger.info('Redirecting search for %s', search_entry)
 
-    # Coordinate search: "ra dec" or "ra,dec", decimal degrees or sexagesimal
     if ':' in search_entry or '.' in search_entry:
         ra, dec = search_entry.replace(',', ' ').split()[:2]
         coord = SkyCoord(ra, dec, unit=(u.hourangle if ':' in ra else u.deg, u.deg))
         ra, dec = coord.ra.deg, coord.dec.deg
-        radius = 1.0 / 60.0  # deg
+        radius = 1.0 / 60.0
         matches = list(Target.matches.match_cone_search(ra, dec, radius * 3600)[:2])
         if len(matches) == 1:
             return redirect(f'/targets/{matches[0].id}/')
@@ -177,7 +176,6 @@ def target_redirect_view(request):
             return redirect(f'/targets/?cone_search={ra}%2C{dec}%2C{radius}')
         return redirect(f'/create-target/?ra={ra}&dec={dec}')
 
-    # Name search: exact (fuzzy) match first, same rule as the duplicate check
     canonical = _normalize_view_object_name(search_entry)
     exact = list(Target.matches.match_name(canonical))
     if len(exact) == 1:
@@ -185,8 +183,6 @@ def target_redirect_view(request):
     if exact:
         return redirect('/targets/?name=' + quote_plus(','.join(t.name for t in exact)))
 
-    # A full TNS designation with no exact match is a new object (AT2024gg != AT2024ggi);
-    # anything else falls back to a substring search.
     if not re.fullmatch(r'(AT|SN)\d{4}[A-Za-z]{1,4}', canonical):
         core = TNS_PREFIX_RE.sub('', canonical)
         candidates = {c.lower() for c in (search_entry, search_entry.replace(' ', ''), canonical, core) if c}
@@ -197,7 +193,6 @@ def target_redirect_view(request):
         if len(partial) == 1:
             return redirect(f'/targets/{partial[0].id}/')
         if partial:
-            # Shortest terms only; the list page ORs comma-separated terms with icontains
             terms = sorted(t for t in candidates if not any(o != t and o in t for o in candidates))
             return redirect('/targets/?name=' + quote_plus(','.join(terms)))
 
@@ -1485,7 +1480,6 @@ class BulkDownloadView(LoginRequiredMixin, View):
 
 @require_http_methods(["POST"])
 def get_frame_ids_view(request):
-    """LCO archive frame ids for the posted basenames."""
     basenames = set(json.loads(request.POST.get('basenames', '[]')))
     token = settings.FACILITIES['LCO']['api_key']
     url = settings.FACILITIES['LCO']['archive_url']

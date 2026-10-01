@@ -122,7 +122,6 @@
   }
   document.querySelectorAll('.phot-filter').forEach((el) => el.addEventListener('change', applyFilters));
   document.getElementById('phot-clear').addEventListener('click', function () {
-    // dates go back to the full range they were filled with; dropdowns back to "All"
     ['phot-start', 'phot-end'].forEach((id) => { const el = document.getElementById(id); el.value = el.defaultValue; });
     ['phot-band', 'phot-instrument', 'phot-type'].forEach((id) => { document.getElementById(id).value = ''; });
     applyFilters();
