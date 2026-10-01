@@ -16,6 +16,7 @@ from tom_targets.models import TargetName
 from custom_code.filters import SNExReducedDatumFilter, SNExTargetFilterSet
 from custom_code.models import ReducedDatumExtra
 from custom_code.processors.data_processor import run_custom_data_processor
+from custom_code.processors.spectroscopy_processor import SpecProcessor
 from custom_code.serializers import SNExReducedDatumSerializer, SNExTargetSerializer
 from custom_code.utils import groups_from_payload, set_dataproduct_view_groups
 
@@ -68,6 +69,12 @@ class SNExDataProductViewSet(DataProductViewSet):
         data['data'] = request.FILES['file']
         groups = groups_from_payload(json.loads(data.pop('groups', ['[]'])[0]))
 
+        posted = {key: data[key] for key in SpecProcessor.field_keywords if data.get(key)}
+        try:
+            posted.update({key: float(posted[key]) for key in ('exptime', 'slit', 'airmass') if key in posted})
+        except ValueError as e:
+            return Response({'extras': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         product_id = data.get('product_id')
         existing = DataProduct.objects.filter(product_id=product_id).first() if product_id else None
         if existing and str(existing.target_id) != str(data.get('target')):
@@ -81,7 +88,7 @@ class SNExDataProductViewSet(DataProductViewSet):
             serializer.is_valid(raise_exception=True)
             dp = serializer.save()
             try:
-                reduced_data, rd_extras = run_custom_data_processor(dp, {}, {'data_product_id': dp.id})
+                reduced_data, rd_extras = run_custom_data_processor(dp, {}, {'data_product_id': dp.id, **posted})
             except Exception as e:
                 transaction.set_rollback(True)
                 if isinstance(e, InvalidFileFormatException):
