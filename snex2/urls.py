@@ -44,6 +44,7 @@ urlpatterns = [
     path('create-target/', CustomTargetCreateView.as_view(), name='create-target'),
     path('custom-data-upload/', CustomDataProductUploadView.as_view(), name='custom-data-upload'),
     path('save_dataproduct_groups/', save_dataproduct_groups_view, name='save_dataproduct_groups'),
+    path('set-target-standard/', set_target_standard_view, name='set-target-standard'),
     path('change-target-known-to/', change_target_known_to_view, name='change-target-known-to'),
     path('change-interest/', change_interest_view, name='change-interest'),
     path('name-search/', search_name_view, name='name-search'),
