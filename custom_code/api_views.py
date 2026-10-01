@@ -89,7 +89,7 @@ class SNExDataProductViewSet(DataProductViewSet):
                 logger.exception(f'Processing failed for uploaded data product {dp.data.name}')
                 return Response({'file': f'Could not process file: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            ReducedDatumExtra.objects.create(target=dp.target, data_product=dp, data_type=dp.data_product_type,
+            ReducedDatumExtra.objects.create(target_id=dp.target_id, data_product=dp, data_type=dp.data_product_type,
                                              key='upload_extras', value=rd_extras)
             if dp.data_product_type == 'spectroscopy':
                 DataProduct.objects.filter(pk=dp.pk).update(created=reduced_data.first().timestamp)
