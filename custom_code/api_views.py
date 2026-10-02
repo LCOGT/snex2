@@ -40,6 +40,9 @@ class SNExTargetViewSet(TargetViewSet):
                 raise
 
         target, matched_by = duplicate
+        if target.pipeline_id is None and request.data.get('pipeline_id'):
+            target.pipeline_id = request.data['pipeline_id']
+            target.save(update_fields=['pipeline_id'])
         alias_added = None
         new_name = str(request.data.get('name') or '').strip()
         if matched_by == 'position' and new_name:

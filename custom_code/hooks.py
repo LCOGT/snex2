@@ -11,12 +11,8 @@ from django.contrib.auth.models import User
 from django.conf import settings
 import urllib
 from custom_code.scheduling import save_comments
-from custom_code.utils import _return_session, _load_table, _get_session, measured, unsubtracted_q
+from custom_code.utils import measured, unsubtracted_q
 
-from sqlalchemy import create_engine, pool, and_
-from sqlalchemy.orm import sessionmaker, aliased
-from sqlalchemy.ext.automap import automap_base
-from contextlib import contextmanager
 from collections import OrderedDict
 from guardian.shortcuts import get_groups_with_perms, get_objects_for_user
 from tom_dataproducts.models import ReducedDatum
@@ -174,37 +170,6 @@ def find_images(target, user, allimages=False):
             [pixel(rd.value.get('psfy')) for rd in datums],
             [fwhm_label(rd.value.get('fwhm')) for rd in datums],
             [wcs_label(rd.value.get('wcs')) for rd in datums])
-
-def get_standards_from_snex1(pipeline_id):
-    
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        
-        photlco = _load_table('photlco', db_address=settings.SNEX1_DB_URL)
-        #targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-
-        std = aliased(photlco)
-        obj = aliased(photlco)
-
-        standard_info = db_session.query(
-            std.objname, std.filename, std.filter, std.dateobs,
-            std.telescope, std.instrument
-        ).distinct().join(
-            targets, std.targetid==targets.id 
-        ).filter(
-            and_(
-                obj.telescopeid==std.telescopeid,
-                obj.instrumentid==std.instrumentid,
-                targets.classificationid==1,
-                obj.filter==std.filter,
-                obj.dayobs==std.dayobs,
-                obj.quality==127,
-                std.quality==127,
-                obj.targetid==pipeline_id
-            )
-        )
-
-    return [dict(r._mapping) for r in standard_info]
 
 def download_test_image_from_archive():
     """
