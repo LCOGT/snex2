@@ -27,8 +27,8 @@
     </div>
     <div class="row mt-2">
       <span class="mr-2">Download:</span>
-      {% if entry.spectrum.data_product.data %}<a href="{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}" class="btn btn-sm btn-outline-primary mr-1">FITS</a>{% endif %}
-      <a href="{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}" class="btn btn-sm btn-outline-primary">ASCII</a>
+      <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
     </div>
     <div class="row mt-2">
       <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title=TNS class="btn  btn-info">Submit TNS Classification</a>

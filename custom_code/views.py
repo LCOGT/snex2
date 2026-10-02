@@ -1628,22 +1628,19 @@ def change_broker_target_status_view(request):
 class SNEx2SpectroscopyTNSSharePassthrough(RedirectView):
 
     def get_redirect_url(self, *args, **kwargs):
-        target_id = kwargs['pk']
-        datum_id = kwargs['datum_pk']
-        print(f"Redirecting to share for target {target_id} and reduced datum {datum_id}")
-        # We need to check if the datum has an associated dataproduct here, and if it does not, we should create it and add it to the TOM
-        datum = ReducedDatum.objects.get(pk=datum_id)
-        if not datum.data_product:
-            print(f"Reduced datum {datum_id} does not have an associated data product - creating it now")
-            target = Target.objects.get(pk=target_id)
-            data_str = ''
-            for datapoint in datum.value.values():
-                data_str += f"{datapoint.get('wavelength')}\t{datapoint.get('flux')}\n"
-            dp_name = f"spectra_{datum_id}_{datum.timestamp.strftime('%Y_%m_%d_%H_%M_%S')}.txt"
-            dp = DataProduct.objects.create(target=target, product_id=dp_name, data_product_type='spectroscopy')
-            dp.data.save(dp_name, ContentFile(data_str))
-            ReducedDatum.objects.filter(pk=datum_id).update(data_product=dp)
-        return reverse('tns:report-tns', kwargs={'pk': target_id, 'datum_pk': datum_id})
+        target, datum = _spectrum_for_user(self.request, kwargs['pk'], kwargs['datum_pk'])
+        product_id = f'spectrum_{datum.pk}_ascii'
+        if not DataProduct.objects.filter(product_id=product_id).exists():
+            content = spectrum_ascii(datum)
+            if content is None:
+                raise Http404('This spectrum has no data to write')
+            file_name = '{}_{}_{}.ascii'.format(target.name.replace(' ', '_'), datum.timestamp.strftime('%Y%m%dT%H%M%S'), datum.pk)
+            with transaction.atomic():
+                dp = DataProduct.objects.create(target=datum.target, product_id=product_id, data_product_type='spectroscopy')
+                dp.data.save(file_name, ContentFile(content))
+                groups = reduceddatum_view_groups(ReducedDatum.objects.filter(pk=datum.pk)).get(datum.pk, [])
+                set_dataproduct_view_groups(dp, list(Group.objects.filter(name__in=groups)))
+        return reverse('tns:report-tns', kwargs={'pk': target.pk, 'datum_pk': datum.pk})
 
 
 class FloydsInboxView(TemplateView):
