@@ -57,7 +57,7 @@ from tom_targets.views import TargetCreateView
 from custom_code.facilities.soar_facility import user_can_access_soar
 from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
-from custom_code.hooks import _get_tns_params, get_standards_from_snex1
+from custom_code.hooks import _get_tns_params
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
@@ -493,12 +493,6 @@ def set_target_standard_view(request):
     return JsonResponse({'standard': standard})
 
 
-class Snex1ConnectionError(Exception):
-    def __init__(self, message="Error syncing with the SNEx1 database"):
-        self.message = message
-        super().__init__(self.message)
-
-
 class PaperCreateView(FormView):
     
     form_class = PapersForm
@@ -550,7 +544,7 @@ def delete_comment_view(request):
     comment = get_object_or_404(Comment, id=request.POST.get('comment_id'))
     if comment.user != request.user and not request.user.is_staff:
         return HttpResponseForbidden('Permission denied')
-    comment.delete()  # this triggers the receiver that syncs to snex1
+    comment.delete()
     return HttpResponse('')
 
 def save_comments_view(request):
@@ -1699,7 +1693,11 @@ def download_photometry_view(request, targetid):
 
 
 def get_target_standards_view(request):
-    standard_info = get_standards_from_snex1(request.GET.get('pipeline_id', ''))
+    target = get_object_or_404(targets_for_user(request.user, Target.objects.all(), 'view_target'), id=request.GET.get('target_id'))
+    rows = custom_code_tags.photometric_standards_list({'request': request}, target)['rows']
+    standard_info = [{'objname': row['name'], 'filename': row['basename'], 'filter': row['filter'],
+                      'dateobs': row['datum'].timestamp.date(), 'telescope': row['telescope'], 'instrument': row['instrument']}
+                     for row in rows if row['same_telescope']]
     return render(request, 'custom_code/partials/target/get_target_standards.html', {'standards': standard_info})
 
 
