@@ -75,6 +75,7 @@ urlpatterns = [
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/interactive/', load_spectrum_interactive_view, name='load-spectrum-interactive'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),
+    path('cache-frame/', cache_frame_view, name='cache-frame'),
     path('get-frame-ids/', get_frame_ids_view, name='get-frame-ids'),
     path('update-photometry-groups/', update_photometry_groups_view, name='update-photometry-groups'),
     path('interesting-targets/', InterestingTargetsView.as_view(), name='interesting-targets'),

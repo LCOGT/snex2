@@ -6,11 +6,13 @@ Modified from SNEx
 """
 import glob
 import os
+import re
 import numpy as np
 from astropy.io import fits
 from PIL import Image, ImageDraw
 from django.conf import settings
 import tempfile
+import time
 import logging
 from custom_code.utils import download_archive_frame
 
@@ -110,9 +112,12 @@ def make_depth_256(data, sky=None, sig=None, depth=256, zerosig=-1, spansig=6):
 
 
 FRAME_CACHE_SIZE = 50
+CACHE_SECONDS = 24 * 60 * 60
 
 
 def cached_frame(basename):
+    if not re.fullmatch(r'[\w-]+', basename):
+        raise FileNotFoundError(f'{basename} is not a frame name')
     cache_dir = os.path.join(settings.THUMB_DIR, 'frames')
     os.makedirs(cache_dir, exist_ok=True)
     cached = glob.glob(os.path.join(cache_dir, basename + '.fits*'))
@@ -128,8 +133,9 @@ def cached_frame(basename):
         f.write(content)
     os.replace(f.name, path)
     frames = sorted(glob.glob(os.path.join(cache_dir, '*.fits*')), key=os.path.getmtime, reverse=True)
-    for old in frames[FRAME_CACHE_SIZE:]:
-        os.remove(old)
+    for position, frame_path in enumerate(frames):
+        if position >= FRAME_CACHE_SIZE or time.time() - os.path.getmtime(frame_path) > CACHE_SECONDS:
+            os.remove(frame_path)
     return path
 
 
@@ -144,7 +150,7 @@ def frame_cutout(path, region):
 
 
 # ***************************************************************************
-def make_thumb(basenames, grow=1.0, sky=None, sig=None, x=900, y=900, width=250, height=250, ticks=False, spansig=4, skip=0, fixscale=None):
+def make_thumb(basenames, grow=1.0, x=900, y=900, width=250, height=250, ticks=False, spansig=4):
     """
     Make thumbnails from a FITS image downloaded from LCO archive
     """
@@ -152,8 +158,17 @@ def make_thumb(basenames, grow=1.0, sky=None, sig=None, x=900, y=900, width=250,
     # make the thumbnails
     outfiles = []
     for basename in basenames:
+        if grow == 1.0 and spansig == 4:
+            newfile = basename + '.webp'
+        else:
+            newfile = basename + 'grow{}sig{}.webp'.format(grow, spansig)
+        outfile = os.path.join(settings.THUMB_DIR,newfile)
+        if os.path.isfile(outfile) and time.time() - os.path.getmtime(outfile) < CACHE_SECONDS:
+            outfiles.append(newfile)
+            continue
+
         data = frame_cutout(cached_frame(basename), region)
-        data = make_depth_256(data, sky=sky, sig=sig, zerosig=0, spansig=spansig)
+        data = make_depth_256(data, zerosig=0, spansig=spansig)
 
         im = Image.fromarray(data.astype(np.uint8), mode='L')
         nx, ny = im.size
@@ -173,15 +188,12 @@ def make_thumb(basenames, grow=1.0, sky=None, sig=None, x=900, y=900, width=250,
             draw.line((x_new,y_new+7,x_new,y_new+25), fill='white')
             draw.line((x_new-7,y_new,x_new-25,y_new), fill='white')
 
-        # make the thumbs
-        if grow == 1.0 and not sig:
-            newfile = basename + '.webp'
-        else:
-            newfile = basename + 'grow{}sig{}.webp'.format(grow, sig)
-        outfile = os.path.join(settings.THUMB_DIR,newfile)
         logger.info(f'out file {outfile}')
         with open(outfile, 'wb') as f:
             im.save(f, 'WEBP')
+        for thumb_path in glob.glob(os.path.join(settings.THUMB_DIR, '*.webp')):
+            if time.time() - os.path.getmtime(thumb_path) > CACHE_SECONDS:
+                os.remove(thumb_path)
 
         outfiles.append(newfile)
 

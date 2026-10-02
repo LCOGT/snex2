@@ -386,7 +386,6 @@ if DEBUG:
     HOOKS = {
         'cancel_gw_obs': '',
         'find_images': 'custom_code.hooks.find_images',
-        'download_test_image_from_archive': 'custom_code.hooks.download_test_image_from_archive',
     }
 else:
     HOOKS = {

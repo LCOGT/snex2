@@ -2110,9 +2110,6 @@ def lightcurve_with_extras(target, user):
 @register.inclusion_tag('custom_code/thumbnail.html', takes_context=True)
 def display_thumbnails(context, target):
     
-    from os import listdir
-    from os.path import isfile, join
-
     username = context['request'].user
     
     if not settings.DEBUG:
@@ -2130,7 +2127,6 @@ def display_thumbnails(context, target):
                 'no_images': True
             }
     
-    thumbs = [f for f in listdir(settings.THUMB_DIR) if isfile(join(settings.THUMB_DIR, f))]
     top_images = []
     bottom_images = [] 
     sites = [f[:3].upper() for f in filenames]
@@ -2144,17 +2140,11 @@ def display_thumbnails(context, target):
 
     for i in range(len(filenames)):
         currentfile = filenames[i]
-        if any(currentfile in f and 'grow' not in f for f in thumbs):
-            matchingfiles = [f for f in thumbs if f.startswith(currentfile) and 'grow' not in f]
-            if matchingfiles:
-                thumbfiles.append(matchingfiles[0])
+        if psfxs[i] < 9999 and psfys[i] < 9999:
+            f = make_thumb([currentfile], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
         else:
-            # Generate the thumbnail and save the image
-            if psfxs[i] < 9999 and psfys[i] < 9999:
-                f = make_thumb([currentfile], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
-            else:
-                f = make_thumb([currentfile], grow=1.0, x=1024, y=1024, ticks=False)
-            thumbfiles.append(f[0])
+            f = make_thumb([currentfile], grow=1.0, x=1024, y=1024, ticks=False)
+        thumbfiles.append(f[0])
         
         thumbdates.append(dates[i])
         thumbteles.append(teles[i])

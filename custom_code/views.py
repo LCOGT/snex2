@@ -63,9 +63,9 @@ from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
-from custom_code.thumbnails import make_thumb
+from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.target_names import TNS_PREFIX_RE
-from custom_code.utils import measured, download_archive_frame, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -1430,10 +1430,19 @@ def download_data_product_view(request, pk):
 
 def download_fits_view(request):
     object_basename = json.loads(request.GET.get('filename'))['filename']
-    frame = download_archive_frame(object_basename)
-    if frame is None:
+    try:
+        path = cached_frame(object_basename)
+    except FileNotFoundError:
         raise Http404(f'{object_basename} not found in the LCO archive')
-    return FileResponse(BytesIO(frame[1]), filename=object_basename+'.fits', as_attachment=True)
+    return FileResponse(open(path, 'rb'), filename=object_basename+'.fits', as_attachment=True)
+
+
+def cache_frame_view(request):
+    try:
+        cached_frame(request.GET.get('basename', ''))
+    except FileNotFoundError:
+        raise Http404('Frame not found in the LCO archive')
+    return HttpResponse(status=204)
 
 
 class BulkDownloadView(LoginRequiredMixin, View):

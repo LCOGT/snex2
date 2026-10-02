@@ -3,18 +3,16 @@ import requests
 import logging
 from astropy.time import Time
 import json
-from tom_targets.models import Target
 
 from datetime import datetime, date
 import numpy as np
 from django.contrib.auth.models import User
 from django.conf import settings
-import urllib
 from custom_code.scheduling import save_comments
 from custom_code.utils import measured, unsubtracted_q
 
 from collections import OrderedDict
-from guardian.shortcuts import get_groups_with_perms, get_objects_for_user
+from guardian.shortcuts import get_objects_for_user
 from tom_dataproducts.models import ReducedDatum
 
 logger = logging.getLogger(__name__)
@@ -170,60 +168,3 @@ def find_images(target, user, allimages=False):
             [pixel(rd.value.get('psfy')) for rd in datums],
             [fwhm_label(rd.value.get('fwhm')) for rd in datums],
             [wcs_label(rd.value.get('wcs')) for rd in datums])
-
-def download_test_image_from_archive():
-    """
-    Download a test image from the LCO archive to test image thumbnails.
-    NOTE: Only runs in dev
-    Creates any directories needed to store the image and thumbnail.
-    Checks if the image exists and if not, downloads it from the archive.
-    Returns the image parameters needed to display its thumbnail.
-    """
-    ### Check if thumbnail directory exists, and if not make it
-    thumbnail_directory = settings.FITS_DIR
-    if not os.path.isdir(thumbnail_directory):
-        os.makedirs(os.path.join(settings.BASE_DIR, thumbnail_directory))
-
-    if not os.path.isdir(settings.THUMB_DIR):
-        os.mkdir(os.path.join(settings.BASE_DIR, settings.THUMB_DIR))
-
-    ### Check if test image already exists in thumbnail directory,
-    ### and if not download it
-    # 4 test images, first 3 are public, last is of 23ixf
-    test_thumbnail_basenames = ["elp1m008-fa16-20250725-0103-e91","elp0m414-sq31-20250713-0229-e00","ogg0m455-sq30-20250712-0249-e91","tfn0m436-sq33-20250718-0265-e91"]
-    for test_thumbnail_basename in test_thumbnail_basenames:
-        if not any([test_thumbnail_basename in f for f in os.listdir(thumbnail_directory)]):
-            ### GET it from the archive
-            token = settings.FACILITIES['LCO']['api_key']
-            url = settings.FACILITIES['LCO']['archive_url']
-
-            results = requests.get(url, 
-                                headers={'Authorization': f'Token {token}'}, 
-                                params={'basename': test_thumbnail_basename}).json()["results"]
-            thumbnail_url = results[0]["url"]
-            thumbnail_filename = results[0]["filename"]
-            # Download image and funpack it
-            urllib.request.urlretrieve(thumbnail_url, os.path.join(settings.BASE_DIR, thumbnail_directory, thumbnail_filename))
-            os.system('funpack -D '+ thumbnail_directory + thumbnail_filename)
-
-    filepaths = ['','','','']
-    filenames = test_thumbnail_basenames
-    dates = ["2025-07-25","2025-07-13","2025-07-12","2025-07-11"]
-    teles = ["1m","0m4","0m4","0m4"]
-    instr = ["kb78","kb78","kb78","kb78"]
-    filters = ["B","r","g","V"]
-    exptimes = ["300s","180s","120s","90s"]
-    psfxs = [9999,9999,9999,9999]
-    psfys = [9999,9999,9999,9999]
-    
-    return (
-        filepaths, 
-        filenames, 
-        dates, 
-        teles, 
-        instr,
-        filters, 
-        exptimes, 
-        psfxs, 
-        psfys,
-    )
