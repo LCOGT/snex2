@@ -21,7 +21,6 @@ class SNExTarget(BaseTarget):
     target_description.hidden = True
     gwfollowupgalaxy_id = models.FloatField(null=True, blank=True)
     gwfollowupgalaxy_id.hidden = True
-    pipeline_id = models.IntegerField(null=True, blank=True)
     standard = models.BooleanField(default=False)
     standard.hidden = True
 

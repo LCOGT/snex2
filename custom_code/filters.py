@@ -15,10 +15,6 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout, Div, HTML
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
-class SNExTargetFilterSet(TargetFilterSet):
-    pipeline_id = django_filters.NumberFilter(field_name='pipeline_id')
-
-
 class SNExReducedDatumFilter(ReducedDatumFilter):
     basename = django_filters.CharFilter(field_name='value__basename')
     background_subtracted = django_filters.BooleanFilter(method='filter_background_subtracted')

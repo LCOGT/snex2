@@ -13,9 +13,9 @@ from tom_dataproducts.api_views import DataProductViewSet, ReducedDatumViewSet
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct
 from tom_targets.api_views import TargetViewSet
-from tom_targets.models import TargetName
+from tom_targets.models import Target, TargetName
 
-from custom_code.filters import SNExReducedDatumFilter, SNExTargetFilterSet
+from custom_code.filters import SNExReducedDatumFilter
 from custom_code.models import ReducedDatumExtra
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.processors.spectroscopy_processor import SpecProcessor
@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 class SNExTargetViewSet(TargetViewSet):
     serializer_class = SNExTargetSerializer
-    filterset_class = SNExTargetFilterSet
 
     def get_serializer(self, *args, **kwargs):
         self._serializer = super().get_serializer(*args, **kwargs)
@@ -37,7 +36,9 @@ class SNExTargetViewSet(TargetViewSet):
         try:
             return super().create(request, *args, **kwargs)
         except ValidationError:
-            duplicate = getattr(self._serializer, 'duplicate', None)
+            duplicate = getattr(self._serializer, 'duplicate', None) or Target.matches.find_duplicate(
+                str(request.data.get('name') or ''), request.data.get('ra'), request.data.get('dec'),
+                standard=bool(request.data.get('standard', False)))
             if duplicate is None:
                 raise
 
