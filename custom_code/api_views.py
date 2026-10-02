@@ -90,6 +90,9 @@ class SNExDataProductViewSet(DataProductViewSet):
         elif not raw:
             return Response({'file': 'This field is required.'}, status=status.HTTP_400_BAD_REQUEST)
         groups = groups_from_payload(json.loads(data.pop('groups', ['[]'])[0]))
+        if str(data.get('target')).isdigit() and Target.objects.filter(pk=data.get('target'), standard=True).exists() and data.get('data_product_type') in (
+                'raw_spectrum', 'spectroscopy'):
+            return Response({'target': ['Spectra of standards are not stored in SNEx.']}, status=status.HTTP_400_BAD_REQUEST)
 
         posted = {key: data[key] for key in SpecProcessor.field_keywords if data.get(key)}
         try:

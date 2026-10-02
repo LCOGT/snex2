@@ -1627,7 +1627,8 @@ class FloydsInboxView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         inbox_rows = []
-        raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', reduceddatum__isnull=True)
+        raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', reduceddatum__isnull=True,
+                                                 target__in=Target.objects.filter(standard=False))
         for dp in raw_spectra.select_related('target').order_by('-created'):
             info = json.loads(dp.extra_data) if dp.extra_data else {}
             img = ''
