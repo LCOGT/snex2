@@ -3,6 +3,8 @@ import logging
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
+from guardian.shortcuts import get_objects_for_user
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.mixins import UpdateModelMixin
@@ -59,10 +61,22 @@ class SNExReducedDatumViewSet(UpdateModelMixin, ReducedDatumViewSet):
     serializer_class = SNExReducedDatumSerializer
     filterset_class = SNExReducedDatumFilter
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
+            return queryset
+        viewable = get_objects_for_user(self.request.user, 'tom_dataproducts.view_reduceddatum', klass=queryset)
+        return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(data_type='photometric_standard'))
+
     def update(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             return Response({'detail': 'Only admins can update reduced datums.'}, status=status.HTTP_403_FORBIDDEN)
         return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response({'detail': 'Only admins can delete reduced datums.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
 
 
 class SNExDataProductViewSet(DataProductViewSet):
