@@ -97,7 +97,7 @@ def plot_triplets(triplet, galaxy, display_type):
         #    img_coord_lower = pixel_to_skycoord(0, 0, wcs)
         #    img_coord_upper = pixel_to_skycoord(len(img[0,:]), len(img[:,0]), wcs)
 
-        if len(img>0) and len(img[0]>0):
+        if img.size:
             x_coords = np.linspace(bot_left.ra.degree, bot_right.ra.degree, len(img[:,0]))
             y_coords = np.linspace(bot_left.dec.degree, top_left.dec.degree, len(img[0,:]))
             

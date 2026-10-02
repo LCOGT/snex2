@@ -2,7 +2,7 @@ import os
 from gw.models import GWFollowupGalaxy
 from tom_common.hooks import run_hook
 from tom_targets.models import Target
-from tom_observations.models import ObservationRecord
+from tom_observations.models import ObservationGroup
 from tom_nonlocalizedevents.models import EventSequence
 from custom_code.scheduling import cancel_observation
 import logging
@@ -32,14 +32,9 @@ def cancel_gw_obs(galaxy_ids=[], sequence_id=None):
     targets = Target.objects.filter(gwfollowupgalaxy_id__in=[g.id for g in galaxies])
 
     for target in targets:
-        ### Cancel any observation requests for this target
-        templates = ObservationRecord.objects.filter(target=target, status='PENDING')
-        for template in templates:
-            canceled = cancel_observation(template)
-            if not canceled:
-                response_data = {'failure': 'Canceling sequence failed'}
-                logger.inf(f'failure to cancel sequence: {response_data}')            
-            obs_group = template.observationgroup_set.first()
+        for obs_group in ObservationGroup.objects.filter(observation_records__target=target).distinct():
+            if not cancel_observation(obs_group):
+                logger.error(f'Canceling observation group {obs_group.id} for {target.name} failed')
 
     if galaxy_ids:
         logger.info('Finished canceling GW follow-up observations for galaxies {}'.format(galaxy_ids))

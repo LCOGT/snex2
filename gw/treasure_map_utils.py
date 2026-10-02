@@ -24,7 +24,7 @@ def build_tm_pointings(target, observation_parameters):
     filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
     for filt in filters:
         if filt in observation_parameters.keys():
-            copy_planned_pointing = planned_pointing
+            copy_planned_pointing = dict(planned_pointing)
             copy_planned_pointing['band'] = filt
             pointings.append(copy_planned_pointing)
 
@@ -47,7 +47,7 @@ def query_tm_pointings(sequence, status, wl_low=1000, wl_high=20000, wl_unit='an
 
     json_params = {'api_token': TM_TOKEN, 
                    'status': status, 
-                   'graceid': squence.nonlocalizedevent.event_id, 
+                   'graceid': sequence.nonlocalizedevent.event_id, 
                    'wavelength_regime': str([wl_low, wl_high]), 
                    'wavelength_unit': wl_unit
     }

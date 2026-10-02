@@ -2,7 +2,8 @@ from django.shortcuts import render
 from django.conf import settings
 from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import Group
 from django.views.generic import ListView
@@ -61,7 +62,7 @@ class GWFollowupGalaxyListView(LoginRequiredMixin, ListView):
         return context
 
 
-class EventSequenceGalaxiesTripletView(ListView, LoginRequiredMixin):
+class EventSequenceGalaxiesTripletView(LoginRequiredMixin, ListView):
 
     template_name = 'gw/galaxy_observations.html'
     paginate_by = 5
@@ -92,7 +93,7 @@ class EventSequenceGalaxiesTripletView(ListView, LoginRequiredMixin):
         for galaxy in context['object_list']:
             triplets = []
             subtractions = ReducedDatum.objects.filter(
-                target__in=Target.objects.filter(gwfollowupgalaxy_id=galaxy.id), data_type='photometry',
+                target__in=Target.objects.filter(Q(gwfollowupgalaxy_id=galaxy.id) | Q(name=galaxy.catalog_objname)), data_type='photometry',
                 value__background_subtracted=True, value__has_key='template_image').order_by('timestamp')
             for datum in subtractions:
                 diff_file = pipeline_image(datum.value['difference_image'])
@@ -113,7 +114,7 @@ class EventSequenceGalaxiesTripletView(ListView, LoginRequiredMixin):
         return context
 
 #this is not yet implemented
-class GWFollowupGalaxyTripletView(TemplateView, LoginRequiredMixin):
+class GWFollowupGalaxyTripletView(LoginRequiredMixin, TemplateView):
 
     template_name = 'gw/galaxy_observations_individual.html'
     
@@ -155,6 +156,7 @@ class GWFollowupGalaxyTripletView(TemplateView, LoginRequiredMixin):
         return context
 
 
+@login_required
 def submit_galaxy_observations_view(request):
 
     ### Get list of GWFollowupGalaxy ids from the request and create Targets
@@ -281,16 +283,6 @@ def submit_galaxy_observations_view(request):
                     assign_perm('tom_observations.change_observationrecord', groups, record)
                     assign_perm('tom_observations.delete_observationrecord', groups, record)
 
-                snex_id = 1
-
-                if len(new_observations) > 1 or form_data.get('cadence'):
-                    observation_group.name = str(snex_id)
-                    observation_group.save()
-
-                    for record in new_observations:
-                        record.parameters['name'] = snex_id
-                        record.save()
-
                 ### Submit pointing to TreasureMap
                 #pointings = build_tm_pointings(newtarget, observing_parameters)
 
@@ -314,6 +306,7 @@ def submit_galaxy_observations_view(request):
     return HttpResponse(json.dumps(response_data), content_type='application/json')
 
 
+@login_required
 def cancel_galaxy_observations_view(request):
 
     ### Get list of GWFollowupGalaxy ids from the request and create Targets
