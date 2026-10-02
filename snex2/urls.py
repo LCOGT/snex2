@@ -73,6 +73,7 @@ urlpatterns = [
     path('targets/<int:pk>/plot/thumbnail/', load_thumbnail_view, name='load-thumbnail'),
     path('targets/<int:pk>/plot/airmass/', load_airmass_plot_view, name='load-airmass-plot'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/', load_single_spectrum_view, name='load-single-spectrum'),
+    path('targets/<int:pk>/spectrum/<int:spectrum_id>/download/<str:file_format>/', download_spectrum_view, name='download-spectrum'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/interactive/', load_spectrum_interactive_view, name='load-spectrum-interactive'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),

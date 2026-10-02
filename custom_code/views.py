@@ -1453,24 +1453,41 @@ def cache_frame_view(request):
     return HttpResponse(status=204)
 
 
-class BulkDownloadView(LoginRequiredMixin, View):
-    def _generate_ascii(self, product):
-        """Build ascii content from ReducedDatum spectrum data. Returns bytes or None."""
-        rd = product.reduceddatum_set.filter(data_type='spectroscopy').first()
-        if not rd or not isinstance(rd.value, dict):
-            return None
-        if rd.value.get('photon_flux'):
-            wavelength, flux = rd.value.get('wavelength'), rd.value['photon_flux']
-        elif rd.value.get('flux'):
-            wavelength, flux = rd.value.get('wavelength'), rd.value['flux']
-        else:
-            points = [point for point in rd.value.values() if isinstance(point, dict) and 'wavelength' in point and 'flux' in point]
-            wavelength, flux = [point['wavelength'] for point in points], [point['flux'] for point in points]
-        if not wavelength or not flux or len(wavelength) != len(flux):
-            return None
-        lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
-        return ('\n'.join(lines)).encode('utf-8')
+def spectrum_ascii(rd):
+    if not rd or not isinstance(rd.value, dict):
+        return None
+    if rd.value.get('photon_flux'):
+        wavelength, flux = rd.value.get('wavelength'), rd.value['photon_flux']
+    elif rd.value.get('flux'):
+        wavelength, flux = rd.value.get('wavelength'), rd.value['flux']
+    else:
+        points = [point for point in rd.value.values() if isinstance(point, dict) and 'wavelength' in point and 'flux' in point]
+        wavelength, flux = [point['wavelength'] for point in points], [point['flux'] for point in points]
+    if not wavelength or not flux or len(wavelength) != len(flux):
+        return None
+    lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
+    return ('\n'.join(lines)).encode('utf-8')
 
+
+def download_spectrum_view(request, pk, spectrum_id, file_format):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    product = spectrum.data_product
+    has_file = bool(product and product.data and os.path.exists(product.data.path))
+    if file_format == 'fits':
+        if not has_file:
+            raise Http404('This spectrum has no file')
+        return FileResponse(open(product.data.path, 'rb'), as_attachment=True, filename=product.get_file_name())
+    content = spectrum_ascii(spectrum)
+    if content is None:
+        raise Http404('This spectrum has no data to write')
+    stem = os.path.splitext(product.get_file_name())[0] if has_file else '{}_{}'.format(
+        target.name.replace(' ', '_'), spectrum.timestamp.strftime('%Y%m%dT%H%M%S'))
+    response = HttpResponse(content, content_type='text/plain')
+    response['Content-Disposition'] = f'attachment; filename={stem}.ascii'
+    return response
+
+
+class BulkDownloadView(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         product_ids = request.POST.getlist('selected_products')
         target_name = request.POST.get('target_name', 'snextarget')
@@ -1491,7 +1508,7 @@ class BulkDownloadView(LoginRequiredMixin, View):
                     zip_file.write(fits_path, arcname=file_name)
                     written += 1
                 elif download_format != 'fits':
-                    content = self._generate_ascii(product)
+                    content = spectrum_ascii(product.reduceddatum_set.filter(data_type='spectroscopy').first())
                     if content:
                         zip_file.writestr(ascii_name, content)
                         written += 1

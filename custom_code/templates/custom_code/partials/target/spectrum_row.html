@@ -26,6 +26,11 @@
         hx-on::after-request="if(event.detail.successful) this.value=''">
     </div>
     <div class="row mt-2">
+      <span class="mr-2">Download:</span>
+      {% if entry.spectrum.data_product.data %}<a href="{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}" class="btn btn-sm btn-outline-primary mr-1">FITS</a>{% endif %}
+      <a href="{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}" class="btn btn-sm btn-outline-primary">ASCII</a>
+    </div>
+    <div class="row mt-2">
       <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title=TNS class="btn  btn-info">Submit TNS Classification</a>
     </div>
   </td>
