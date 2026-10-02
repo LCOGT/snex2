@@ -209,10 +209,10 @@ def _normalize_view_object_name(name: str) -> str:
     Rules:
       - `AT` / `SN` prefix is always uppercase.
       - If the suffix is exactly 1 letter (e.g. `1993J`), that letter is uppercase.
-      - If the suffix is multiple letters (e.g. `1993ab` or `24ggi`), all letters are lowercase.
+      - If the suffix is multiple letters (e.g. `1993ab` or `2024ggi`), all letters are lowercase.
 
     Examples:
-      - `24ggi` -> `AT2024ggi` (default AT when no SN/AT prefix is provided)
+      - `2024ggi` -> `AT2024ggi` (default AT when no SN/AT prefix is provided)
       - `SN2024ggi` -> `SN2024ggi` (preserve explicit SN)
       - `AT1993J` -> `AT1993J`
       - `2024ab` -> `AT2024ab`
@@ -248,7 +248,7 @@ def _normalize_view_object_name(name: str) -> str:
         return prefix + year_part + suffix_raw
 
     if len(year_part) == 2:
-        year_full = 2000 + int(year_part)
+        return s_clean
     elif len(year_part) == 4:
         year_full = int(year_part)
     else:
