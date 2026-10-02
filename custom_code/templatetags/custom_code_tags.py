@@ -2329,3 +2329,11 @@ def tns_generated_ascii_choice(context, form):
         form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + list(form.fields['ascii_file'].choices)
         form.initial['ascii_file'] = value
     return ''
+
+
+@register.simple_tag
+def tns_author_placeholder(form, field_name):
+    if not settings.DATA_SHARING['hermes']['DEFAULT_AUTHORS']:
+        form.initial[field_name] = ''
+        form.fields[field_name].widget.attrs['placeholder'] = 'Your default author list here'
+    return ''

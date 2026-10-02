@@ -139,7 +139,7 @@ DATA_SHARING = {
         'DISPLAY_NAME': os.getenv('HERMES_DISPLAY_NAME', 'Hermes'),
         'BASE_URL': os.getenv('HERMES_BASE_URL', 'https://hermes-dev.lco.global/'),
         'HERMES_API_KEY': os.getenv('HERMES_API_KEY', 'yourHermesAPIKeyHere'),
-        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', 'Your Default author list here'),
+        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', ''),
         'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
         'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
