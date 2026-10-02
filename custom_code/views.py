@@ -338,9 +338,9 @@ class SNEx2ApprovalRegistrationView(ApprovalRegistrationView):
 class SNEx2UserApprovalView(UserApprovalView):
 
     def form_valid(self, form):
-        response = super().form_valid(form)
-
-        return response
+        if 'send_welcome_email' in self.request.POST:
+            return super().form_valid(form)
+        return super(UserApprovalView, self).form_valid(form)
 
 
 class CustomDataProductUploadView(DataProductUploadView):

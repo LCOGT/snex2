@@ -493,8 +493,24 @@ TOM_REGISTRATION = {
     'REGISTRATION_REDIRECT_PATTERN': 'home',
     'REGISTRATION_STRATEGY': 'approval_required',
     'SEND_APPROVAL_EMAILS': True,  
-    'APPROVAL_SUBJECT': f'Your {TOM_NAME} registration has been approved!',  # Optional subject line of approval email, (Default Shown)
-    'APPROVAL_MESSAGE': f'Your {TOM_NAME} registration has been approved. You can log in <a href="mytom.com/login">here</a>.'  # Optional html-enabled body for approval email, (Default Shown)
+    'APPROVAL_SUBJECT': 'Welcome to the Global Supernova Project!',
+    'APPROVAL_MESSAGE': (
+        '<p>Welcome to the Global Supernova Project!</p>'
+        '<ul>'
+        '<li>Read the <a href="https://docs.google.com/document/d/1lOUEJ4rbvJ_KyI1qPu_Kcz35jRwgRhdeAR2oErtjM3U/edit?usp=sharing">GSP Collaboration Guidelines</a> '
+        'and the <a href="https://docs.google.com/spreadsheets/d/1gn0OsNu7Px8-eBt7W-NNuPymm0kpT8HBRebnxZtiV9c/edit?usp=sharing">GSP Publication Rules</a>. '
+        'These answer a lot of common questions about data/publication policies.</li>'
+        '<li>Join the <a href="mailto:gsp@lco.global">gsp@lco.global</a> mailing list by going to '
+        '<a href="https://groups.google.com/a/lco.global/g/gsp">this page</a> and &ldquo;asking to join the group.&rdquo; '
+        'We typically see news about GSP-related proposals and observing runs here.</li>'
+        '<li>Join the GSP Slack workspace via '
+        '<a href="https://join.slack.com/t/global-supernova/shared_invite/zt-20hwt62ea-7FLJuWOq0HT9rYHMEgewrw">this invite link</a>. '
+        'We typically see discussion about individual supernovae here, as well as support running the GSP photometry pipeline.</li>'
+        '<li>Subscribe to the GSP Google calendar by going to '
+        '<a href="https://calendar.google.com/calendar/u/0?cid=Y19rcHRoaGJ0dXI1cTVsaWNnazNyY2FwODc4c0Bncm91cC5jYWxlbmRhci5nb29nbGUuY29t">this link</a> '
+        'and signing in to the same Google account used to subscribe to this mailing list.</li>'
+        '</ul>'
+    ),
 }
 
 MANAGERS = [("SNe", "sne@lco.global")]
