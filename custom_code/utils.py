@@ -280,3 +280,26 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
     if TNS_PREFIX_RE.match(s):
         return s[:2].upper() + ' ' + s[2:]
     return s
+
+
+GENERATED_ASCII_PREFIX = 'spectrum-'
+
+
+def spectrum_ascii(rd):
+    if not rd or not isinstance(rd.value, dict):
+        return None
+    if rd.value.get('photon_flux'):
+        wavelength, flux = rd.value.get('wavelength'), rd.value['photon_flux']
+    elif rd.value.get('flux'):
+        wavelength, flux = rd.value.get('wavelength'), rd.value['flux']
+    else:
+        points = [point for point in rd.value.values() if isinstance(point, dict) and 'wavelength' in point and 'flux' in point]
+        wavelength, flux = [point['wavelength'] for point in points], [point['flux'] for point in points]
+    if not wavelength or not flux or len(wavelength) != len(flux):
+        return None
+    lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
+    return ('\n'.join(lines)).encode('utf-8')
+
+
+def spectrum_ascii_name(datum):
+    return '{}_{}.ascii'.format(datum.target.name.replace(' ', '_'), datum.timestamp.strftime('%Y%m%dT%H%M%S'))

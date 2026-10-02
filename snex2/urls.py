@@ -98,6 +98,7 @@ urlpatterns = [
     path('snex2/', include('custom_code.urls')),
     path('nonlocalizedevents/', include('tom_nonlocalizedevents.urls', namespace='nonlocalizedevents')),
     path('django_plotly_dash/', include('django_plotly_dash.urls')),
+    path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
     path('tns/', include('tom_tns.urls', namespace='tns')),
 ]
 

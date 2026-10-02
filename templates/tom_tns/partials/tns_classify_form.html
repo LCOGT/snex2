@@ -1,0 +1,7 @@
+{% load crispy_forms_tags custom_code_tags %}
+{% tns_generated_ascii_choice form %}
+{% tns_author_placeholder form 'classifier' %}
+<form method="post" action="{% url 'tom_tns:submit-classify' pk=target.id %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% crispy form %}
+</form>

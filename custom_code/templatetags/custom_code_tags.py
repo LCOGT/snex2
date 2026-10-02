@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.utils import spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -2315,3 +2315,17 @@ def time_usage_bars(context, telescope):
             'tooltip': tooltip,
     }
  
+
+
+@register.simple_tag(takes_context=True)
+def tns_generated_ascii_choice(context, form):
+    request = context.request
+    kwargs = request.resolver_match.kwargs
+    spectrum = get_objects_for_user(
+        request.user, 'tom_dataproducts.view_reduceddatum',
+        klass=ReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'], data_type='spectroscopy')).first()
+    if spectrum is not None and spectrum_ascii(spectrum) is not None:
+        value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'
+        form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + list(form.fields['ascii_file'].choices)
+        form.initial['ascii_file'] = value
+    return ''

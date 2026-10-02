@@ -66,7 +66,9 @@ from custom_code.scheduling import cancel_observation, change_obs_from_schedulin
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.target_names import TNS_PREFIX_RE
-from custom_code.utils import measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from tom_tns.forms import TNSClassifyForm
+from tom_tns.views import TNSSubmitView
+from custom_code.utils import spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -1453,22 +1455,6 @@ def cache_frame_view(request):
     return HttpResponse(status=204)
 
 
-def spectrum_ascii(rd):
-    if not rd or not isinstance(rd.value, dict):
-        return None
-    if rd.value.get('photon_flux'):
-        wavelength, flux = rd.value.get('wavelength'), rd.value['photon_flux']
-    elif rd.value.get('flux'):
-        wavelength, flux = rd.value.get('wavelength'), rd.value['flux']
-    else:
-        points = [point for point in rd.value.values() if isinstance(point, dict) and 'wavelength' in point and 'flux' in point]
-        wavelength, flux = [point['wavelength'] for point in points], [point['flux'] for point in points]
-    if not wavelength or not flux or len(wavelength) != len(flux):
-        return None
-    lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
-    return ('\n'.join(lines)).encode('utf-8')
-
-
 def download_spectrum_view(request, pk, spectrum_id, file_format):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
     product = spectrum.data_product
@@ -1480,10 +1466,9 @@ def download_spectrum_view(request, pk, spectrum_id, file_format):
     content = spectrum_ascii(spectrum)
     if content is None:
         raise Http404('This spectrum has no data to write')
-    stem = os.path.splitext(product.get_file_name())[0] if has_file else '{}_{}'.format(
-        target.name.replace(' ', '_'), spectrum.timestamp.strftime('%Y%m%dT%H%M%S'))
+    file_name = os.path.splitext(product.get_file_name())[0] + '.ascii' if has_file else spectrum_ascii_name(spectrum)
     response = HttpResponse(content, content_type='text/plain')
-    response['Content-Disposition'] = f'attachment; filename={stem}.ascii'
+    response['Content-Disposition'] = f'attachment; filename={file_name}'
     return response
 
 
@@ -1629,18 +1614,31 @@ class SNEx2SpectroscopyTNSSharePassthrough(RedirectView):
 
     def get_redirect_url(self, *args, **kwargs):
         target, datum = _spectrum_for_user(self.request, kwargs['pk'], kwargs['datum_pk'])
-        product_id = f'spectrum_{datum.pk}_ascii'
-        if not DataProduct.objects.filter(product_id=product_id).exists():
-            content = spectrum_ascii(datum)
-            if content is None:
-                raise Http404('This spectrum has no data to write')
-            file_name = '{}_{}_{}.ascii'.format(target.name.replace(' ', '_'), datum.timestamp.strftime('%Y%m%dT%H%M%S'), datum.pk)
-            with transaction.atomic():
-                dp = DataProduct.objects.create(target=datum.target, product_id=product_id, data_product_type='spectroscopy')
-                dp.data.save(file_name, ContentFile(content))
-                groups = reduceddatum_view_groups(ReducedDatum.objects.filter(pk=datum.pk)).get(datum.pk, [])
-                set_dataproduct_view_groups(dp, list(Group.objects.filter(name__in=groups)))
         return reverse('tns:report-tns', kwargs={'pk': target.pk, 'datum_pk': datum.pk})
+
+
+class SNExTNSClassifySubmitView(TNSSubmitView):
+    form_class = TNSClassifyForm
+
+    def _generated_spectrum(self):
+        value = self.request.POST.get('ascii_file', '')
+        if not value.startswith(GENERATED_ASCII_PREFIX) or self.request.FILES.get('ascii_file_override'):
+            return None
+        return _spectrum_for_user(self.request, self.kwargs['pk'], int(value[len(GENERATED_ASCII_PREFIX):]))[1]
+
+    def get_initial(self):
+        initial = super().get_initial()
+        spectrum = self._generated_spectrum()
+        if spectrum is not None and spectrum_ascii(spectrum) is not None:
+            initial['ascii_file_choices'] = initial['ascii_file_choices'] + [
+                (self.request.POST['ascii_file'], spectrum_ascii_name(spectrum))]
+        return initial
+
+    def form_valid(self, form):
+        spectrum = self._generated_spectrum()
+        if spectrum is not None:
+            form.cleaned_data['ascii_file_override'] = ContentFile(spectrum_ascii(spectrum), name=spectrum_ascii_name(spectrum))
+        return super().form_valid(form)
 
 
 class FloydsInboxView(TemplateView):
