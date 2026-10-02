@@ -8,6 +8,7 @@ from django.core.exceptions import NON_FIELD_ERRORS
 from django.urls import reverse
 from django.utils import timezone
 
+import json
 import logging
 import requests
 from django.db.models import Q
@@ -303,3 +304,7 @@ def spectrum_ascii(rd):
 
 def spectrum_ascii_name(datum):
     return '{}_{}.ascii'.format(datum.target.name.replace(' ', '_'), datum.timestamp.strftime('%Y%m%dT%H%M%S'))
+
+
+def datum_value(datum):
+    return json.loads(datum.value) if isinstance(datum.value, str) else datum.value

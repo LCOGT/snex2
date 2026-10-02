@@ -2,7 +2,7 @@ import json
 import logging
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from guardian.shortcuts import get_objects_for_user
 from rest_framework import status
@@ -45,6 +45,9 @@ class SNExTargetViewSet(TargetViewSet):
                 standard=bool(request.data.get('standard', False)))
             if duplicate is None:
                 raise
+        except IntegrityError:
+            return Response({'name': ['A target with this name or alias already exists with a different standard flag.']},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         target, matched_by = duplicate
         alias_added = None

@@ -54,9 +54,9 @@ from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
 from tom_targets.models import Target, TargetList, TargetName
 from tom_targets.permissions import targets_for_user
-from tom_targets.views import TargetCreateView
+from tom_targets.views import TargetCreateView, TargetListView as TOMTargetListView
 from custom_code.facilities.soar_facility import user_can_access_soar
-from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
+from custom_code.filters import BrokerTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
@@ -68,7 +68,7 @@ from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.target_names import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSSubmitView
-from custom_code.utils import spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -135,34 +135,13 @@ class TNSTargets(FilterView):
             target.link = TNS_URL + target.name
         return context
 
-class TargetListView(PermissionListMixin, FilterView):
-    """
-    View for listing targets in the TOM. Only shows targets that the user is authorized to view.     Requires authorization.
-    """
-    template_name = 'tom_targets/target_list.html'
-    paginate_by = 25
-    strict = False
-    model = Target
-    filterset_class = CustomTargetFilter
-    permission_required = 'custom_code.view_target'
-    ordering = ['-id']
+class TargetListView(TOMTargetListView):
 
-    def get_context_data(self, *args, **kwargs):
-        """
-        Adds the number of targets visible, the available ``TargetList`` objects if the user is a    uthenticated, and
-        the query string to the context object.
-
-        :returns: context dictionary
-        :rtype: dict
-        """
-        context = super().get_context_data(*args, **kwargs)
-        context['target_count'] = context['paginator'].count
-        # hide target grouping list if user not logged in
-        context['groupings'] = (TargetList.objects.all()
-                                if self.request.user.is_authenticated
-                                else TargetList.objects.none())
-        context['query_string'] = self.request.META['QUERY_STRING']
-        return context
+    def get_queryset(self, *args, **kwargs):
+        queryset = super().get_queryset(*args, **kwargs)
+        if any(self.request.GET.get(field, '').strip() for field in ('name', 'name_fuzzy', 'query')):
+            return queryset
+        return queryset.exclude(standard=True)
 
 def target_redirect_view(request):
     search_entry = request.GET['name'].strip()
@@ -1699,8 +1678,9 @@ def download_photometry_view(request, targetid):
     newfile.write('mjd mag err filter subtracted?\n')
 
     for d in datums:
-        if all(k in d.value.keys() for k in ['magnitude', 'error', 'filter']) and measured(d.value['magnitude']) is not None:
-            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 2), d.value['magnitude'], d.value['error'], d.value['filter'], d.value.get('background_subtracted', False)))
+        value = datum_value(d)
+        if all(k in value.keys() for k in ['magnitude', 'error', 'filter']) and measured(value['magnitude']) is not None:
+            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 2), value['magnitude'], value['error'], value['filter'], value.get('background_subtracted', False)))
 
     response = HttpResponse(newfile.getvalue(), content_type='text/plain')
     response['Content-Disposition'] = 'attachment; filename={}.txt'.format(target.name.replace(' ',''))

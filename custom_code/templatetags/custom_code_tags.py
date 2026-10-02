@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.utils import datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -813,7 +813,8 @@ def photometry_data_list(context, target):
     datums = list(datums.order_by('-timestamp'))
     rows = []
     for d in datums:
-        v, basename = d.value, d.value.get('basename') or ''
+        v = datum_value(d)
+        basename = v.get('basename') or ''
         rows.append({'datum': d, 'groups': visible.get(d.pk, []), 'basename': basename,
                      'magnitude': measured(v.get('magnitude')),
                      'filter': v.get('filter') or '',

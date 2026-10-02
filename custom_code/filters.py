@@ -1,6 +1,5 @@
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, BrokerTarget
 from tom_targets.models import Target, TargetList
-from tom_targets.filters import TargetFilterSet
 from tom_dataproducts.filters import ReducedDatumFilter
 from custom_code.utils import unsubtracted_q
 import django_filters
@@ -80,30 +79,6 @@ class TNSTargetFilter(django_filters.FilterSet):
         model = TNSTarget
         fields = []
         form = TNSTargetForm
-
-class CustomTargetFilter(TargetFilterSet):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.filters['sciencetags'].field.label_from_instance = lambda obj: obj.tag
-
-    key = None
-    value = None
-
-    sciencetags = django_filters.ModelChoiceFilter(queryset=ScienceTags.objects.all().order_by(Lower('tag')), label="Science Tag", method='filter_sciencetags')
-
-    def filter_sciencetags(self, queryset, name, value):
-        return queryset.filter(targettags__tag=value).distinct()
-
-    def filter_queryset(self, queryset):
-        if not self.form.cleaned_data.get('name'):
-            queryset = queryset.exclude(standard=True)
-        return super().filter_queryset(queryset)
-
-    class Meta:
-        model = Target
-        fields = ['name', 'cone_search', 'targetlist__name', 'sciencetags']
-
 
 class BrokerTargetForm(forms.Form): 
     def __init__(self, *args, **kwargs):
