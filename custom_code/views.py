@@ -473,7 +473,7 @@ def save_dataproduct_groups_view(request):
 
 def create_api_token_view(request):
     if request.method != 'POST' or not request.user.is_superuser:
-        return HttpResponseForbidden('Only admins can create an API token')
+        return HttpResponseForbidden('Only admins can replace an API token')
     Token.objects.filter(user=request.user).delete()
     return JsonResponse({'token': Token.objects.create(user=request.user).key})
 

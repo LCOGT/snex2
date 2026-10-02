@@ -18,19 +18,45 @@
 {% if request.user.is_superuser %}
 <hr/>
 <h4>API Token</h4>
-<p>A token lets a script use the SNEx API as {{ request.user.username }} without a password. Generating one replaces any token this account already has, and it is only shown once.</p>
-<button type="button" class="btn btn-primary" id="api-token-button">Generate API token</button>
-<p class="mt-3" id="api-token-result" style="display: none;">Your token: <code id="api-token"></code></p>
+<p>This token lets a script use the SNEx API as {{ request.user.username }} without a password.</p>
+<p>Your token: <code id="api-token" data-token="{{ request.user.auth_token.key }}">hidden</code></p>
+<button type="button" class="btn btn-primary" id="api-token-show">Show</button>
+<button type="button" class="btn btn-primary" id="api-token-copy" style="display: none;">Copy</button>
+<button type="button" class="btn btn-secondary" id="api-token-replace">Replace with a new token</button>
 <script>
-document.getElementById('api-token-button').addEventListener('click', async function () {
-  if (!confirm('Generate a new API token for {{ request.user.username }}? Any existing token for this account stops working.')) { return; }
-  const body = new FormData();
-  body.append('csrfmiddlewaretoken', '{{ csrf_token }}');
-  const response = await fetch('{% url "create-api-token" %}', { method: 'POST', body: body });
-  if (!response.ok) { alert('Could not create a token (' + response.status + ').'); return; }
-  document.getElementById('api-token').textContent = (await response.json()).token;
-  document.getElementById('api-token-result').style.display = '';
-});
+(function () {
+  const token = document.getElementById('api-token');
+  const show = document.getElementById('api-token-show');
+  const copy = document.getElementById('api-token-copy');
+  function display(visible) {
+    token.textContent = visible ? (token.dataset.token || 'none yet') : 'hidden';
+    show.textContent = visible ? 'Hide' : 'Show';
+    copy.style.display = visible && token.dataset.token ? '' : 'none';
+    copy.textContent = 'Copy';
+  }
+  show.addEventListener('click', function () { display(show.textContent === 'Show'); });
+  copy.addEventListener('click', async function () {
+    try {
+      await navigator.clipboard.writeText(token.dataset.token);
+    } catch (error) {
+      const range = document.createRange();
+      range.selectNodeContents(token);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      document.execCommand('copy');
+    }
+    copy.textContent = 'Copied';
+  });
+  document.getElementById('api-token-replace').addEventListener('click', async function () {
+    if (!confirm('Replace the API token for {{ request.user.username }}? The current token stops working.')) { return; }
+    const body = new FormData();
+    body.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    const response = await fetch('{% url "create-api-token" %}', { method: 'POST', body: body });
+    if (!response.ok) { alert('Could not replace the token (' + response.status + ').'); return; }
+    token.dataset.token = (await response.json()).token;
+    display(true);
+  });
+})();
 </script>
 {% endif %}
 {% endblock %}
