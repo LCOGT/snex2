@@ -42,9 +42,6 @@ class SNExTargetViewSet(TargetViewSet):
                 raise
 
         target, matched_by = duplicate
-        if target.pipeline_id is None and request.data.get('pipeline_id'):
-            target.pipeline_id = request.data['pipeline_id']
-            target.save(update_fields=['pipeline_id'])
         alias_added = None
         new_name = str(request.data.get('name') or '').strip()
         if matched_by == 'position' and new_name:
@@ -52,7 +49,7 @@ class SNExTargetViewSet(TargetViewSet):
             alias_added = new_name
             logger.info(f'Added alias {new_name} to target {target.id} ({target.name}) via API position match')
 
-        return Response({'id': target.id, 'name': target.name, 'matched_by': matched_by,
+        return Response({'id': target.id, 'name': target.name, 'standard': target.standard, 'matched_by': matched_by,
                          'alias_added': alias_added, 'created': False,
                          'message': 'Target already exists.'},
                         status=status.HTTP_200_OK)
