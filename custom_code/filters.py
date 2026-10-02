@@ -1,7 +1,8 @@
 from custom_code.models import TNSTarget, ScienceTags, TargetTags, BrokerTarget
 from tom_targets.models import Target, TargetList
-from tom_targets.filters import filter_for_field, TargetFilterSet
-from django.conf import settings
+from tom_targets.filters import TargetFilterSet
+from tom_dataproducts.filters import ReducedDatumFilter
+from custom_code.utils import unsubtracted_q
 import django_filters
 from django.db.models import ExpressionWrapper, FloatField, Q
 from math import radians
@@ -13,6 +14,16 @@ from django import forms
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout, Div, HTML
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
+
+class SNExReducedDatumFilter(ReducedDatumFilter):
+    basename = django_filters.CharFilter(field_name='value__basename')
+    background_subtracted = django_filters.BooleanFilter(method='filter_background_subtracted')
+
+    def filter_background_subtracted(self, queryset, name, value):
+        if value:
+            return queryset.filter(value__background_subtracted=True)
+        return queryset.filter(unsubtracted_q())
+
 
 class TNSTargetForm(forms.Form): 
     def __init__(self, *args, **kwargs):
@@ -74,10 +85,6 @@ class CustomTargetFilter(TargetFilterSet):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in settings.EXTRA_FIELDS:
-            new_filter = filter_for_field(field)
-            new_filter.parent = self
-            self.filters[field['name']] = new_filter
         self.filters['sciencetags'].field.label_from_instance = lambda obj: obj.tag
 
     key = None
@@ -87,6 +94,11 @@ class CustomTargetFilter(TargetFilterSet):
 
     def filter_sciencetags(self, queryset, name, value):
         return queryset.filter(targettags__tag=value).distinct()
+
+    def filter_queryset(self, queryset):
+        if not self.form.cleaned_data.get('name'):
+            queryset = queryset.exclude(standard=True)
+        return super().filter_queryset(queryset)
 
     class Meta:
         model = Target

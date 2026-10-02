@@ -13,6 +13,7 @@ from django.core.cache import cache
 from django.core.paginator import Paginator
 
 from tom_targets.models import Target, TargetList
+from tom_targets.permissions import targets_for_user
 from tom_observations import facility
 from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
@@ -22,6 +23,7 @@ from tom_common.hooks import run_hook
 
 from astroplan import Observer, FixedTarget, time_grid_from_range, moon_illumination
 import datetime
+import re
 from django.utils import timezone
 import json
 from astropy.time import Time
@@ -33,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import bind_observation_form_htmx
+from custom_code.utils import spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -274,13 +276,14 @@ def generic_lightcurve_plot(target, user):
                                         target=target,
                                         data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
     for rd in datums:
-    #for rd in ReducedDatum.objects.filter(target=target, data_type='photometry'):
         value = rd.value
         if not value:  # empty
             continue
         if isinstance(value, str):
             value = json.loads(value)
 
+        if measured(value.get('magnitude')) is None:
+            continue
         filt = filter_translate.get(value.get('filter', ''), '')
    
         photometry_data.setdefault(filt, {})
@@ -603,6 +606,8 @@ def registration_who_you_are(user):
 @register.inclusion_tag('tom_dataproducts/partials/dataproduct_list_for_target.html', takes_context=True)
 def snex_dataproduct_list(context, target):
     dataproduct_context = dataproduct_list_for_target(context, target)
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        dataproduct_context['products'] = viewable_dataproducts(context['request'].user, target.dataproduct_set.all())
     telescopes, instruments = set(), set()
     for p in dataproduct_context['products']:
         rde = p.reduceddatumextra_set.first()
@@ -613,8 +618,13 @@ def snex_dataproduct_list(context, target):
                 telescopes.add(t)
             if i:
                 instruments.add(i)
+    dataproduct_context['is_admin'] = context['request'].user.is_superuser
     dataproduct_context['telescopes'] = sorted(telescopes)
     dataproduct_context['instruments'] = sorted(instruments)
+    dates = [timezone.localtime(p.created).date() for p in dataproduct_context['products'] if p.data]
+    one_day = datetime.timedelta(days=1)
+    dataproduct_context['date_min'] = (min(dates) - one_day).isoformat() if dates else ''
+    dataproduct_context['date_max'] = (max(dates) + one_day).isoformat() if dates else ''
     return dataproduct_context
 
 
@@ -678,104 +688,51 @@ def dash_lightcurve(context, target, height):
     # Get initial choices and values for some dash elements
     telescopes = ['LCO']
     reducer_groups = []
-    papers_used_in = []
-    final_reduction = False
-    background_subtracted = False
     user = User.objects.get(username=request.user)
 
-    if settings.TARGET_PERMISSIONS_ONLY:
-        datumquery = ReducedDatum.objects.filter(target=target, 
-                                                 data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
-    
-    else:
-        datumquery = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                          klass=ReducedDatum.objects.filter(
-                                              target=target,
-                                              data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
-
-    for i in datumquery:
-        datum_value = i.value
-        if isinstance(datum_value, str):
-            datum_value = json.loads(datum_value)
-        if datum_value.get('background_subtracted', '') == True:
-            background_subtracted = True
-            break
-
-    final_background_subtracted = False
     for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
                                    klass=ReducedDatumExtra.objects.filter(
                                        target=target,key='upload_extras',data_type='photometry')):
         de_value = de.value
         inst = de_value.get('instrument', '')
-        used_in = de_value.get('used_in', '')
         group = de_value.get('reducer_group', '')
 
         if inst and inst not in telescopes:
             telescopes.append(inst)
-        if used_in and used_in not in papers_used_in:
-            try:
-                paper_query = Papers.objects.get(id=used_in)
-                paper_string = str(paper_query)
-                papers_used_in.append(paper_string)
-            except:
-                paper_string = str(used_in)
-                papers_used_in.append(paper_string)
         if group and group not in reducer_groups:
             reducer_groups.append(group)
-   
-        if de_value.get('final_reduction', '')==True:
-            final_reduction = True
-            final_reduction_dp = de.data_product
 
-            datum = get_objects_for_user(user,
-                                'tom_dataproducts.view_reduceddatum',
-                                klass=ReducedDatum.objects.filter(
-                                    target=target,
-                                    data_type='photometry',
-                                    data_product_id=final_reduction_dp))
-            datum_value = datum.first().value
-            if isinstance(datum_value, str):
-                datum_value = json.loads(datum_value)
-            if datum_value.get('background_subtracted', '') == True:
-                final_background_subtracted = True
-    
     reducer_group_options = [{'label': 'LCO', 'value': ''}]
     reducer_group_options.extend([{'label': k, 'value': k} for k in reducer_groups])
     reducer_groups.append('')
-    
-    paper_options = [{'label': '', 'value': ''}]
-    paper_options.extend([{'label': k, 'value': k} for k in papers_used_in])
 
     dash_context = {'target_id': {'value': target.id},
                     'user_id': {'value': user.id},
                     'plot-height': {'value': height},
                     'telescopes-checklist': {'options': [{'label': k, 'value': k} for k in telescopes]},
                     'reducer-group-checklist': {'options': reducer_group_options,
-                                                'value': reducer_groups},
-                    'papers-dropdown': {'options': paper_options}
+                                                'value': reducer_groups}
     }
-
-    if final_reduction:
-        dash_context['final-reduction-checklist'] = {'value': 'Final'}
-        dash_context['reduction-type-radio'] = {'value': 'manual'}
-
-        if final_background_subtracted:
-            dash_context['subtracted-radio'] = {'value': 'Subtracted'}
-        else:
-            dash_context['subtracted-radio'] = {'value': 'Unsubtracted'}
-            dash_context['telescopes-checklist']['value'] = telescopes
-
-    elif background_subtracted:
-        dash_context['subtracted-radio'] = {'value': 'Subtracted'}
-
-    else:
-        dash_context['subtracted-radio'] = {'value': 'Unsubtracted'}
-
 
     try:
         frame_height = f'{int(height) + LIGHTCURVE_CONTROLS_HEIGHT}px'
     except (TypeError, ValueError):
         frame_height = f'{400 + LIGHTCURVE_CONTROLS_HEIGHT}px'
+
+    frames = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename')
+    viewable = frames if settings.TARGET_PERMISSIONS_ONLY else get_objects_for_user(
+        user, 'tom_dataproducts.view_reduceddatum', klass=frames)
+    viewable_ids = set(viewable.values_list('pk', flat=True))
+    raw_frames, reduced_frames, viewable_frames = set(), set(), set()
+    for pk, value in frames.values_list('pk', 'value'):
+        raw_frames.add(value['basename'])
+        if measured(value.get('magnitude')) is not None:
+            reduced_frames.add(value['basename'])
+            if pk in viewable_ids:
+                viewable_frames.add(value['basename'])
+
+    dash_context['frame-info'] = {'children': '{} Raw Frames, {} Successful Reductions, {} Viewable by you'.format(
+        len(raw_frames), len(reduced_frames), len(viewable_frames))}
 
     return {'dash_context': dash_context,
             'frame_height': frame_height,
@@ -846,18 +803,101 @@ def dash_spectra(context, target):
     return {'dash_context': dash_context,
             'request': request}
 
+@register.inclusion_tag('custom_code/partials/target/photometry_data_list.html', takes_context=True)
+def photometry_data_list(context, target):
+    user = context['request'].user
+    datums = ReducedDatum.objects.filter(target=target, data_type='photometry')
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
+    visible = reduceddatum_view_groups(datums) if user.is_superuser else {}
+    datums = list(datums.order_by('-timestamp'))
+    rows = []
+    for d in datums:
+        v, basename = d.value, d.value.get('basename') or ''
+        rows.append({'datum': d, 'groups': visible.get(d.pk, []), 'basename': basename,
+                     'magnitude': measured(v.get('magnitude')),
+                     'filter': v.get('filter') or '',
+                     'subtracted': v.get('background_subtracted') == True,
+                     'wcs': v.get('wcs'),
+                     'exptime': v.get('exptime'),
+                     'fwhm': measured(v.get('fwhm')),
+                     'uploaded_by': v.get('uploaded_by') or '',
+                     'instrument': v.get('instrument') or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
+    dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
+    one_day = datetime.timedelta(days=1)
+    return {'target': target,
+            'rows': rows,
+            'date_min': (min(dates) - one_day).isoformat() if dates else '',
+            'date_max': (max(dates) + one_day).isoformat() if dates else '',
+            'filters': sorted({r['filter'] for r in rows if r['filter']}),
+            'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
+            'groups': list(Group.objects.values_list('name', flat=True)),
+            'is_admin': user.is_superuser,
+            'archive_root': settings.FACILITIES['LCO']['archive_url'],
+            'archive_token': settings.FACILITIES['LCO']['api_key']}
+
+
+@register.inclusion_tag('tom_targets/partials/recent_targets.html', takes_context=True)
+def snex_recent_targets(context, limit=10):
+    user = context['request'].user
+    return {
+        'empty_database': not Target.objects.exists(),
+        'authenticated': user.is_authenticated,
+        'targets': targets_for_user(user, Target.objects.filter(standard=False), 'view_target').order_by('-created')[:limit]
+    }
+
+
+def _frame_setups(basename, filt):
+    parts = (basename or '').split('-')
+    if len(parts) < 3 or len(parts[0]) < 6:
+        return None, None
+    instrument_type = re.match(r'[a-z]*', parts[1]).group()
+    return (parts[0], parts[1], parts[2], filt), (parts[0][:3], parts[0][3:6], instrument_type, parts[2], filt)
+
+
+@register.inclusion_tag('custom_code/partials/target/photometric_standards_list.html', takes_context=True)
+def photometric_standards_list(context, target):
+    user = context['request'].user
+    photometry = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename')
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        photometry = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=photometry)
+    exact_setups, site_setups, times = set(), set(), []
+    for value, timestamp in photometry.values_list('value', 'timestamp'):
+        exact, site = _frame_setups(value['basename'], value.get('filter'))
+        if exact:
+            exact_setups.add(exact)
+            site_setups.add(site)
+            times.append(timestamp)
+
+    rows = []
+    one_day = datetime.timedelta(days=1)
+    if site_setups:
+        standards = ReducedDatum.objects.filter(data_type='photometric_standard', value__has_key='basename',
+                                                timestamp__gte=min(times) - one_day, timestamp__lte=max(times) + one_day)
+        for rd in standards.select_related('target').order_by('-timestamp'):
+            v = rd.value
+            exact, site = _frame_setups(v['basename'], v.get('filter'))
+            if site in site_setups:
+                rows.append({'datum': rd, 'name': rd.target.name, 'basename': v['basename'], 'filter': v.get('filter') or '',
+                             'same_telescope': exact in exact_setups,
+                             'telescope': v.get('telescope') or '', 'instrument': v.get('instrument') or v['basename'].split('-')[1]})
+    dates = [timezone.localtime(r['datum'].timestamp).date() for r in rows]
+    return {'target': target,
+            'rows': rows,
+            'date_min': (min(dates) - one_day).isoformat() if dates else '',
+            'date_max': (max(dates) + one_day).isoformat() if dates else '',
+            'filters': sorted({r['filter'] for r in rows if r['filter']}),
+            'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
+            'is_admin': user.is_superuser,
+            'archive_root': settings.FACILITIES['LCO']['archive_url'],
+            'archive_token': settings.FACILITIES['LCO']['api_key']}
+
+
 @register.inclusion_tag('custom_code/dataproduct_update.html')
 def dataproduct_update(dataproduct):
-    group_query = Group.objects.all()
-    groups = [i.name for i in group_query]
-    return{'dataproduct': dataproduct,
-           'groups': groups}
-
-@register.filter
-def get_dataproduct_groups(dataproduct):
-    # Query all the groups with permission for this dataproduct
-    groups = ','.join([g.name for g in get_groups_with_perms(dataproduct)])
-    return json.dumps(groups)
+    return {'dataproduct': dataproduct,
+            'groups': list(Group.objects.values_list('name', flat=True)),
+            'visible_groups': dataproduct_view_groups(dataproduct)}
 
 
 @register.inclusion_tag('tom_observations/partials/observation_plan.html')
@@ -1748,8 +1788,8 @@ def image_slideshow(context, target):
     if not settings.DEBUG:
         #NOTE: Production
         
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username, allimages=True)
-        if not filepaths:
+        filenames, dates, teles, instr, filters, exptimes, psfxs, psfys, fwhms, wcs = run_hook('find_images', target, username, allimages=True)
+        if not filenames:
             logger.info(f'No images found for target {target}')
             return {'target': target,
                     'form': ThumbnailForm(initial={}, choices={'filenames': [('', 'No images found')]})} 
@@ -1760,12 +1800,13 @@ def image_slideshow(context, target):
             }
     
     thumbdict = [(json.dumps({'filename': filenames[i],
-                   'filepath': filepaths[i],
                    'date': dates[i],
                    'tele': teles[i],
                    'instr': instr[i],
                    'filter': filters[i],
                    'exptime': exptimes[i],
+                   'fwhm': fwhms[i],
+                   'wcs': wcs[i],
                    'psfx': psfxs[i],
                    'psfy': psfys[i]
                 }),
@@ -1781,10 +1822,9 @@ def image_slideshow(context, target):
 
     ### Make the initial thumbnail
     if psfxs[0] < 9999 and psfys[0] < 9999:
-        print(os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits'))
-        f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits')], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
+        f = make_thumb([filenames[0]], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
     else:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[0].lstrip('/'),filenames[0]+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)
+        f = make_thumb([filenames[0]], grow=1.0, x=1024, y=1024, ticks=False)
 
     with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:        
         b64_image = base64.b64encode(imagefile.read())
@@ -1797,8 +1837,8 @@ def image_slideshow(context, target):
             'instrument': instr[0],
             'filter': filters[0],
             'exptime': exptimes[0],
-            'archive_root': settings.FACILITIES['LCO']['archive_url'],
-            'archive_token': settings.FACILITIES['LCO']['api_key']}
+            'fwhm': fwhms[0],
+            'wcs': wcs[0]}
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
@@ -1827,6 +1867,8 @@ def lightcurve_fits(target, user, filt=False, days=None):
         if isinstance(value, str):
             value = json.loads(value)
 
+        if measured(value.get('magnitude')) is None:
+            continue
         current_filt = filter_translate.get(value.get('filter', ''), '')
    
         photometry_data.setdefault(current_filt, {})
@@ -2016,15 +2058,12 @@ def lightcurve_with_extras(target, user):
 @register.inclusion_tag('custom_code/thumbnail.html', takes_context=True)
 def display_thumbnails(context, target):
     
-    from os import listdir
-    from os.path import isfile, join
-
     username = context['request'].user
     
     if not settings.DEBUG:
         #NOTE: Production
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', target.pipeline_id, username)
-        if not filepaths:
+        filenames, dates, teles, instr, filters, exptimes, psfxs, psfys, fwhms, wcs = run_hook('find_images', target, username)
+        if not filenames:
             logger.info(f'No images found for target {target}')
             return {'top_images': [],
                     'bottom_images': [], 'no_images': True}
@@ -2036,7 +2075,6 @@ def display_thumbnails(context, target):
                 'no_images': True
             }
     
-    thumbs = [f for f in listdir(settings.THUMB_DIR) if isfile(join(settings.THUMB_DIR, f))]
     top_images = []
     bottom_images = [] 
     sites = [f[:3].upper() for f in filenames]
@@ -2050,17 +2088,11 @@ def display_thumbnails(context, target):
 
     for i in range(len(filenames)):
         currentfile = filenames[i]
-        if any(currentfile in f and 'grow' not in f for f in thumbs):
-            matchingfiles = [f for f in thumbs if f.startswith(currentfile) and 'grow' not in f]
-            if matchingfiles:
-                thumbfiles.append(matchingfiles[0])
+        if psfxs[i] < 9999 and psfys[i] < 9999:
+            f = make_thumb([currentfile], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
         else:
-            # Generate the thumbnail and save the image
-            if psfxs[i] < 9999 and psfys[i] < 9999:
-                f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[i].lstrip('/'),currentfile+'.fits')], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
-            else:
-                f = make_thumb([os.path.join(settings.FITS_DIR,filepaths[i].lstrip('/'),currentfile+'.fits')], grow=1.0, x=1024, y=1024, ticks=False)
-            thumbfiles.append(f[0])
+            f = make_thumb([currentfile], grow=1.0, x=1024, y=1024, ticks=False)
+        thumbfiles.append(f[0])
         
         thumbdates.append(dates[i])
         thumbteles.append(teles[i])
@@ -2187,6 +2219,8 @@ def snex2_get_photometry_data(context, target, target_share=False):
                                     value__has_key='filter')).order_by('timestamp')
     data = []
     for reduced_datum in photometry:
+        if 'limit' not in reduced_datum.value and measured(reduced_datum.value.get('magnitude')) is None:
+            continue
         rd_data = {'id': reduced_datum.pk,
                    'timestamp': reduced_datum.timestamp,
                    'source': reduced_datum.source_name,
@@ -2281,3 +2315,25 @@ def time_usage_bars(context, telescope):
             'tooltip': tooltip,
     }
  
+
+
+@register.simple_tag(takes_context=True)
+def tns_generated_ascii_choice(context, form):
+    request = context.request
+    kwargs = request.resolver_match.kwargs
+    spectrum = get_objects_for_user(
+        request.user, 'tom_dataproducts.view_reduceddatum',
+        klass=ReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'], data_type='spectroscopy')).first()
+    if spectrum is not None and spectrum_ascii(spectrum) is not None:
+        value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'
+        form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + list(form.fields['ascii_file'].choices)
+        form.initial['ascii_file'] = value
+    return ''
+
+
+@register.simple_tag
+def tns_author_placeholder(form, field_name):
+    if not settings.DATA_SHARING['hermes']['DEFAULT_AUTHORS']:
+        form.initial[field_name] = ''
+        form.fields[field_name].widget.attrs['placeholder'] = 'Your default author list here'
+    return ''

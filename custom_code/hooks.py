@@ -3,22 +3,17 @@ import requests
 import logging
 from astropy.time import Time
 import json
-from tom_targets.models import Target
 
 from datetime import datetime, date
 import numpy as np
 from django.contrib.auth.models import User
 from django.conf import settings
-import urllib
 from custom_code.scheduling import save_comments
-from custom_code.utils import _return_session, _load_table, _get_session
+from custom_code.utils import measured, unsubtracted_q
 
-from sqlalchemy import create_engine, pool, and_, or_, not_, text
-from sqlalchemy.orm import sessionmaker, aliased
-from sqlalchemy.ext.automap import automap_base
-from contextlib import contextmanager
 from collections import OrderedDict
-from guardian.shortcuts import get_groups_with_perms
+from guardian.shortcuts import get_objects_for_user
+from tom_dataproducts.models import ReducedDatum
 
 logger = logging.getLogger(__name__)
 
@@ -137,193 +132,39 @@ def _get_tns_params(target):
 
     return response_data
         
-def find_images_from_snex1(pipeline_id, username, allimages=False):
-    '''
-    Hook to find filenames of images in SNEx1,
-    given a target ID
-    '''
-    
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        # now queries the snex1 database directly as .execute instead of .query, so don't need to load in Photlco as a table
-        Groups = _load_table('groups', db_address=settings.SNEX1_DB_URL)
-        Targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-        
-        this_user = User.objects.get(username = username)
-        user_groups = this_user.groups.all()
-        if user_groups:
-            groupidcode = 0
-            for group_name in user_groups:
-                groupidcode += int(db_session.query(Groups).filter(Groups.name==group_name).first().idcode)
-        this_target = db_session.query(Targets).filter(Targets.id==pipeline_id).first()
+def find_images(target, user, allimages=False):
+    datums = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename').filter(unsubtracted_q())
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
 
-        if not allimages:
-            query = db_session.execute(
-                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
-                            "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC LIMIT 8"),
-                            {'tid':pipeline_id, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
-        else:
-            query = db_session.execute(
-                            text("SELECT * FROM photlco WHERE targetid = :tid AND filetype = 1 " \
-                            "AND BIT_COUNT(COALESCE(groupidcode, :target_perm) & :user_groupid) > 0 ORDER BY id DESC"),
-                            {'tid':pipeline_id, 'target_perm': this_target.groupidcode, 'user_groupid': groupidcode}).all()
-        
-        filepaths = [q.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', '') for q in query]
-        if len(filepaths)==0:
-            logger.info(f'No images found for target {pipeline_id}')
-            return [], [], [], [], [], [], [], [], []
-        filenames = [q.filename.replace('.fits', '') for q in query]
-        dates = [date.strftime(q.dateobs, '%m/%d/%Y') for q in query]
-        teles = [q.telescope[:3] for q in query]
-        instr = [q.instrument for q in query]
-        filters = [q.filter for q in query]
-        exptimes = [str(round(float(q.exptime))) + 's' for q in query]
-        psfxs = [int(round(q.psfx)) for q in query]
-        psfys = [int(round(q.psfy)) for q in query]
+    frames = OrderedDict()
+    for rd in datums.order_by('-timestamp'):
+        frames.setdefault(rd.value['basename'], rd)
+        if not allimages and len(frames) == 8:
+            break
+    if not frames:
+        logger.info(f'No images found for target {target}')
+        return [], [], [], [], [], [], [], [], [], []
 
-    logger.info('Found file names for target {}'.format(pipeline_id))
+    def pixel(v):
+        v = measured(v)
+        return 9999 if v is None else round(v)
 
-    return filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys
+    def fwhm_label(v):
+        v = measured(v)
+        return '' if v is None else f'{v:.2f}"'
 
-def get_unreduced_spectra(allspec=True):
-    '''
-    Hook to find unreduced spectra for FLOYDS inbox
-    '''
-    token = os.environ['LCO_APIKEY']
+    def wcs_label(w):
+        return '' if w is None else ('Good' if w == 0 else 'Failed')
 
-    response = requests.get('https://observe.lco.global/api/proposals?active=True&limit=50/',
-                             headers={'Authorization': 'Token ' + token}).json()
-
-    proposals = [prop['id'] for prop in response['results']]
-    
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        speclcoraw = _load_table('speclcoraw', db_address=settings.SNEX1_DB_URL)
-        targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-        classifications = _load_table('classifications', db_address=settings.SNEX1_DB_URL)
-        spec = _load_table('spec', db_address=settings.SNEX1_DB_URL)
-
-        original_filenames = [s.original for s in db_session.query(spec).filter(and_(spec.original!='None', spec.original!=None))]
-
-        unreduced_spectra = db_session.query(speclcoraw).join(
-                targets, speclcoraw.targetid==targets.id
-        ).join(
-                targetnames, speclcoraw.targetid==targetnames.targetid
-        ).join(
-                classifications, targets.classificationid==classifications.id, isouter=True
-        ).filter(
-            and_(
-                not_(speclcoraw.filename.in_(original_filenames)), 
-                speclcoraw.propid.in_(proposals),
-                speclcoraw.filename.contains('e00.fits'),
-                or_(
-                    classifications.name != 'Standard', 
-                    classifications.name == None
-                ), 
-                or_(
-                    and_(
-                        speclcoraw.type != 'LAMPFLAT', 
-                        speclcoraw.type != 'ARC'
-                    ), 
-                speclcoraw.type == None
-            ), 
-            not_(speclcoraw.filepath.contains('bad')), 
-            not_(targetnames.name.contains('test_'))
-            )
-        )
-        pipeline_ids = [s.targetid for s in unreduced_spectra]
-        propids = [s.propid for s in unreduced_spectra]
-        dateobs = [s.dateobs for s in unreduced_spectra]
-        paths = [s.filepath for s in unreduced_spectra]
-        filenames = [s.filename for s in unreduced_spectra]
-        imgpaths = [os.path.join(s.filepath.replace(settings.FLOYDS_DIR, '/snex2/data/floyds'), s.filename.replace('.fits', '.png')) for s in unreduced_spectra]
-
-    return pipeline_ids, propids, dateobs, paths, filenames, imgpaths
-
-
-def get_standards_from_snex1(pipeline_id):
-    
-    with _get_session(db_address=settings.SNEX1_DB_URL) as db_session:
-        
-        photlco = _load_table('photlco', db_address=settings.SNEX1_DB_URL)
-        #targetnames = _load_table('targetnames', db_address=settings.SNEX1_DB_URL)
-        targets = _load_table('targets', db_address=settings.SNEX1_DB_URL)
-
-        std = aliased(photlco)
-        obj = aliased(photlco)
-
-        standard_info = db_session.query(
-            std.objname, std.filename, std.filter, std.dateobs,
-            std.telescope, std.instrument
-        ).distinct().join(
-            targets, std.targetid==targets.id 
-        ).filter(
-            and_(
-                obj.telescopeid==std.telescopeid,
-                obj.instrumentid==std.instrumentid,
-                targets.classificationid==1,
-                obj.filter==std.filter,
-                obj.dayobs==std.dayobs,
-                obj.quality==127,
-                std.quality==127,
-                obj.targetid==pipeline_id
-            )
-        )
-
-    return [dict(r._mapping) for r in standard_info]
-
-def download_test_image_from_archive():
-    """
-    Download a test image from the LCO archive to test image thumbnails.
-    NOTE: Only runs in dev
-    Creates any directories needed to store the image and thumbnail.
-    Checks if the image exists and if not, downloads it from the archive.
-    Returns the image parameters needed to display its thumbnail.
-    """
-    ### Check if thumbnail directory exists, and if not make it
-    thumbnail_directory = settings.FITS_DIR
-    if not os.path.isdir(thumbnail_directory):
-        os.makedirs(os.path.join(settings.BASE_DIR, thumbnail_directory))
-
-    if not os.path.isdir(settings.THUMB_DIR):
-        os.mkdir(os.path.join(settings.BASE_DIR, settings.THUMB_DIR))
-
-    ### Check if test image already exists in thumbnail directory,
-    ### and if not download it
-    # 4 test images, first 3 are public, last is of 23ixf
-    test_thumbnail_basenames = ["elp1m008-fa16-20250725-0103-e91","elp0m414-sq31-20250713-0229-e00","ogg0m455-sq30-20250712-0249-e91","tfn0m436-sq33-20250718-0265-e91"]
-    for test_thumbnail_basename in test_thumbnail_basenames:
-        if not any([test_thumbnail_basename in f for f in os.listdir(thumbnail_directory)]):
-            ### GET it from the archive
-            token = settings.FACILITIES['LCO']['api_key']
-            url = settings.FACILITIES['LCO']['archive_url']
-
-            results = requests.get(url, 
-                                headers={'Authorization': f'Token {token}'}, 
-                                params={'basename': test_thumbnail_basename}).json()["results"]
-            thumbnail_url = results[0]["url"]
-            thumbnail_filename = results[0]["filename"]
-            # Download image and funpack it
-            urllib.request.urlretrieve(thumbnail_url, os.path.join(settings.BASE_DIR, thumbnail_directory, thumbnail_filename))
-            os.system('funpack -D '+ thumbnail_directory + thumbnail_filename)
-
-    filepaths = ['','','','']
-    filenames = test_thumbnail_basenames
-    dates = ["2025-07-25","2025-07-13","2025-07-12","2025-07-11"]
-    teles = ["1m","0m4","0m4","0m4"]
-    instr = ["kb78","kb78","kb78","kb78"]
-    filters = ["B","r","g","V"]
-    exptimes = ["300s","180s","120s","90s"]
-    psfxs = [9999,9999,9999,9999]
-    psfys = [9999,9999,9999,9999]
-    
-    return (
-        filepaths, 
-        filenames, 
-        dates, 
-        teles, 
-        instr,
-        filters, 
-        exptimes, 
-        psfxs, 
-        psfys,
-    )
+    basenames, datums = list(frames), list(frames.values())
+    return (basenames,
+            [rd.timestamp.strftime('%m/%d/%Y') for rd in datums],
+            [(rd.value.get('telescope') or '')[:3] for rd in datums],
+            [rd.value.get('instrument') or b.split('-')[1] for b, rd in zip(basenames, datums)],
+            [rd.value.get('filter', '') for rd in datums],
+            ['' if rd.value.get('exptime') is None else f"{rd.value['exptime']:.2f}s" for rd in datums],
+            [pixel(rd.value.get('psfx')) for rd in datums],
+            [pixel(rd.value.get('psfy')) for rd in datums],
+            [fwhm_label(rd.value.get('fwhm')) for rd in datums],
+            [wcs_label(rd.value.get('wcs')) for rd in datums])

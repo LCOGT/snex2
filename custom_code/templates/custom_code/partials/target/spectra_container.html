@@ -64,6 +64,22 @@
 </form>
 
 <script>
+function downloadSpectrum(url, missingMessage) {
+  fetch(url).then(function (response) {
+    if (response.status === 404) { alert(missingMessage); return; }
+    if (!response.ok) { alert('Download failed: ' + response.status); return; }
+    const name = ((response.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/) || [])[1] || 'spectrum';
+    return response.blob().then(function (blob) {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+    });
+  });
+}
 function setTargetOnSpectroscopyForm(val) {
   const spectroscopyShareForm = document.getElementById('spectroscopy-data-share-form');
   if (val && val !== '') {

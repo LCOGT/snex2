@@ -18,24 +18,22 @@ from django.conf import settings
 
 from django.urls import include
 from custom_code.views import *
-from custom_code.api_views import CustomDataProductViewSet, CustomObservationRecordViewSet, SNExTargetViewSet
+from custom_code.api_views import SNExDataProductViewSet, SNExReducedDatumViewSet, SNExTargetViewSet
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
 from django.contrib.auth import views as auth_views
 from custom_code.forms import SafeAuthenticationForm
 
-custom_router = DefaultRouter()
-custom_router.register(r'photometry-upload', CustomDataProductViewSet, 'photometry-upload')
-custom_router.register(r'submit-observation', CustomObservationRecordViewSet, 'submit-observation')
 api_router = DefaultRouter()
 api_router.register(r'targets', SNExTargetViewSet, basename='targets')
+api_router.register(r'reduceddatums', SNExReducedDatumViewSet, basename='reduceddatums')
+api_router.register(r'dataproducts', SNExDataProductViewSet, basename='dataproducts')
 urlpatterns = [
     path('accounts/register/', SNEx2ApprovalRegistrationView.as_view(), name='register'),
     path('accounts/login/', auth_views.LoginView.as_view(authentication_form=SafeAuthenticationForm), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('api/', include(api_router.urls)),
-    path('pipeline-upload/', include(custom_router.urls)),
     path('', include('tom_common.urls')),
     path('view_object/', view_object_view, name='view-object'),
     path('targets/', TargetListView.as_view(), name='list'),
@@ -46,6 +44,8 @@ urlpatterns = [
     path('create-target/', CustomTargetCreateView.as_view(), name='create-target'),
     path('custom-data-upload/', CustomDataProductUploadView.as_view(), name='custom-data-upload'),
     path('save_dataproduct_groups/', save_dataproduct_groups_view, name='save_dataproduct_groups'),
+    path('set-target-standard/', set_target_standard_view, name='set-target-standard'),
+    path('create-api-token/', create_api_token_view, name='create-api-token'),
     path('change-target-known-to/', change_target_known_to_view, name='change-target-known-to'),
     path('change-interest/', change_interest_view, name='change-interest'),
     path('name-search/', search_name_view, name='name-search'),
@@ -62,6 +62,8 @@ urlpatterns = [
     path('targets/<int:pk>/tab/details/', load_details_tab_view, name='load-details-tab'),
     path('targets/<int:pk>/tab/observations/', load_observations_tab_view, name='load-observations-tab'),
     path('targets/<int:pk>/tab/manage-data/', load_manage_data_tab_view, name='load-manage-data-tab'),
+    path('targets/<int:pk>/tab/manage-photometry/', load_manage_photometry_view, name='load-manage-photometry'),
+    path('targets/<int:pk>/tab/manage-standards/', load_manage_standards_view, name='load-manage-standards'),
     path('targets/<int:pk>/tab/observing-runs/', load_observing_runs_tab_view, name='load-observing-runs-tab'),
     path('targets/<int:pk>/tab/images/', load_images_tab_view, name='load-images-tab'),
     path('targets/<int:pk>/tab/photometry/', load_photometry_tab_view, name='load-photometry-tab'),
@@ -71,10 +73,13 @@ urlpatterns = [
     path('targets/<int:pk>/plot/thumbnail/', load_thumbnail_view, name='load-thumbnail'),
     path('targets/<int:pk>/plot/airmass/', load_airmass_plot_view, name='load-airmass-plot'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/', load_single_spectrum_view, name='load-single-spectrum'),
+    path('targets/<int:pk>/spectrum/<int:spectrum_id>/download/<str:file_format>/', download_spectrum_view, name='download-spectrum'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/interactive/', load_spectrum_interactive_view, name='load-spectrum-interactive'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),
+    path('cache-frame/', cache_frame_view, name='cache-frame'),
     path('get-frame-ids/', get_frame_ids_view, name='get-frame-ids'),
+    path('update-photometry-groups/', update_photometry_groups_view, name='update-photometry-groups'),
     path('interesting-targets/', InterestingTargetsView.as_view(), name='interesting-targets'),
     path('load-upcoming-reminders/', async_scheduling_page_view, name='load-upcoming-reminders'),
     path('save-comment/', save_comments_view, name='save-comment'),
@@ -93,6 +98,7 @@ urlpatterns = [
     path('snex2/', include('custom_code.urls')),
     path('nonlocalizedevents/', include('tom_nonlocalizedevents.urls', namespace='nonlocalizedevents')),
     path('django_plotly_dash/', include('django_plotly_dash.urls')),
+    path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
     path('tns/', include('tom_tns.urls', namespace='tns')),
 ]
 

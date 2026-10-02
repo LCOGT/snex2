@@ -97,7 +97,7 @@ def plot_triplets(triplet, galaxy, display_type):
         #    img_coord_lower = pixel_to_skycoord(0, 0, wcs)
         #    img_coord_upper = pixel_to_skycoord(len(img[0,:]), len(img[:,0]), wcs)
 
-        if len(img>0) and len(img[0]>0):
+        if img.size:
             x_coords = np.linspace(bot_left.ra.degree, bot_right.ra.degree, len(img[:,0]))
             y_coords = np.linspace(bot_left.dec.degree, top_left.dec.degree, len(img[0,:]))
             
@@ -174,11 +174,11 @@ def has_images(galaxy,username):
     if not targ:
         return False
     try:
-        filepaths, filenames, dates, teles, instr, filters, exptimes, psfxs, psfys = run_hook('find_images_from_snex1', targ.pipeline_id, username)
+        filenames, dates, teles, instr, filters, exptimes, psfxs, psfys, fwhms, wcs = run_hook('find_images', targ, username)
     except:
         return False
 
-    if filepaths:
+    if filenames:
         return True
 
     return False

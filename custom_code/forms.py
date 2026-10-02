@@ -9,7 +9,6 @@ from django.contrib.auth.forms import UsernameField
 from django.contrib.auth.models import Group, User
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
 from django.db.models.functions import Lower
 try:
     from django.contrib.auth.forms import BaseUserCreationForm as UserCreationForm
@@ -19,9 +18,7 @@ from tom_dataproducts.forms import DataProductUploadForm
 from tom_observations.widgets import FilterField
 from tom_registration.registration_flows.approval_required.forms import RegistrationApprovalForm
 from tom_targets.forms import SiderealTargetCreateForm
-from tom_targets.models import Target
 from custom_code.models import Papers, ScienceTags, TargetTags, UserRegistrationInfo
-import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,36 +67,13 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
 
         return name
     
-    def clean(self):
-        cleaned_data = super().clean()
-        ra = cleaned_data.get('ra')
-        dec = cleaned_data.get('dec')
-        name = cleaned_data.get('name')
-
-        if ra and dec:
-            if Target.objects.filter(
-                ra__gte=ra - 1/3600 * np.cos(dec),
-                ra__lte=ra + 1/3600 * np.cos(dec),
-                dec__gte=dec-1/3600,
-                dec__lte=dec+1/3600
-            ).exists():
-                raise ValidationError("Target exists near these coordinates.")
-
-        if name:
-            name_lookup = name.replace('SN', '').replace('AT', '').replace(' ', '')
-            if Target.objects.filter(Q(name__icontains=name_lookup) | Q(aliases__name__icontains=name_lookup)).exists():
-                raise ValidationError("Target with this name already exists.")
-
-        return cleaned_data
-
-
     def __init__(self, *args, **kwargs):
         super(CustomTargetCreateForm, self).__init__(*args, **kwargs)
         if not settings.TARGET_PERMISSIONS_ONLY:
             self.fields['groups'].queryset = Group.objects.all()
             self.fields['groups'].label = "Visible to"
         self.fields.pop('gwfollowupgalaxy_id', None)
-        self.fields.pop('pipeline_id', None)
+        self.fields.pop('standard', None)
 
     def save(self, commit=True):
         instance = super().save(commit=commit)

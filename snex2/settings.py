@@ -139,7 +139,7 @@ DATA_SHARING = {
         'DISPLAY_NAME': os.getenv('HERMES_DISPLAY_NAME', 'Hermes'),
         'BASE_URL': os.getenv('HERMES_BASE_URL', 'https://hermes-dev.lco.global/'),
         'HERMES_API_KEY': os.getenv('HERMES_API_KEY', 'yourHermesAPIKeyHere'),
-        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', 'Your Default author list here'),
+        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', ''),
         'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
         'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
@@ -353,6 +353,7 @@ FACILITIES = {
 }
 
 TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
+MATCH_MANAGERS = {'Target': 'custom_code.match_managers.SNExTargetMatchManager'}
 
 EXTRA_FIELDS = [
     {'name': 'redshift', 'type': 'number'},
@@ -379,19 +380,17 @@ OPEN_URLS = [
     '/api/*/',
     '/api/',
     '/accounts/register/',
-    '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
 ]
 if DEBUG:
     HOOKS = {
         'cancel_gw_obs': '',
-        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
-        'download_test_image_from_archive': 'custom_code.hooks.download_test_image_from_archive',
+        'find_images': 'custom_code.hooks.find_images',
     }
 else:
     HOOKS = {
         'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
-        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
+        'find_images': 'custom_code.hooks.find_images',
     }
 
 BROKERS = {
@@ -441,7 +440,9 @@ DATA_PRODUCT_TYPES = {
     'photometry': ('photometry', 'Photometry'),
     'fits_file': ('fits_file', 'FITS File'),
     'spectroscopy': ('spectroscopy', 'Spectroscopy'),
-    'image_file': ('image_file', 'Image File')
+    'image_file': ('image_file', 'Image File'),
+    'raw_spectrum': ('raw_spectrum', 'Raw Spectrum'),
+    'photometric_standard': ('photometric_standard', 'Photometric Standard'),
 }
 
 DATA_PROCESSORS = {
@@ -451,7 +452,13 @@ DATA_PROCESSORS = {
 }
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
     ],
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
@@ -501,12 +508,6 @@ EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
-SNEX1_DB_HOST = os.getenv('SNEX1_DB_HOST', 'supernova.sci.lco.gtn')
-SNEX1_DB_PORT = os.getenv('SNEX1_DB_PORT', '3306')
-SNEX1_DB_NAME = os.getenv('SNEX1_DB_NAME', 'supernova')
-SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
-SNEX1_DB_PASSWORD = os.getenv('SNEX1_DB_PASSWORD', '')
-SNEX1_DB_URL = f'mysql+pymysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
 
 CACHES = {
     'default': {

@@ -561,7 +561,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
                 self.cleaned_data['cadence_frequency_days'] = cadence_value
 
         cleaned_data = super().clean()
-        cleaned_data['instrument_type'] = '2M0-FLOYDS-SCICAM'
 
         strategy = cleaned_data.get('cadence_strategy')
         retry_until_obtained = cleaned_data.get('retry_until_obtained', False)
@@ -680,7 +679,6 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
 
 
 class SnexLCOFacility(LCOFacility):
-    name = 'LCO'
     observation_types = [('IMAGING', 'Imaging'),
                          ('SPECTRA', 'Spectra')]
     observation_forms = {

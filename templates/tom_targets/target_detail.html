@@ -22,7 +22,8 @@
   ::placeholder {
     color: white;
   }
-  #tabs .nav-link {
+  #tabs .nav-link,
+  .manage-data-tabs .nav-link {
     color: #174460;
   }
   .htmx-indicator {
@@ -54,7 +55,7 @@
         <span id="zpre">z=</span>
         <input type="text" name="redshift" id="thenewredshift" autocomplete="off"
           value="{{ target.redshift|strip_trailing_zeros|default_if_none:'' }}"
-          placeholder="z"
+          placeholder="None"
           hx-get="{% url 'sync_targetextra' %}"
           hx-trigger="keyup[key=='Enter'], change"
           hx-vals='js:{newdata: JSON.stringify({key: "redshift", value: event.target.value, targetid: {{ target.id }}})}'
@@ -63,7 +64,7 @@
       </span>
     </td>
     <td align="left">
-      <span style="display: inline-block; font-size: 23px;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}</span><br><span style="display: inline-block; font-size: 20px;">{{ target.ra|floatformat:4 }} {{ target.dec|floatformat:4 }}</span>
+      <span style="display: inline-block; font-size: 23px;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}</span><br><span style="display: inline-block; font-size: 20px;">{{ target.ra|floatformat:6 }} {{ target.dec|floatformat:6 }}</span>
     </td>
   </tr>
 </table>
