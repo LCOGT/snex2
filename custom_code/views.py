@@ -43,6 +43,7 @@ from django_filters.views import FilterView
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
 from guardian.mixins import PermissionListMixin
+from rest_framework.authtoken.models import Token
 from guardian.shortcuts import assign_perm, get_groups_with_perms, get_objects_for_user, get_users_with_perms, remove_perm
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
@@ -468,6 +469,13 @@ def save_dataproduct_groups_view(request):
     groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
     set_dataproduct_view_groups(dp, groups)
     return JsonResponse({'success': sorted(group.name for group in groups)})
+
+
+def create_api_token_view(request):
+    if request.method != 'POST' or not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can create an API token')
+    Token.objects.filter(user=request.user).delete()
+    return JsonResponse({'token': Token.objects.create(user=request.user).key})
 
 
 def set_target_standard_view(request):

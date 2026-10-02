@@ -15,4 +15,22 @@
 {% user_list %}
 <hr/>
 {% group_list %}
+{% if request.user.is_superuser %}
+<hr/>
+<h4>API Token</h4>
+<p>A token lets a script use the SNEx API as {{ request.user.username }} without a password. Generating one replaces any token this account already has, and it is only shown once.</p>
+<button type="button" class="btn btn-primary" id="api-token-button">Generate API token</button>
+<p class="mt-3" id="api-token-result" style="display: none;">Your token: <code id="api-token"></code></p>
+<script>
+document.getElementById('api-token-button').addEventListener('click', async function () {
+  if (!confirm('Generate a new API token for {{ request.user.username }}? Any existing token for this account stops working.')) { return; }
+  const body = new FormData();
+  body.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+  const response = await fetch('{% url "create-api-token" %}', { method: 'POST', body: body });
+  if (!response.ok) { alert('Could not create a token (' + response.status + ').'); return; }
+  document.getElementById('api-token').textContent = (await response.json()).token;
+  document.getElementById('api-token-result').style.display = '';
+});
+</script>
+{% endif %}
 {% endblock %}
