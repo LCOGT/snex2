@@ -200,7 +200,11 @@ def download_archive_frame(basename):
     results = response.json().get('results', [])
     if not results:
         return None
-    return results[0]['filename'], requests.get(results[0]['url']).content
+    download = requests.get(results[0]['url'])
+    if not download.ok:
+        logger.error(f'LCO archive download of {basename} failed: {download.status_code}')
+        return None
+    return results[0]['filename'], download.content
 
 
 def _normalize_view_object_name(name: str) -> str:

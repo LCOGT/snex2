@@ -115,6 +115,21 @@ FRAME_CACHE_SIZE = 50
 CACHE_SECONDS = 24 * 60 * 60
 
 
+def _evict(pattern, keep=None):
+    ages = {}
+    for path in glob.glob(pattern):
+        try:
+            ages[path] = time.time() - os.path.getmtime(path)
+        except FileNotFoundError:
+            pass
+    for position, path in enumerate(sorted(ages, key=ages.get)):
+        if ages[path] > CACHE_SECONDS or (keep is not None and position >= keep):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+
+
 def cached_frame(basename):
     if not re.fullmatch(r'[\w-]+', basename):
         raise FileNotFoundError(f'{basename} is not a frame name')
@@ -132,10 +147,7 @@ def cached_frame(basename):
     with tempfile.NamedTemporaryFile(dir=cache_dir, delete=False) as f:
         f.write(content)
     os.replace(f.name, path)
-    frames = sorted(glob.glob(os.path.join(cache_dir, '*.fits*')), key=os.path.getmtime, reverse=True)
-    for position, frame_path in enumerate(frames):
-        if position >= FRAME_CACHE_SIZE or time.time() - os.path.getmtime(frame_path) > CACHE_SECONDS:
-            os.remove(frame_path)
+    _evict(os.path.join(cache_dir, '*.fits*'), FRAME_CACHE_SIZE)
     return path
 
 
@@ -191,9 +203,7 @@ def make_thumb(basenames, grow=1.0, x=900, y=900, width=250, height=250, ticks=F
         logger.info(f'out file {outfile}')
         with open(outfile, 'wb') as f:
             im.save(f, 'WEBP')
-        for thumb_path in glob.glob(os.path.join(settings.THUMB_DIR, '*.webp')):
-            if time.time() - os.path.getmtime(thumb_path) > CACHE_SECONDS:
-                os.remove(thumb_path)
+        _evict(os.path.join(settings.THUMB_DIR, '*.webp'))
 
         outfiles.append(newfile)
 

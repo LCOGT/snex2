@@ -82,14 +82,18 @@ class SNExReducedDatumViewSet(UpdateModelMixin, ReducedDatumViewSet):
 class SNExDataProductViewSet(DataProductViewSet):
 
     def create(self, request, *args, **kwargs):
-        data = request.data
+        data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
         raw = data.get('data_product_type') == 'raw_spectrum'
         file, thumbnail = request.FILES.get('file'), request.FILES.get('thumbnail')
         if file:
             data['data'] = file
         elif not raw:
             return Response({'file': 'This field is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        groups = groups_from_payload(json.loads(data.pop('groups', ['[]'])[0]))
+        groups = data.pop('groups', [])
+        try:
+            groups = groups_from_payload(json.loads(groups) if isinstance(groups, str) else groups)
+        except (ValueError, AttributeError, TypeError):
+            return Response({'groups': ['Expected a list of {"name": ...} objects.']}, status=status.HTTP_400_BAD_REQUEST)
         if str(data.get('target')).isdigit() and Target.objects.filter(pk=data.get('target'), standard=True).exists() and data.get('data_product_type') in (
                 'raw_spectrum', 'spectroscopy'):
             return Response({'target': ['Spectra of standards are not stored in SNEx.']}, status=status.HTTP_400_BAD_REQUEST)
@@ -105,9 +109,9 @@ class SNExDataProductViewSet(DataProductViewSet):
         if existing and str(existing.target_id) != str(data.get('target')):
             return Response({'product_id': f'{product_id} already belongs to target {existing.target_id}'},
                             status=status.HTTP_400_BAD_REQUEST)
-        if raw and existing and existing.reduceddatum_set.exists():
-            return Response({'id': existing.id, 'product_id': product_id, 'already_reduced': True},
-                            status=status.HTTP_200_OK)
+        if raw and existing:
+            return Response({'id': existing.id, 'product_id': product_id, 'already_posted': True,
+                             'already_reduced': existing.reduceddatum_set.exists()}, status=status.HTTP_200_OK)
 
         with transaction.atomic():
             if existing:

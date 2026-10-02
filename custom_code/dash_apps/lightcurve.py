@@ -6,12 +6,12 @@ from dash.dependencies import Input, Output
 import json
 import numpy as np
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import ReducedDatum
+from tom_dataproducts.models import DataProduct, ReducedDatum
 from django.conf import settings
 from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
-from custom_code.utils import measured
+from custom_code.utils import measured, viewable_dataproducts
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
@@ -242,40 +242,33 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
     subtracted_photometry_data = {}
     target = Target.objects.get(id=target_id)
     user = User.objects.get(id=user_id)
-    datumextras = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                       klass=ReducedDatumExtra.objects.filter(
-                                           target=target,key='upload_extras',
-                                           data_type='photometry'))
+    datumextras = ReducedDatumExtra.objects.filter(
+        target=target, key='upload_extras', data_type='photometry',
+        data_product__in=viewable_dataproducts(user, DataProduct.objects.filter(target=target)))
     
     datums = []
     final_products = {de.value.get('data_product_id') for de in datumextras if de.value.get('final_reduction')}
     
     ### Get the data for the selected telescope
-    if not selected_telescope:
-        if settings.TARGET_PERMISSIONS_ONLY:
-            datums.append(ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='filter'))
-        else:
-            datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                               klass=ReducedDatum.objects.filter(
-                                                   target=target, data_type='photometry', 
-                                                   value__has_key='filter')))
-    else:
-        for de in datumextras:
-            de_value = de.value
+    selected_telescope = selected_telescope or []
+    selected_groups = selected_groups or []
+    for de in datumextras:
+        de_value = de.value
 
-            if de_value.get('instrument', '') in selected_telescope and de_value.get('reducer_group', '') in selected_groups:
-                dp_id = de_value.get('data_product_id', '')
-                datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                   klass=ReducedDatum.objects.filter(
-                                                       target=target, data_type='photometry', 
-                                                       data_product_id=dp_id, value__has_key='filter')))
-        
-        ### Finally, get the data that was uploaded by the pipeline
-        if 'LCO' in selected_telescope and '' in selected_groups:
+        if de_value.get('instrument', '') in selected_telescope and de_value.get('reducer_group', '') in selected_groups:
+            dp_id = de_value.get('data_product_id', '')
             datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                klass=ReducedDatum.objects.filter(
-                                                   target=target, data_type='photometry', 
-                                                   data_product_id__isnull=True, value__has_key='filter')))
+                                                   target=target, data_type='photometry',
+                                                   data_product_id=dp_id, value__has_key='filter')))
+
+    ### Finally, get the data that was uploaded by the pipeline
+    if 'LCO' in selected_telescope and '' in selected_groups:
+        uploaded_products = [de.value['data_product_id'] for de in datumextras if de.value.get('data_product_id')]
+        datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                           klass=ReducedDatum.objects.filter(
+                                               target=target, data_type='photometry',
+                                               value__has_key='filter').exclude(data_product_id__in=uploaded_products)))
     
     ### Plot the data
     spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',

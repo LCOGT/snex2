@@ -25,34 +25,6 @@ instrument_dict = {'2M0-FLOYDS-SCICAM': 'floyds',
                     '0M4-SCICAM-QHY600': 'qhy',
                     }
 
-priority_dict = {'NORMAL': 'normal',
-                    'TIME_CRITICAL': 'time_critical',
-                    'RAPID_RESPONSE': 'immediate_too'}
-
-def save_observation_comment(observation, previous_state):
-    logger.info('Observation change state hook: %s from %s to %s', observation, previous_state, observation.status)
-    if previous_state == '':
-        comment = observation.parameters.get('comment')
-        obs_group = observation.observationgroup_set.first()
-        if comment and obs_group:
-            user = User.objects.filter(username=observation.parameters.get('start_user')).first()
-            save_comments(comment, obs_group.id, user)
-
-def _str_to_timestamp(datestring):
-    """
-    Converts string to a timestamp compatible with MYSQL timestamp field
-    """
-    timestamp = datetime.strptime(datestring, '%Y-%m-%dT%H:%M:%S')
-    return timestamp.strftime('%Y-%m-%d %H:%M:%S')
-
-
-def _str_to_jd(datestring):
-    """
-    Converts string to JD compatible with MYSQL double field
-    """
-    newdatestring = _str_to_timestamp(datestring)
-    return np.round(Time(newdatestring, format='iso', scale='utc').jd, 8)
-
 
 def _get_tns_params(target):
     logger.info(f'Target sent for TNS parameters, {target}')

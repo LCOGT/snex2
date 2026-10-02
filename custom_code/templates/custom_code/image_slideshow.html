@@ -159,10 +159,6 @@
     downloadButton.innerHTML = originalButtonText;
     downloadButton.disabled = false;
   }
-  document.addEventListener("DOMContentLoaded", function() {
-    const filenameSelect = document.getElementById("id_filenames");
-    const hiddenInput = document.getElementById("download-filename");
-    hiddenInput.value = filenameSelect.value;
-    makeThumbnail();
-  });
+  document.getElementById("download-filename").value = document.getElementById("id_filenames").value;
+  if (document.getElementById("id_filenames").value) { prefetchFrames(); }
 </script>

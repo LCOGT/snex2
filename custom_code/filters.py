@@ -68,7 +68,6 @@ class TNSTargetFilter(django_filters.FilterSet):
         )
 
     def filter_TESS(self, queryset, name, value):
-            print(value, type(value))
             if value == 'y':      bool_value = True
             elif value == 'n':    bool_value = False
             return queryset.filter(

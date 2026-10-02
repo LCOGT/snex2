@@ -433,7 +433,7 @@ class CustomDataProductUploadView(DataProductUploadView):
             except Exception as e:
                 dp.delete()
                 messages.error(self.request, 'There was a problem processing your file: {0}'.format(str(dp)))
-                print(e)
+                logger.exception(f'Could not process uploaded file {dp}')
         if successful_uploads:
             messages.success(
                 self.request,

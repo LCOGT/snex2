@@ -690,9 +690,9 @@ def dash_lightcurve(context, target, height):
     reducer_groups = []
     user = User.objects.get(username=request.user)
 
-    for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                   klass=ReducedDatumExtra.objects.filter(
-                                       target=target,key='upload_extras',data_type='photometry')):
+    for de in ReducedDatumExtra.objects.filter(
+            target=target, key='upload_extras', data_type='photometry',
+            data_product__in=viewable_dataproducts(user, DataProduct.objects.filter(target=target))):
         de_value = de.value
         inst = de_value.get('instrument', '')
         group = de_value.get('reducer_group', '')
@@ -1695,7 +1695,7 @@ def past_observing_runs(targetlist):
 
         return past_runs
     except Exception as e:
-        print(e)
+        logger.warning(f'Could not sort observing runs: {e}')
         return targetlist
 
 
@@ -1734,10 +1734,8 @@ def get_other_observing_runs(targetlist):
 @register.filter
 def order_by_priority(targetlist):
     if targetlist:
-        print(targetlist)
         ids = [target.pk for target in targetlist]
         test = Target.objects.filter(pk__in=ids)
-        print(test)
         return test
     else:
         return
@@ -1822,18 +1820,20 @@ def image_slideshow(context, target):
     thumbnailform = ThumbnailForm(initial=initial, choices=choices)
 
     ### Make the initial thumbnail
-    if psfxs[0] < 9999 and psfys[0] < 9999:
-        f = make_thumb([filenames[0]], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
-    else:
-        f = make_thumb([filenames[0]], grow=1.0, x=1024, y=1024, ticks=False)
-
-    with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:        
-        b64_image = base64.b64encode(imagefile.read())
-        thumb = b64_image
+    try:
+        if psfxs[0] < 9999 and psfys[0] < 9999:
+            f = make_thumb([filenames[0]], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
+        else:
+            f = make_thumb([filenames[0]], grow=1.0, x=1024, y=1024, ticks=False)
+        with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:
+            thumb = base64.b64encode(imagefile.read())
+    except OSError as e:
+        logger.warning(f'Could not make thumbnail for {filenames[0]}: {e}')
+        thumb = b''
 
     return {'target': target,
             'form': thumbnailform,
-            'thumb': b64_image.decode('utf-8'),
+            'thumb': thumb.decode('utf-8'),
             'telescope': teles[0],
             'instrument': instr[0],
             'filter': filters[0],
@@ -2089,10 +2089,14 @@ def display_thumbnails(context, target):
 
     for i in range(len(filenames)):
         currentfile = filenames[i]
-        if psfxs[i] < 9999 and psfys[i] < 9999:
-            f = make_thumb([currentfile], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
-        else:
-            f = make_thumb([currentfile], grow=1.0, x=1024, y=1024, ticks=False)
+        try:
+            if psfxs[i] < 9999 and psfys[i] < 9999:
+                f = make_thumb([currentfile], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
+            else:
+                f = make_thumb([currentfile], grow=1.0, x=1024, y=1024, ticks=False)
+        except OSError as e:
+            logger.warning(f'Could not make thumbnail for {currentfile}: {e}')
+            continue
         thumbfiles.append(f[0])
         
         thumbdates.append(dates[i])
