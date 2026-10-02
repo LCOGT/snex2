@@ -1,6 +1,5 @@
 import logging
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
 from sqlalchemy import bindparam, create_engine, pool, text
 from tom_dataproducts.models import ReducedDatum
@@ -9,13 +8,12 @@ logger = logging.getLogger(__name__)
 
 PHOTLCO_QUERY = text(
     'SELECT id, filename, filetype, difftype, filter, mag, dmag, telescope, instrument, '
-    'exptime, fwhm, wcs, psfx, psfy FROM photlco WHERE id IN :ids'
+    'exptime, fwhm, wcs, psfx, psfy, psfmag, psfdmag, apmag, dapmag FROM photlco WHERE id IN :ids'
 ).bindparams(bindparam('ids', expanding=True))
 
 
 def photlco_value(row):
     value = {
-        'snex_id': row.id,
         'magnitude': row.mag,
         'error': row.dmag,
         'filter': row.filter,
@@ -44,12 +42,14 @@ def photlco_value(row):
 
 class Command(BaseCommand):
     help = ('One-off backfill: rebuild photometry ReducedDatum values (including sync_databases placeholders '
-            'for failed reductions) from SNEx1 photlco, matched on value["snex_id"] (= photlco.id).')
+            'for failed reductions) from SNEx1 photlco, matched on value["snex_id"] (= photlco.id), '
+            'then remove snex_id from the backfilled datums.')
 
     def add_arguments(self, parser):
         parser.add_argument('--dry-run', action='store_true', help='report what would change without saving')
         parser.add_argument('--overwrite', action='store_true', help='also update datums that already have a basename')
         parser.add_argument('--batch-size', type=int, default=1000)
+        parser.add_argument('--db-url', required=True, help='pipeline MySQL url, mysql+pymysql://user:password@host:port/supernova')
 
     def handle(self, *args, **options):
         datums = ReducedDatum.objects.filter(data_type='photometry', value__has_key='snex_id')
@@ -59,7 +59,7 @@ class Command(BaseCommand):
         size = options['batch_size']
         self.stdout.write(f'{len(pks)} photometry datums to backfill{" (dry run)" if options["dry_run"] else ""}')
 
-        engine = create_engine(settings.SNEX1_DB_URL, poolclass=pool.NullPool)
+        engine = create_engine(options['db_url'], poolclass=pool.NullPool)
         updated = placeholders = missing = 0
         with engine.connect() as conn:
             for start in range(0, len(pks), size):
@@ -75,6 +75,7 @@ class Command(BaseCommand):
                         continue
                     placeholders += len(rd.value) == 1
                     rd.value.update(photlco_value(row))
+                    del rd.value['snex_id']
                     changed.append(rd)
 
                 if changed and not options['dry_run']:
