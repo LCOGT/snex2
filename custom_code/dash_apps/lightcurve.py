@@ -278,9 +278,6 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                                                    data_product_id__isnull=True, value__has_key='filter')))
     
     ### Plot the data
-    if not datums:
-        return 'No photometry yet'
-    
     spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                 klass=ReducedDatum.objects.filter(
                                     target=target, data_type='spectroscopy'))
