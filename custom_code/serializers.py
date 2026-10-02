@@ -2,21 +2,40 @@ from django.conf import settings
 from guardian.shortcuts import assign_perm
 from rest_framework import serializers
 from tom_common.serializers import GroupSerializer
-from tom_dataproducts.serializers import ReducedDatumSerializer
+from tom_dataproducts.serializers import DataProductSerializer, ReducedDatumSerializer
+from tom_targets.fields import TargetFilteredPrimaryKeyRelatedField
+from tom_targets.permissions import targets_for_user
 from tom_targets.serializers import TargetSerializer
 from tom_targets.models import Target
 
 from custom_code.utils import groups_from_payload
 
 
+class SNExTargetField(TargetFilteredPrimaryKeyRelatedField):
+    def get_queryset(self):
+        return targets_for_user(self.context['request'].user, Target.objects.all(), 'change_target')
+
+
+class SNExDataProductSerializer(DataProductSerializer):
+    target = SNExTargetField(queryset=Target.objects.all())
+
+
 class SNExReducedDatumSerializer(ReducedDatumSerializer):
+    target = SNExTargetField(queryset=Target.objects.all())
     groups = GroupSerializer(many=True, required=False, write_only=True)
 
     class Meta(ReducedDatumSerializer.Meta):
         fields = ('id',) + ReducedDatumSerializer.Meta.fields + ('groups',)
 
     def validate_groups(self, groups):
-        return groups_from_payload(groups)
+        groups = groups_from_payload(groups)
+        user = self.context['request'].user
+        if user.is_superuser or not groups:
+            return groups
+        member_of = [group for group in groups if group in user.groups.all()]
+        if not member_of:
+            raise serializers.ValidationError('You are not a member of any of these groups.')
+        return member_of
 
     def _grant_view(self, rd, groups):
         if not settings.TARGET_PERMISSIONS_ONLY:

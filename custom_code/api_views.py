@@ -20,7 +20,7 @@ from custom_code.models import ReducedDatumExtra
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.processors.spectroscopy_processor import SpecProcessor
 from custom_code.scheduling import save_comments
-from custom_code.serializers import SNExReducedDatumSerializer, SNExTargetSerializer
+from custom_code.serializers import SNExDataProductSerializer, SNExReducedDatumSerializer, SNExTargetSerializer
 from custom_code.utils import groups_from_payload, set_dataproduct_view_groups
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,7 @@ class SNExReducedDatumViewSet(UpdateModelMixin, ReducedDatumViewSet):
 
 
 class SNExDataProductViewSet(DataProductViewSet):
+    serializer_class = SNExDataProductSerializer
 
     def create(self, request, *args, **kwargs):
         data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
