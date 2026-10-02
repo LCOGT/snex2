@@ -70,11 +70,6 @@ class SNExReducedDatumViewSet(UpdateModelMixin, ReducedDatumViewSet):
         viewable = get_objects_for_user(self.request.user, 'tom_dataproducts.view_reduceddatum', klass=queryset)
         return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(data_type='photometric_standard'))
 
-    def update(self, request, *args, **kwargs):
-        if not request.user.is_superuser:
-            return Response({'detail': 'Only admins can update reduced datums.'}, status=status.HTTP_403_FORBIDDEN)
-        return super().update(request, *args, **kwargs)
-
     def destroy(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             return Response({'detail': 'Only admins can delete reduced datums.'}, status=status.HTTP_403_FORBIDDEN)

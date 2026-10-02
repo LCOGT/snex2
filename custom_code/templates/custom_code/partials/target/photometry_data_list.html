@@ -73,6 +73,7 @@
       <th>FWHM (&Prime;)</th>
       <th>Frame</th>
       <th>WCS</th>
+      <th>Uploaded by</th>
       {% if is_admin %}<th>Known to</th>{% endif %}
     </tr>
   </thead>
@@ -93,11 +94,12 @@
       <td>{% if row.fwhm is not None %}{{ row.fwhm|floatformat:2 }}{% endif %}</td>
       <td>{{ row.basename }}</td>
       <td>{% if row.wcs == 0 %}Good{% elif row.wcs is not None %}Failed{% endif %}</td>
+      <td>{{ row.uploaded_by }}</td>
       {% if is_admin %}<td class="phot-groups" data-groups="{{ row.groups|join:'|' }}"></td>{% endif %}
     </tr>
   {% endwith %}
   {% empty %}
-    <tr><td colspan="13">No photometry you can view for this target.</td></tr>
+    <tr><td colspan="14">No photometry you can view for this target.</td></tr>
   {% endfor %}
   </tbody>
 </table>

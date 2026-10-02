@@ -1961,6 +1961,9 @@ class TargetFilteringView(FormView):
                 spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
             )
 
+        if not (cd.get('apply_name_filter') and cd.get('target_name', '').strip()):
+            qs = qs.exclude(standard=True)
+
         # name filter
         if cd.get('apply_name_filter'):
             name = cd.get('target_name','').strip()

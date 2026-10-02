@@ -24,12 +24,18 @@ class SNExReducedDatumSerializer(ReducedDatumSerializer):
                 assign_perm('tom_dataproducts.view_reduceddatum', group, rd)
         return rd
 
+    def _stamp_uploader(self, validated_data):
+        if isinstance(validated_data.get('value'), dict):
+            validated_data['value']['uploaded_by'] = self.context['request'].user.username
+
     def create(self, validated_data):
         groups = validated_data.pop('groups', [])
+        self._stamp_uploader(validated_data)
         return self._grant_view(super().create(validated_data), groups)
 
     def update(self, instance, validated_data):
         groups = validated_data.pop('groups', [])
+        self._stamp_uploader(validated_data)
         if self.partial and 'value' in validated_data:
             validated_data['value'] = {**instance.value, **validated_data['value']}
         return self._grant_view(super().update(instance, validated_data), groups)

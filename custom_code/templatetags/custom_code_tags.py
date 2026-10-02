@@ -688,107 +688,54 @@ def dash_lightcurve(context, target, height):
     # Get initial choices and values for some dash elements
     telescopes = ['LCO']
     reducer_groups = []
-    papers_used_in = []
-    final_reduction = False
-    background_subtracted = False
     user = User.objects.get(username=request.user)
 
-    if settings.TARGET_PERMISSIONS_ONLY:
-        datumquery = ReducedDatum.objects.filter(target=target, 
-                                                 data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
-    
-    else:
-        datumquery = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                          klass=ReducedDatum.objects.filter(
-                                              target=target,
-                                              data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
-
-    for i in datumquery:
-        datum_value = i.value
-        if isinstance(datum_value, str):
-            datum_value = json.loads(datum_value)
-        if datum_value.get('background_subtracted', '') == True:
-            background_subtracted = True
-            break
-
-    final_background_subtracted = False
     for de in get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
                                    klass=ReducedDatumExtra.objects.filter(
                                        target=target,key='upload_extras',data_type='photometry')):
         de_value = de.value
         inst = de_value.get('instrument', '')
-        used_in = de_value.get('used_in', '')
         group = de_value.get('reducer_group', '')
 
         if inst and inst not in telescopes:
             telescopes.append(inst)
-        if used_in and used_in not in papers_used_in:
-            try:
-                paper_query = Papers.objects.get(id=used_in)
-                paper_string = str(paper_query)
-                papers_used_in.append(paper_string)
-            except:
-                paper_string = str(used_in)
-                papers_used_in.append(paper_string)
         if group and group not in reducer_groups:
             reducer_groups.append(group)
-   
-        if de_value.get('final_reduction', '')==True:
-            final_reduction = True
-            final_reduction_dp = de.data_product
 
-            datum = get_objects_for_user(user,
-                                'tom_dataproducts.view_reduceddatum',
-                                klass=ReducedDatum.objects.filter(
-                                    target=target,
-                                    data_type='photometry',
-                                    data_product_id=final_reduction_dp))
-            datum_value = datum.first().value
-            if isinstance(datum_value, str):
-                datum_value = json.loads(datum_value)
-            if datum_value.get('background_subtracted', '') == True:
-                final_background_subtracted = True
-    
     reducer_group_options = [{'label': 'LCO', 'value': ''}]
     reducer_group_options.extend([{'label': k, 'value': k} for k in reducer_groups])
     reducer_groups.append('')
-    
-    paper_options = [{'label': '', 'value': ''}]
-    paper_options.extend([{'label': k, 'value': k} for k in papers_used_in])
 
     dash_context = {'target_id': {'value': target.id},
                     'user_id': {'value': user.id},
                     'plot-height': {'value': height},
                     'telescopes-checklist': {'options': [{'label': k, 'value': k} for k in telescopes]},
                     'reducer-group-checklist': {'options': reducer_group_options,
-                                                'value': reducer_groups},
-                    'papers-dropdown': {'options': paper_options}
+                                                'value': reducer_groups}
     }
-
-    if final_reduction:
-        dash_context['final-reduction-checklist'] = {'value': 'Final'}
-        dash_context['reduction-type-radio'] = {'value': 'manual'}
-
-        if final_background_subtracted:
-            dash_context['subtracted-radio'] = {'value': 'Subtracted'}
-        else:
-            dash_context['subtracted-radio'] = {'value': 'Unsubtracted'}
-            dash_context['telescopes-checklist']['value'] = telescopes
-
-    elif background_subtracted:
-        dash_context['subtracted-radio'] = {'value': 'Subtracted'}
-
-    else:
-        dash_context['subtracted-radio'] = {'value': 'Unsubtracted'}
-
 
     try:
         frame_height = f'{int(height) + LIGHTCURVE_CONTROLS_HEIGHT}px'
     except (TypeError, ValueError):
         frame_height = f'{400 + LIGHTCURVE_CONTROLS_HEIGHT}px'
 
+    frames = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename')
+    viewable = frames if settings.TARGET_PERMISSIONS_ONLY else get_objects_for_user(
+        user, 'tom_dataproducts.view_reduceddatum', klass=frames)
+    viewable_ids = set(viewable.values_list('pk', flat=True))
+    raw_frames, reduced_frames, viewable_frames = set(), set(), set()
+    for pk, value in frames.values_list('pk', 'value'):
+        raw_frames.add(value['basename'])
+        if measured(value.get('magnitude')) is not None:
+            reduced_frames.add(value['basename'])
+            if pk in viewable_ids:
+                viewable_frames.add(value['basename'])
+
     return {'dash_context': dash_context,
             'frame_height': frame_height,
+            'raw_frames': len(raw_frames),
+            'reduced_frames': len(reduced_frames),
+            'viewable_frames': len(viewable_frames),
             'request': request}
 
 
@@ -874,6 +821,7 @@ def photometry_data_list(context, target):
                      'wcs': v.get('wcs'),
                      'exptime': v.get('exptime'),
                      'fwhm': measured(v.get('fwhm')),
+                     'uploaded_by': v.get('uploaded_by') or '',
                      'instrument': v.get('instrument') or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
     dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
     one_day = datetime.timedelta(days=1)
