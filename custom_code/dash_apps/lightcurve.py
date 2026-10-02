@@ -367,7 +367,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                                                        target=target, data_type='photometry', 
                                                        data_product_id=dp_id, value__has_key='filter')))
         
-        ### Finally, get the data that was automatically uploaded from snex1 db
+        ### Finally, get the data that was uploaded by the pipeline
         if 'LCO' in selected_telescope and not final_reduction:
             datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                klass=ReducedDatum.objects.filter(
