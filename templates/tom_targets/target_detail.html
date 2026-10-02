@@ -55,7 +55,7 @@
         <span id="zpre">z=</span>
         <input type="text" name="redshift" id="thenewredshift" autocomplete="off"
           value="{{ target.redshift|strip_trailing_zeros|default_if_none:'' }}"
-          placeholder="z"
+          placeholder="None"
           hx-get="{% url 'sync_targetextra' %}"
           hx-trigger="keyup[key=='Enter'], change"
           hx-vals='js:{newdata: JSON.stringify({key: "redshift", value: event.target.value, targetid: {{ target.id }}})}'
