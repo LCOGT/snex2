@@ -1019,8 +1019,9 @@ class CustomObservationCreateView(ObservationCreateView):
                         assign_perm('tom_observations.delete_observationrecord', group, record)
 
         if getattr(self.request, 'htmx', False) and response.status_code in (301, 302):
-            htmx_response = HttpResponse(status=204)
-            htmx_response['HX-Redirect'] = response['Location']
+            htmx_response = render(self.request, 'custom_code/partials/target/observation_submitted.html', {'target': target})
+            htmx_response['HX-Retarget'] = '#ongoing-obs'
+            htmx_response['HX-Reswap'] = 'innerHTML show:top'
             return htmx_response
         return response
 
