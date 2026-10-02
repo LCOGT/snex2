@@ -1,4 +1,3 @@
 {% load plotly_dash %}
 
-<p class="text-muted small mb-1">{{ raw_frames }} Raw Frames, {{ reduced_frames }} Successful Reductions, {{ viewable_frames }} Viewable by you</p>
 {% plotly_app name="Lightcurve" height=frame_height initial_arguments=dash_context %}

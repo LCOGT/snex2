@@ -731,11 +731,11 @@ def dash_lightcurve(context, target, height):
             if pk in viewable_ids:
                 viewable_frames.add(value['basename'])
 
+    dash_context['frame-info'] = {'children': '{} Raw Frames, {} Successful Reductions, {} Viewable by you'.format(
+        len(raw_frames), len(reduced_frames), len(viewable_frames))}
+
     return {'dash_context': dash_context,
             'frame_height': frame_height,
-            'raw_frames': len(raw_frames),
-            'reduced_frames': len(reduced_frames),
-            'viewable_frames': len(viewable_frames),
             'request': request}
 
 

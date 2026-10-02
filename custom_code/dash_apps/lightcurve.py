@@ -141,6 +141,7 @@ app.layout = html.Div([
                 inputStyle={"margin-right": "5px", "margin-left": "5px"}
             ),
             html.Hr(),
+            html.P(id='frame-info', children=''),
         ],
     ),
     html.Div(
@@ -270,7 +271,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                                                        data_product_id=dp_id, value__has_key='filter')))
         
         ### Finally, get the data that was uploaded by the pipeline
-        if 'LCO' in selected_telescope:
+        if 'LCO' in selected_telescope and '' in selected_groups:
             datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                klass=ReducedDatum.objects.filter(
                                                    target=target, data_type='photometry', 
