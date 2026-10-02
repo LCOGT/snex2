@@ -19,6 +19,7 @@ from custom_code.filters import SNExReducedDatumFilter
 from custom_code.models import ReducedDatumExtra
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.processors.spectroscopy_processor import SpecProcessor
+from custom_code.scheduling import save_comments
 from custom_code.serializers import SNExReducedDatumSerializer, SNExTargetSerializer
 from custom_code.utils import groups_from_payload, set_dataproduct_view_groups
 
@@ -34,7 +35,10 @@ class SNExTargetViewSet(TargetViewSet):
 
     def create(self, request, *args, **kwargs):
         try:
-            return super().create(request, *args, **kwargs)
+            response = super().create(request, *args, **kwargs)
+            if response.status_code == status.HTTP_201_CREATED and request.data.get('comment'):
+                save_comments(str(request.data['comment']), response.data['id'], request.user, model_name='targets')
+            return response
         except ValidationError:
             duplicate = getattr(self._serializer, 'duplicate', None) or Target.matches.find_duplicate(
                 str(request.data.get('name') or ''), request.data.get('ra'), request.data.get('dec'),
