@@ -110,6 +110,7 @@
   };
   function prevImg() {
     var select = document.getElementById("id_filenames");
+    if (select.selectedIndex >= select.options.length - 1) { return; }
     if (select.selectedIndex === select.options.length - 2) {
       select.selectedIndex++;
       document.getElementById("previous-img").style.display = "none";
@@ -122,6 +123,7 @@
   };
   function nextImg() {
     var select = document.getElementById("id_filenames");
+    if (select.selectedIndex <= 0) { return; }
     if (select.selectedIndex === 1) {
       select.selectedIndex--;
       document.getElementById("next-img").style.display = "none";

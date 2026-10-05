@@ -18,6 +18,7 @@
     {% endfor %}
     <div class="row">
       <input id="comment-{{ entry.spectrum.id }}" type="text" name="comment" title="Press Enter to submit" placeholder="Add a comment"
+        onkeydown="if (event.key === 'Enter') { event.preventDefault(); }"
         hx-get="{% url 'save-comment' %}"
         hx-vals='{"object_id": {{ entry.spectrum.id }}, "tablename": "spec"}'
         hx-trigger="keyup[key=='Enter'&&target.value!='']"

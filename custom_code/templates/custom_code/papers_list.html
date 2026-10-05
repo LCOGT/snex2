@@ -4,6 +4,7 @@
   <span style="font-size: medium; color: #004459;">{{ item.paper }}</span><br>
   <span style="font-size: medium; color: #004459;">{{ item.paper.description }}</span><br>
   <span style="font-size: small; color: #0089b3">{{ item.paper.created }}</span><br>
+  {% if item.can_edit %}
   <button type="button"
           class="btn btn-sm btn-outline-secondary"
           style="margin-top: 4px;"
@@ -40,5 +41,6 @@
       </div>
     </div>
   </div>
+  {% endif %}
 </div>
 {% endfor %}
