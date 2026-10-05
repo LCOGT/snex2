@@ -55,7 +55,7 @@ class SNExReducedDatumSerializer(ReducedDatumSerializer):
     def update(self, instance, validated_data):
         groups = validated_data.pop('groups', [])
         self._stamp_uploader(validated_data)
-        if self.partial and 'value' in validated_data:
+        if self.partial and isinstance(validated_data.get('value'), dict) and isinstance(instance.value, dict):
             validated_data['value'] = {**instance.value, **validated_data['value']}
         return self._grant_view(super().update(instance, validated_data), groups)
 
