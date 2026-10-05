@@ -1,4 +1,4 @@
-{% load bootstrap4 custom_code_tags %}
+{% load django_bootstrap5 custom_code_tags %}
 {% for item in papers %}
 <div id="paper_{{ item.paper.id }}" style="padding-top: 1px; padding-bottom: 1px;">
   <span style="font-size: medium; color: #004459;">{{ item.paper }}</span><br>
@@ -8,8 +8,8 @@
   <button type="button"
           class="btn btn-sm btn-outline-secondary"
           style="margin-top: 4px;"
-          data-toggle="modal"
-          data-target="#editPaperModal-{{ item.paper.id }}">
+          data-bs-toggle="modal"
+          data-bs-target="#editPaperModal-{{ item.paper.id }}">
     Edit
   </button>
   <div class="modal fade" id="editPaperModal-{{ item.paper.id }}" tabindex="-1" role="dialog">
@@ -17,18 +17,16 @@
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Edit Paper</h5>
-          <button type="button" class="close" data-dismiss="modal">
-            <span>&times;</span>
-          </button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
           <form method="post" action="{% url 'custom_code:update-paper' item.paper.id %}">
             {% csrf_token %}
             {% bootstrap_form item.edit_form %}
-            {% buttons %}
+            <div class="mb-3">
             <button type="submit" class="btn btn-primary">Save Changes</button>
-            <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-            {% endbuttons %}
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
           </form>
           <form method="post" action="{% url 'custom_code:delete-paper' item.paper.id %}">
             {% csrf_token %}

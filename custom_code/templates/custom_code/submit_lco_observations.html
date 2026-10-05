@@ -1,4 +1,4 @@
-{% load bootstrap4 crispy_forms_tags observation_extras targets_extras custom_code_tags static cache %}
+{% load django_bootstrap5 crispy_forms_tags observation_extras targets_extras custom_code_tags static cache %}
 <style>
 .border-right {
     border-right: 1px solid black;
@@ -35,7 +35,7 @@
   </div>
 </div>
 <div class="row">
-  <div class="col-md-6 border-right">
+  <div class="col-md-6 border-end">
     <h4>Submit a Photometry Sequence</h4>
     <div id="obs-form-phot">
       {% crispy phot_form %}
@@ -315,7 +315,7 @@ $(function () {
     }
     const trigger = detail.requestConfig && detail.requestConfig.triggeringEvent;
     const button = (trigger && trigger.submitter) || form.querySelector("[type='submit']");
-    $(button).after('<span class="obs-form-spinner spinner-border spinner-border-sm ml-2"></span>');
+    $(button).after('<span class="obs-form-spinner spinner-border spinner-border-sm ms-2"></span>');
     $(form).find("[type='submit']").css({"pointer-events": "none", "opacity": 0.65});
   });
 

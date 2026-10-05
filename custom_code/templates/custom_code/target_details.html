@@ -1,4 +1,4 @@
-{% load bootstrap4 static custom_code_tags %}
+{% load django_bootstrap5 static custom_code_tags %}
 <style>
 .detail-tab td {
   border: 1px solid #dddddd;
@@ -85,7 +85,7 @@
   <b>Warning: </b>These fits are estimates and not publication-ready
 </div>
 <div class="row" style="margin-top: 10px;">
-  <label class="mr-3"><input type="radio" name="lc-subtracted" value="false" checked onchange="redraw_lc()"> Unsubtracted</label>
+  <label class="me-3"><input type="radio" name="lc-subtracted" value="false" checked onchange="redraw_lc()"> Unsubtracted</label>
   <label><input type="radio" name="lc-subtracted" value="true" onchange="redraw_lc()"> Subtracted</label>
 </div>
 <div id="lc-primary" class="row">

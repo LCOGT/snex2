@@ -1,10 +1,10 @@
-{% load bootstrap4 custom_code_tags comments %}
+{% load django_bootstrap5 custom_code_tags comments %}
 
 <tr valign="top" id="spectrum-row-{{ entry.spectrum.id }}">
   <td width=200>
     <div class="row align-items-center mb-2">
       <input type="checkbox" class="spectrum-row" id="share-box-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
-      <label class="form-check-label ml-2" for="share-box-{{ entry.spectrum.id }}">Select</label>
+      <label class="form-check-label ms-2" for="share-box-{{ entry.spectrum.id }}">Select</label>
     </div>
         <div class="row"><b>{{ entry.time }}</b></div>
     <div class="row">Telescope: {{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</div>
@@ -27,8 +27,8 @@
         hx-on::after-request="if(event.detail.successful) this.value=''">
     </div>
     <div class="row mt-2 align-items-center">
-      <span class="mr-2">Download:</span>
-      <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
+      <span class="me-2">Download:</span>
+      <button type="button" class="btn btn-sm btn-outline-primary me-1" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
       <button type="button" class="btn btn-sm btn-outline-primary" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
     </div>
     <div class="row mt-2">
@@ -39,14 +39,14 @@
     <div id="spectrum-plot-{{ entry.spectrum.id }}">
       {% if entry.static_plot %}
         {{ entry.static_plot|safe }}
-        <div class="text-right">
+        <div class="text-end">
           <button type="button" class="btn btn-sm btn-outline-info"
             hx-get="{% url 'load-spectrum-interactive' entry.spectrum.target.id entry.spectrum.id %}"
             hx-target="#spectrum-plot-{{ entry.spectrum.id }}"
             hx-swap="innerHTML"
             hx-trigger="click once"
             hx-disabled-elt="this">Interactive tools
-            <span class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+            <span class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
           </button>
         </div>
       {% else %}

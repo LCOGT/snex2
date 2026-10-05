@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 crispy_forms_tags observation_extras targets_extras custom_code_tags static cache %}
+{% load django_bootstrap5 crispy_forms_tags observation_extras targets_extras custom_code_tags static cache %}
 {% block title %}Submit Observation{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -15,7 +15,7 @@
 {% block content %}
 <nav class="navbar navbar-expand-md fixed-top fixed-top-2">
   <div class="collapse navbar-collapse" id="targetInfo">
-      <ul class="nav mr-auto">
+      <ul class="nav me-auto">
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.name }}</a></li>
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}<br>{{ target.ra|floatformat:6 }} {{ target.dec|floatformat:6 }}</a></li>
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.classification }}</a></li>

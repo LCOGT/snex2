@@ -110,3 +110,22 @@ body {
     z-index: 9999;
   }
 }
+
+.row > :not([class*="col"]) {
+  width: auto;
+  max-width: none;
+  flex-shrink: 1;
+}
+
+.row > :not([class*="col"]):not(.btn):not(.form-control):not(.form-select) {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+a {
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}

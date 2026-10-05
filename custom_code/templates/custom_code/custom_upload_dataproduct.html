@@ -1,4 +1,4 @@
-{% load bootstrap4 static %}
+{% load django_bootstrap5 static %}
 <style>
 #id_data_product_type {
     list-style: none;
@@ -88,9 +88,9 @@
       <li>If these fields are blank, SNEx2 will try to read them directly from the uploaded file (either commented lines in plaintext files or fits headers)</li>
     </ul>
   </div>
-  {% buttons %}
+  <div class="mb-3">
   <input type="submit" class="btn btn-primary" value="Upload" name="upload_dataproduct_form">
-  {% endbuttons %}
+  </div>
 </form>
 <script>
   $(document).ready(function() {

@@ -4,22 +4,22 @@
 <p class="text-muted">Standard star frames from the same night and filter as this target's photometry, on the same telescope and instrument, or on any telescope of the same class and instrument type at the same site.</p>
 <div class="row mb-3 bg-light p-3 rounded">
   <div class="col-md-2">
-    <label for="std-start" class="font-weight-bold">Start Date:</label>
+    <label for="std-start" class="fw-bold">Start Date:</label>
     <input type="date" id="std-start" class="form-control std-filter" value="{{ date_min }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-2">
-    <label for="std-end" class="font-weight-bold">End Date:</label>
+    <label for="std-end" class="fw-bold">End Date:</label>
     <input type="date" id="std-end" class="form-control std-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-2">
-    <label for="std-band" class="font-weight-bold">Filter:</label>
+    <label for="std-band" class="fw-bold">Filter:</label>
     <select id="std-band" class="form-control std-filter">
       <option value="">-- All --</option>
       {% for f in filters %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
     </select>
   </div>
   <div class="col-md-2">
-    <label for="std-instrument" class="font-weight-bold">Instrument:</label>
+    <label for="std-instrument" class="fw-bold">Instrument:</label>
     <select id="std-instrument" class="form-control std-filter">
       <option value="">-- All --</option>
       {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
@@ -32,7 +32,7 @@
     </div>
   </div>
   <div class="col-md-1 d-flex align-items-end">
-    <button type="button" id="std-clear" class="btn btn-secondary btn-block">Clear</button>
+    <button type="button" id="std-clear" class="btn btn-secondary w-100">Clear</button>
   </div>
 </div>
 <div class="mb-3">
@@ -41,7 +41,7 @@
     <option value="ascii">ascii</option>
   </select>
   <button type="button" id="std-download" class="btn btn-success">Download</button>
-  <span class="text-muted ml-2" id="std-status">fits: LCO frames of the selected rows. ascii: the selected rows as a .txt file</span>
+  <span class="text-muted ms-2" id="std-status">fits: LCO frames of the selected rows. ascii: the selected rows as a .txt file</span>
 </div>
 <table class="table table-striped table-sm" id="std-table">
   <thead>

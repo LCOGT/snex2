@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load comments bootstrap4 tom_common_extras targets_extras observation_extras dataproduct_extras static cache %}
+{% load comments django_bootstrap5 tom_common_extras targets_extras observation_extras dataproduct_extras static cache %}
 {% load custom_code_tags %}
 {% block title %}Target {{ object|get_best_name }}{% endblock %}
 {% block additional_css %}
@@ -15,7 +15,7 @@
     font-weight: bold;
     font-size: 14px;
   }
-  .mr-1 {
+  .me-1 {
     font-size: 14px;
     margin-bottom: 0rem;
   }
@@ -70,54 +70,54 @@
 </table>
 <ul class="nav nav-tabs" role="tablist" id="tabs">
   <li class="nav-item">
-    <a class="nav-link active" id="observe-tab" href="#observe" role="tab" data-toggle="tab">Overview</a>
+    <a class="nav-link active" id="observe-tab" href="#observe" role="tab" data-bs-toggle="tab">Overview</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="observations-tab" href="#observations" role="tab" data-toggle="tab"
+    <a class="nav-link" id="observations-tab" href="#observations" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-observations-tab' target.id %}" hx-target="#observations" hx-trigger="click once" hx-indicator="#spinner-observations">Observations
-      <span id="spinner-observations" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-observations" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="manage-groups-tab" href="#manage-groups" role="tab" data-toggle="tab"
+    <a class="nav-link" id="manage-groups-tab" href="#manage-groups" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-observing-runs-tab' target.id %}" hx-target="#manage-groups" hx-trigger="click once" hx-indicator="#spinner-observing-runs">Observing Runs
-      <span id="spinner-observing-runs" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-observing-runs" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="detail-tab" href="#detail" role="tab" data-toggle="tab"
+    <a class="nav-link" id="detail-tab" href="#detail" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-details-tab' target.id %}" hx-target="#detail" hx-trigger="click once" hx-indicator="#spinner-detail">Details
-      <span id="spinner-detail" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-detail" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="upload-data-tab" href="#upload-data" role="tab" data-toggle="tab"
+    <a class="nav-link" id="upload-data-tab" href="#upload-data" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-upload-data-tab' target.id %}" hx-target="#upload-data" hx-trigger="click once" hx-indicator="#spinner-upload-data">Upload Data
-      <span id="spinner-upload-data" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-upload-data" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="manage-data-tab" href="#manage-data" role="tab" data-toggle="tab"
+    <a class="nav-link" id="manage-data-tab" href="#manage-data" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-manage-data-tab' target.id %}" hx-target="#manage-data" hx-trigger="click once" hx-indicator="#spinner-manage-data">Batch Download
-      <span id="spinner-manage-data" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-manage-data" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="images-tab" href="#images" role="tab" data-toggle="tab"
+    <a class="nav-link" id="images-tab" href="#images" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-images-tab' target.id %}" hx-target="#images" hx-trigger="click once" hx-indicator="#spinner-images">Images
-      <span id="spinner-images" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-images" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="photometry-tab" href="#photometry" role="tab" data-toggle="tab"
+    <a class="nav-link" id="photometry-tab" href="#photometry" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-photometry-tab' target.id %}" hx-target="#photometry" hx-trigger="click once" hx-indicator="#spinner-photometry">Photometry
-      <span id="spinner-photometry" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-photometry" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="spectroscopy-tab" href="#spectroscopy" role="tab" data-toggle="tab"
+    <a class="nav-link" id="spectroscopy-tab" href="#spectroscopy" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-spectroscopy-tab' target.id %}" hx-target="#spectroscopy" hx-trigger="click once" hx-indicator="#spinner-spectroscopy">Spectroscopy
-      <span id="spinner-spectroscopy" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-spectroscopy" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
 </ul>

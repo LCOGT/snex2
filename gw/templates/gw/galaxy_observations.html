@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 static gw_tags targets_extras custom_code_tags %}
+{% load django_bootstrap5 static gw_tags targets_extras custom_code_tags %}
 {% block title %}Galaxy Observations{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -18,11 +18,11 @@
 </nav>
 <div class="row">
   <div class="col-md-6">
-    <span class="float-left">{{ galaxy_count }} Galaxies &nbsp;</span>
+    <span class="float-start">{{ galaxy_count }} Galaxies &nbsp;</span>
     {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
   </div>
   <div class="col-md-6">
-    <span class="float-right"><a href="{% url 'nonlocalizedevents:detail' superevent_index %}">View this SuperEvent</a></span>
+    <span class="float-end"><a href="{% url 'nonlocalizedevents:detail' superevent_index %}">View this SuperEvent</a></span>
   </div>
 </div>
 <table class="table">

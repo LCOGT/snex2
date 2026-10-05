@@ -1,4 +1,4 @@
-{% load bootstrap4 %}
+{% load django_bootstrap5 %}
 
 <form method="POST" action="{% url 'tom_dataproducts:share_all' tg_pk=target.id %}" enctype="multipart/form-data" id="spectroscopy-data-share-form">
   {% csrf_token %}
@@ -14,7 +14,7 @@
       hx-swap="outerHTML">
       <td colspan="2" style="text-align: center; padding: 30px; color: #999;">
         <div class="spinner-border spinner-border-sm" role="status" style="margin-right: 10px;">
-          <span class="sr-only">Loading...</span>
+          <span class="visually-hidden">Loading...</span>
         </div>
         Loading spectrum for {{ spectrum_meta.time }} ({{ spectrum_meta.telescope }} - {{ spectrum_meta.instrument }})...
       </td>
@@ -26,17 +26,17 @@
   </table>
   <div class="card mt-4 mb-4">
     <div class="card-header d-flex align-items-center">
-        <span>Share selected spectra <span class="text-muted ml-2" id="selected-spectra-count">(none selected)</span></span>
-        <span class="ml-4 d-inline-flex align-items-center">
+        <span>Share selected spectra <span class="text-muted ms-2" id="selected-spectra-count">(none selected)</span></span>
+        <span class="ms-4 d-inline-flex align-items-center">
             <input type="checkbox" id="select-all-spectra" onchange="select_all_spectra(this.checked)">
-            <label class="form-check-label ml-1 mb-0" for="select-all-spectra">Select all</label>
+            <label class="form-check-label ms-1 mb-0" for="select-all-spectra">Select all</label>
         </span>
     </div>
     <div class="card-body">
     {% if sharing_destinations %}
         {% bootstrap_field target_data_share_form.share_title %}
         {% bootstrap_field target_data_share_form.share_message %}
-        <div class="form-row align-items-end">
+        <div class="row g-2 align-items-end">
             <div class="col-sm-5">
                 {% bootstrap_field target_data_share_form.share_destination %}
             </div>

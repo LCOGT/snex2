@@ -1,4 +1,4 @@
-{% load static bootstrap4 custom_code_tags gw_tags %}
+{% load static django_bootstrap5 custom_code_tags gw_tags %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -14,7 +14,8 @@
     <link rel="icon" type="image/x-icon" href="{% static 'tom_common/img/favicon-32.ico' %}" sizes="32x32" />
     <link rel="icon" type="image/x-icon" href="{% static 'tom_common/img/favicon-16.ico' %}" sizes="16x16" />
 
-    {% bootstrap_javascript jquery='True' %}
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    {% bootstrap_javascript %}
     <script src="{% static 'tom_common/js/htmx.min.js' %}" defer></script>
 
     <title>SNEX 2.0 | {% block title %}{% endblock %}</title>
@@ -22,17 +23,17 @@
   <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
     <nav class="navbar navbar-expand-md navbar-dark fixed-top" style="padding: 10px;">
       <a class="navbar-brand" href="/"><img src="{% static 'tom_common/img/logo-color-cropped.png' %}" class="img-fluid">SNEx 2.0</a>
-      <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
 
       <div class="collapse navbar-collapse" id="navbarsExampleDefault">
-        <ul class="navbar-nav mr-auto">
+        <ul class="navbar-nav me-auto">
           <li class="nav-item {% if request.resolver_match.url_name == 'home' %}active{% endif %}">
-            <a class="nav-link" href="/">Home <span class="sr-only">(current)</span></a>
+            <a class="nav-link" href="/">Home <span class="visually-hidden">(current)</span></a>
           </li>
           <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle" data-toggle="dropdown">Targets</a>
+            <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown">Targets</a>
             <ul class="dropdown-menu">
               <li class="nav-item {% if request.resolver_match.namespace == 'targets' %}active{% endif %}">
                 <a class="nav-link" href="{% url 'targets:list' %}">Targets</a>
@@ -48,10 +49,10 @@
           </li>
 
 	  <li class="nav-item dropdown">
-	    <a class="nav-link dropdown-toggle" data-toggle="dropdown">Alerts</a>
+	    <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown">Alerts</a>
 	    <ul class="dropdown-menu">
-              <li class="nav-item {% if request.resolver_match.namespace == 'alerts' %}active{% endif %}">
-		<a class="nav-link" href="{% url 'alerts:list' %}">Make a Query</a>
+              <li class="nav-item {% if request.resolver_match.namespace == 'dataservices' %}active{% endif %}">
+		<a class="nav-link" href="{% url 'dataservices:query_list' %}">Make a Query</a>
 		<a class="nav-link" href="{% url 'broker-targets' %}">Automatic Filters</a>
               </li>
 	    </ul>
@@ -83,7 +84,7 @@
             </form>
         </div>
     </li>
-        <ul class="navbar-nav ml-auto">
+        <ul class="navbar-nav ms-auto">
         {% if user.is_authenticated %}
         {% include "tom_common/partials/navbar_timebars.html" %}
         {% endif %}
@@ -95,8 +96,10 @@
     <main role="main" class="container">
       {% bootstrap_messages %}
       <div class="content">
+        {% block content_container %}
         {% block content %}
         {% endblock %}
+        {% endblock content_container %}
       </div>
     </main>
 

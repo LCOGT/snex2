@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 static targets_extras custom_code_tags %}
+{% load django_bootstrap5 static targets_extras custom_code_tags %}
 {% block title %}Observing Runs{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -34,7 +34,7 @@
     {% for group in object_list|upcoming_observing_runs %}
     <tr>
       <td>
-        <button class="btn btn-primary" data-toggle="collapse" data-target="#show-both-{{group.name}}" aria-expanded="true">+</button>
+        <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#show-both-{{group.name}}" aria-expanded="true">+</button>
         <a href="{% url 'targets:list' %}?targetlist__name={{ group.id }}" name="targetlist__name" title="View Group">{{ group.name }}</a>
       </td>
       <td valign="middle"><div id="targetCount-{{ group.id }}">{{ group.targets.count }}</div></td>
@@ -83,7 +83,7 @@
       {% endfor %}
   </tbody>
 </table>
-<button class="btn btn-primary" data-toggle="collapse" data-target="#div-old-runs" aria-expanded="true">Show old observing runs</button>
+<button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#div-old-runs" aria-expanded="true">Show old observing runs</button>
 <table class="table table-striped collapse" id="div-old-runs">
   <thead>
     <tr>

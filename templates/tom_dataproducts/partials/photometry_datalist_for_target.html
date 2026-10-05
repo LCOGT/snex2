@@ -1,4 +1,4 @@
-{% load bootstrap4 %}
+{% load django_bootstrap5 %}
 {% load tom_common_extras %}
 
 <form method="POST" action="{% url 'tom_dataproducts:share_all' tg_pk=target.id %}" enctype="multipart/form-data" id="photometry-data-share-form">
@@ -58,20 +58,20 @@
         {% if not target_share %}
             <div class="card">
                 <div class="card-header">
-                    Share Selected Data <span class="text-muted ml-2" id="selected-phot-count">(none selected)</span>
+                    Share Selected Data <span class="text-muted ms-2" id="selected-phot-count">(none selected)</span>
                 </div>
                 {% if sharing_destinations %}
-                    <div class="form-row" style="padding-inline:1rem">
+                    <div class="row g-2" style="padding-inline:1rem">
                         <div class="col-sm-12">
                             {% bootstrap_field target_data_share_form.share_title %}
                         </div>
                     </div>
-                    <div class="form-row" style="padding-inline:1rem">
+                    <div class="row g-2" style="padding-inline:1rem">
                         <div class="col-sm-12">
                             {% bootstrap_field target_data_share_form.share_message %}
                         </div>
                     </div>
-                    <div class="form-row" style="padding-inline:1rem">
+                    <div class="row g-2" style="padding-inline:1rem">
                         <div class="col-sm-4">
                             {% bootstrap_field target_data_share_form.share_destination %}
                         </div>

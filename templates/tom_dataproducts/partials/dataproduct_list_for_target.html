@@ -1,32 +1,32 @@
-{% load bootstrap4 %}
+{% load django_bootstrap5 %}
 {% load custom_code_tags %}
 {% include 'tom_dataproducts/partials/js9_scripts.html' %}
 <h4>Data</h4>
 <div class="row mb-3 bg-light p-3 rounded">
   <div class="col-md-3">
-    <label for="startDateFilter" class="font-weight-bold">Start Date:</label>
+    <label for="startDateFilter" class="fw-bold">Start Date:</label>
     <input type="date" id="startDateFilter" class="form-control product-filter" value="{{ date_min }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-3">
-    <label for="endDateFilter" class="font-weight-bold">End Date:</label>
+    <label for="endDateFilter" class="fw-bold">End Date:</label>
     <input type="date" id="endDateFilter" class="form-control product-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-2">
-    <label for="telescopeFilter" class="font-weight-bold">Telescope:</label>
+    <label for="telescopeFilter" class="fw-bold">Telescope:</label>
     <select id="telescopeFilter" class="form-control product-filter">
       <option value="">-- All --</option>
       {% for t in telescopes %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
     </select>
   </div>
   <div class="col-md-2">
-    <label for="instrumentFilter" class="font-weight-bold">Instrument:</label>
+    <label for="instrumentFilter" class="fw-bold">Instrument:</label>
     <select id="instrumentFilter" class="form-control product-filter">
       <option value="">-- All --</option>
       {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
     </select>
   </div>
   <div class="col-md-2 d-flex align-items-end">
-    <button type="button" id="clearFilters" class="btn btn-secondary btn-block">Clear Filters</button>
+    <button type="button" id="clearFilters" class="btn btn-secondary w-100">Clear Filters</button>
   </div>
 </div>
 <form action="{% url 'custom_code:bulk-download-dataproducts' %}" method="POST" id="bulkDownloadForm">
@@ -40,7 +40,7 @@
     </select>
     <button type="submit" class="btn btn-success" id="bulkDownloadSubmit">Download</button>
   </div>
-  <span class="text-muted ml-2">Download spectra as a filetype if available</span>
+  <span class="text-muted ms-2">Download spectra as a filetype if available</span>
   <table class="table table-striped" id="dataproductsTable">
     <thead>
       <tr>
