@@ -1189,10 +1189,14 @@ def fit_lightcurve_view(request):
     target = Target.objects.get(id=target_id)
     user_id = request.GET.get('user_id', None)
     user = User.objects.get(id=user_id)
+    subtracted = request.GET.get('subtracted') == 'true'
+    if request.GET.get('plot_only'):
+        plot = custom_code_tags.lightcurve_with_extras(target, user, subtracted)['plot']
+        return HttpResponse(json.dumps({'lightcurve_plot': plot}), content_type='application/json')
     filt = request.GET.get('filter', None)
     days = float(request.GET.get('days', 20))
 
-    fit = custom_code_tags.lightcurve_fits(target, user, filt, days)
+    fit = custom_code_tags.lightcurve_fits(target, user, filt, days, subtracted)
     lightcurve_plot = fit['plot']
     fitted_max = fit['max']
     max_mag = fit['mag']
