@@ -1829,25 +1829,25 @@ class TargetFilterForm(forms.Form):
                         Row(
                             Column('apply_name_filter', css_class='col-auto'),
                             Column('target_name',         css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_ra_filter', css_class='col-auto'),
                             Column('min_ra',           css_class='col'),
                             Column('max_ra',           css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_mag_bright_filter', css_class='col-auto'),
                             Column('mag_bright_mode',         css_class='col-4'),
                             HTML('<div class="col-auto text-center align-self-center">&lt;</div>'),
                             Column('mag_bright_threshold',    css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         Row(
                             Column('apply_proposal_filter', css_class='col-auto'),
                             Column('proposal_choice',       css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
 
                         css_class='col-lg-4 col-md-6 mb-3'
@@ -1860,22 +1860,22 @@ class TargetFilterForm(forms.Form):
                             Column('apply_dec_filter', css_class='col-auto'),
                             Column('min_dec',          css_class='col'),
                             Column('max_dec',          css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_class_filter', css_class='col-auto'),
                             Column('class_name',         css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_class_exclude_filter', css_class='col-auto'),
                             Column('class_exclude_name',         css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         Row( 
                             Column('apply_spectra_count_filter', css_class='col-auto'),
                             Column('min_spectra_points',         css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         css_class='col-lg-4 col-md-6 mb-3'
                     ),
@@ -1885,39 +1885,39 @@ class TargetFilterForm(forms.Form):
                             Column('apply_redshift_filter', css_class='col-auto'),
                             Column('min_red',               css_class='col'),
                             Column('max_red',               css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_date_created_filter', css_class='col-auto'),
                             Column('date_created_min',          css_class='col'),
                             Column('date_created_max',          css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         Row(
                             Column('apply_photometry_count_filter', css_class='col-auto'),
                             Column('min_photometry_points',         css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_recent_date_filter', css_class='col-auto'),
                             Column('recent_date_kind',         css_class='col-4'),
                             HTML('<div class="col-auto text-center align-self-center">≥</div>'),
                             Column('recent_date_threshold',    css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         Row(
                             Column('apply_recent_date_before_filter', css_class='col-auto'),
                             Column('recent_date_before_kind',         css_class='col-4'),
                             HTML('<div class="col-auto text-center align-self-center">≤</div>'),
                             Column('recent_date_before_threshold',    css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
 
                         Row(
                             Column('apply_recent_obs_filter', css_class='col-auto'),
                             Column('recent_obs_kind',         css_class='col-4'),
                             Column('recent_obs_days',         css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         css_class='col-lg-4 col-md-6 mb-3'
                     ),

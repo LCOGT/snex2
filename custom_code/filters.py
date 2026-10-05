@@ -30,14 +30,14 @@ class TNSTargetForm(forms.Form):
                 Div(PrependedText('name', 'Name like'), css_class='col-md-4'),
                 Div(PrependedText('source_group', 'Discovered by'), css_class='col-md-4'),
                 Div('in_tess', css_class='col-md-4'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
             Div(
                 Div(PrependedText('disc_mag', 'Discovery mag brighter than',
                     placeholder='19', style='color: black;'), css_class='col-md-6'),
                 Div(PrependedAppendedText('lnd_jd', 'Last non-detection within the last',
                     'days', placeholder='5', style='color: black;'), css_class='col-md-6'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
         )
 
@@ -85,7 +85,7 @@ class BrokerTargetForm(forms.Form):
                 Div(PrependedText('name', 'Name like'), css_class='col-md-4'),
                 Div(PrependedText('stream_name', 'Name of Stream'), css_class='col-md-4'),
                 Div(PrependedText('status', 'Status'), css_class='col-md-4'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
         )
 
