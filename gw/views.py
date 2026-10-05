@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.http import HttpResponse
 from django.db import transaction
 from django.db.models import F, Q
@@ -6,12 +5,9 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import Group
 from django.views.generic import ListView
-from django.views.generic.base import TemplateView
 from guardian.shortcuts import assign_perm
 import json
 import os
-from astropy.io import fits
-import sep
 from datetime import datetime, timedelta
 from tom_nonlocalizedevents.models import EventSequence
 from gw.models import GWFollowupGalaxy
@@ -20,18 +16,12 @@ from tom_common.hooks import run_hook
 from tom_targets.models import Target
 from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
-from tom_dataproducts.models import ReducedDatum
-from custom_code.utils import format_form_errors
+from tom_dataproducts.models import DataProduct, ReducedDatum
+from custom_code.thumbnails import cached_frame
+from custom_code.utils import format_form_errors, unsubtracted_q
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-def pipeline_image(path):
-    local = os.path.join(settings.FITS_DIR, path.replace(settings.LSC_DIR, '').replace('/supernova/data/', '').lstrip('/'))
-    return local if os.path.isfile(local) else local + '.fz'
-
-BASE_DIR = settings.BASE_DIR
 
 
 class GWFollowupGalaxyListView(LoginRequiredMixin, ListView):
@@ -60,7 +50,7 @@ class GWFollowupGalaxyListView(LoginRequiredMixin, ListView):
         return context
 
 
-class EventSequenceGalaxiesTripletView(LoginRequiredMixin, ListView):
+class EventSequenceGalaxiesImagesView(LoginRequiredMixin, ListView):
 
     template_name = 'gw/galaxy_observations.html'
     paginate_by = 5
@@ -89,70 +79,36 @@ class EventSequenceGalaxiesTripletView(LoginRequiredMixin, ListView):
 
         rows = []
         for galaxy in context['object_list']:
-            triplets = []
-            subtractions = ReducedDatum.objects.filter(
-                target__in=Target.objects.filter(Q(gwfollowupgalaxy_id=galaxy.id) | Q(name=galaxy.catalog_objname)), data_type='photometry',
-                value__background_subtracted=True, value__has_key='template_image').order_by('timestamp')
-            for datum in subtractions:
-                diff_file = pipeline_image(datum.value['difference_image'])
-                original = os.path.join(os.path.dirname(diff_file), datum.value['basename'] + '.fits')
-                triplets.append({
+            images = []
+            photometry = ReducedDatum.objects.filter(
+                target__in=Target.objects.filter(Q(gwfollowupgalaxy_id=galaxy.id) | Q(name=galaxy.catalog_objname)),
+                data_type='photometry', value__has_key='basename')
+            subtractions = {datum.value['basename']: datum.value for datum in photometry.filter(value__background_subtracted=True)}
+            for datum in photometry.filter(unsubtracted_q()).order_by('timestamp'):
+                try:
+                    filenames = [cached_frame(datum.value['basename'])]
+                except OSError:
+                    continue
+                subtraction = subtractions.get(datum.value['basename'], {})
+                for key in ('template_image', 'difference_image'):
+                    if not subtraction.get(key):
+                        continue
+                    product = DataProduct.objects.filter(
+                        product_id=os.path.basename(subtraction[key]).split('.fits')[0], data_product_type=key).first()
+                    if product and product.data and os.path.isfile(product.data.path):
+                        filenames.append(product.data.path)
+                images.append({
                     'obsdate': datum.timestamp.date(),
                     'filter': datum.value.get('filter'),
                     'exposure_time': datum.value.get('exptime'),
-                    'original': {'filename': original if os.path.isfile(original) else original + '.fz'},
-                    'template': {'filename': pipeline_image(datum.value['template_image'])},
-                    'diff': {'filename': diff_file},
+                    'filenames': filenames,
                 })
-            if triplets:
-                rows.append({'galaxy': galaxy, 'triplets': triplets})
+            if images:
+                rows.append({'galaxy': galaxy, 'images': images})
 
         context['rows'] = rows
 
         return context
-
-#this is not yet implemented
-class GWFollowupGalaxyTripletView(LoginRequiredMixin, TemplateView):
-
-    template_name = 'gw/galaxy_observations_individual.html'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        galaxy = GWFollowupGalaxy.objects.get(id=self.kwargs['id'])
-        context['galaxy'] = galaxy
-
-        loc = galaxy.eventlocalization
-        context['superevent_id'] = loc.nonlocalizedevent.event_id 
-        context['superevent_index'] = loc.nonlocalizedevent.id
-
-        rows = []
-
-        #TODO: Populate this dynamically
-
-        triplets = [{
-            'obsdate': '2023-04-19',
-            'filter': 'g',
-            'exposure_time': 200,
-            'original': {'filename': os.path.join(BASE_DIR, settings.FITS_DIR,'gw','obs.fits')},
-            'template': {'filename': os.path.join(BASE_DIR, settings.FITS_DIR,'gw','ref.fits')},
-            'diff': {'filename': os.path.join(BASE_DIR, settings.FITS_DIR,'gw','sub.fits')}
-        }]
-
-        ### Run SExtractor to get sources to plot
-        for triplet in triplets:
-            hdu = fits.open(triplet['diff']['filename'])
-            img = hdu[0].data
-            hdu.close()
-
-            bkg = sep.Background(img.byteswap().newbyteorder())
-            sources = sep.extract(img-bkg, 5.0, err=bkg.globalrms)
-            triplet['sources'] = sources
-
-        context['triplets'] = triplets
-
-        return context
-
 
 @login_required
 def submit_galaxy_observations_view(request):

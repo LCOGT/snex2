@@ -22,11 +22,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #only environment variables needed for bare metal install
 DATA_DIR = os.getenv('SNEX2_DATADIR','data/')
-SN_DIR = os.getenv('SUPERNOVA_DIR','/supernova/')
 
 THUMB_DIR = os.path.join(DATA_DIR,'thumbs')
-FITS_DIR = os.path.join(DATA_DIR,'fits')
-LSC_DIR = os.path.join(SN_DIR,'data','lsc')
 
 OBS_WINDOW_MINIMUM = 24 # Minimum observation window in hours
 
@@ -435,6 +432,8 @@ DATA_PRODUCT_TYPES = {
     'image_file': ('image_file', 'Image File'),
     'raw_spectrum': ('raw_spectrum', 'Raw Spectrum'),
     'photometric_standard': ('photometric_standard', 'Photometric Standard'),
+    'difference_image': ('difference_image', 'Difference Image'),
+    'template_image': ('template_image', 'Template Image'),
 }
 
 DATA_PROCESSORS = {

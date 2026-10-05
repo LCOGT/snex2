@@ -90,11 +90,12 @@ class SNExDataProductViewSet(DataProductViewSet):
 
     def create(self, request, *args, **kwargs):
         data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
-        raw = data.get('data_product_type') == 'raw_spectrum'
+        image = data.get('data_product_type') in ('difference_image', 'template_image')
+        raw = data.get('data_product_type') == 'raw_spectrum' or image
         file, thumbnail = request.FILES.get('file'), request.FILES.get('thumbnail')
         if file:
             data['data'] = file
-        elif not raw:
+        elif not raw or image:
             return Response({'file': 'This field is required.'}, status=status.HTTP_400_BAD_REQUEST)
         groups = data.pop('groups', [])
         try:

@@ -609,7 +609,8 @@ def registration_who_you_are(user):
 def snex_dataproduct_list(context, target):
     dataproduct_context = dataproduct_list_for_target(context, target)
     if not settings.TARGET_PERMISSIONS_ONLY:
-        dataproduct_context['products'] = viewable_dataproducts(context['request'].user, target.dataproduct_set.all())
+        dataproduct_context['products'] = viewable_dataproducts(
+            context['request'].user, target.dataproduct_set.exclude(data_product_type__in=('difference_image', 'template_image')))
     telescopes, instruments = set(), set()
     for p in dataproduct_context['products']:
         rde = p.reduceddatumextra_set.first()

@@ -46,7 +46,7 @@
 	      )</span><br>
       	      <span>(Galaxy Observations for Update
 	      {% for sequence in event.sequences.all %}
-	      <a href="{% url 'nonlocalizedevents-sequence-triplets' sequence.id %}"> {{ sequence.sequence_id }} </a>
+	      <a href="{% url 'nonlocalizedevents-sequence-images' sequence.id %}"> {{ sequence.sequence_id }} </a>
 	      {% endfor %}
 	      )</span><br>
             </td>
