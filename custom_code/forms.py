@@ -122,28 +122,6 @@ class SNEx2UserCreationForm(UserCreationForm):
 
             return user
 
-    # Also needs to be overridden in case any clean method are implemented
-    def clean(self):
-        super().clean()
-
-        return self.cleaned_data
-
-    # is_valid sets the cleaned_data attribute so we need to override that too
-    def is_valid(self):
-        is_valid = True
-        is_valid &= super().is_valid()
-
-        return is_valid
-
-    # In case you're using the form for updating, you need to do this too
-    # because nothing will be saved if you only update field in the inner formset
-    def has_changed(self):
-        has_changed = False
-
-        has_changed |= super().has_changed()
-
-        return has_changed
-
 
 class SNEx2RegistrationApprovalForm(RegistrationApprovalForm):
     """
@@ -175,76 +153,6 @@ class SNEx2RegistrationApprovalForm(RegistrationApprovalForm):
         return user
 
 
-class ReducerGroupWidget(forms.widgets.MultiWidget):
-    def __init__(self, attrs=None):
-        choices = [('LCO', 'LCO'), ('UC Davis', 'UC Davis'), ('Arizona', 'Arizona')]
-        help_text="Or add another group"
-        widget = (forms.widgets.RadioSelect(choices=choices),
-                  forms.widgets.TextInput(attrs={'placeholder': help_text})
-                )
-        super(ReducerGroupWidget, self).__init__(widget, attrs=attrs)
-
-    def decompress(self, value):
-        if value:
-            if value in [x[0] for x in self.choices]:
-                return [value, ""]
-            else:
-                return ["", value]
-        else:
-            return ["", ""]
-
-
-class InstrumentWidget(forms.widgets.MultiWidget):
-    def __init__(self, attrs=None):
-        choices = [('LCO', 'LCO'), ('Swift', 'Swift'), ('Gaia', 'Gaia'), ('TESS', 'TESS')]
-        help_text="Or add another instrument"
-        widget = (forms.widgets.RadioSelect(choices=choices),
-                  forms.widgets.TextInput(attrs={'placeholder': help_text})
-                )
-        super(InstrumentWidget, self).__init__(widget, attrs=attrs)
-
-    def decompress(self, value):
-        if value:
-            if value in [x[0] for x in self.choices]:
-                return [value, ""]
-            else:
-                return ["", value]
-        else:
-            return ["", ""]
-
-
-class TemplateSourceWidget(forms.widgets.MultiWidget):
-    def __init__(self, attrs=None):
-        choices = [('LCO', 'LCO'), ('SDSS', 'SDSS')]
-        help_text="Other"
-        widget = (forms.widgets.RadioSelect(choices=choices),
-                  forms.widgets.TextInput(attrs={'placeholder': help_text})
-                )
-        super(TemplateSourceWidget, self).__init__(widget, attrs=attrs)
-
-    def decompress(self, value):
-        if value:
-            if value in [x[0] for x in self.choices]:
-                return [value, ""]
-            else:
-                return ["", value]
-        else:
-            return ["", ""]
-
-
-class MultiField(forms.MultiValueField):
-
-    def __init__(self, required=False, widget=None, label=None, initial=None, help_text=None, choices=None):
-        field = (forms.ChoiceField(choices=choices, required=False), forms.CharField(required=False))
-        super(MultiField, self).__init__(required=False, fields=field, widget=widget, label=label, initial=initial, help_text=help_text)
-
-
-    def compress(self, data_list):
-        if not data_list:
-            raise ValidationError('Select choice or enter text for this field')
-        return data_list[0] or data_list[1]
-
-
 class CustomDataProductUploadForm(DataProductUploadForm):
 
     data_product_type = forms.ChoiceField(
@@ -255,19 +163,6 @@ class CustomDataProductUploadForm(DataProductUploadForm):
 
     ### Photometry fields:
     
-    photometry_type = forms.ChoiceField(
-        choices=[('Aperture', 'Aperture'), 
-                 ('PSF', 'PSF'),
-                 ('Mixed', 'Mixed')
-        ],
-        widget=forms.RadioSelect(),
-        required=False
-    )
-
-    instrument = forms.CharField(
-        required = False
-    )
-
     background_subtracted = forms.BooleanField(
         required=False
     )
@@ -306,21 +201,9 @@ class CustomDataProductUploadForm(DataProductUploadForm):
         required=False
     )
 
-    used_in = forms.ModelChoiceField(
-        queryset=Papers.objects.all(),
-        required=False
-    )
-
     final_reduction = forms.BooleanField(
         required=False
     )
-
-    def __init__(self, *args, **kwargs):
-        super(CustomDataProductUploadForm, self).__init__(*args, **kwargs)
-        initial_args = kwargs.get('initial', '')
-        if initial_args:
-            target = initial_args.get('target', '')
-            self.fields['used_in'] = forms.ModelChoiceField(queryset=Papers.objects.filter(target=target), required=False)
 
 
 class PapersForm(forms.ModelForm):

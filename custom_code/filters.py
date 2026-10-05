@@ -1,17 +1,13 @@
-from custom_code.models import TNSTarget, ScienceTags, TargetTags, BrokerTarget
-from tom_targets.models import Target, TargetList
+from custom_code.models import TNSTarget, BrokerTarget
 from tom_dataproducts.filters import ReducedDatumFilter
 from custom_code.utils import unsubtracted_q
 import django_filters
-from django.db.models import ExpressionWrapper, FloatField, Q
-from math import radians
-from django.db.models.functions.math import ACos, Cos, Radians, Pi, Sin
-from django.db.models.functions import Lower
+from django.db.models import Q
 from astropy.time import Time
 from datetime import datetime
 from django import forms
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit, Layout, Div, HTML
+from crispy_forms.layout import Submit, Layout, Div
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
 class SNExReducedDatumFilter(ReducedDatumFilter):

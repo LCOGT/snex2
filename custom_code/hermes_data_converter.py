@@ -1,4 +1,3 @@
-import json
 
 from tom_dataproducts.alertstreams.hermes import HermesDataConverter
 from custom_code.models import ReducedDatumExtra

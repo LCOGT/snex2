@@ -4,26 +4,15 @@ import logging
 from astropy.time import Time
 import json
 
-from datetime import datetime, date
-import numpy as np
-from django.contrib.auth.models import User
+from datetime import date
 from django.conf import settings
-from custom_code.scheduling import save_comments
-from custom_code.utils import measured, unsubtracted_q
+from custom_code.utils import measured, photometry_data_type, unsubtracted_q
 
 from collections import OrderedDict
 from guardian.shortcuts import get_objects_for_user
 from tom_dataproducts.models import ReducedDatum
 
 logger = logging.getLogger(__name__)
-
-
-instrument_dict = {'2M0-FLOYDS-SCICAM': 'floyds',
-                    '1M0-SCICAM-SINISTRO': 'sinistro',
-                    '2M0-SCICAM-MUSCAT': 'muscat',
-                    '0M4-SCICAM-SBIG': 'sbig0m4',
-                    '0M4-SCICAM-QHY600': 'qhy',
-                    }
 
 
 def _get_tns_params(target):
@@ -105,8 +94,9 @@ def _get_tns_params(target):
     return response_data
         
 def find_images(target, user, allimages=False):
-    datums = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename').filter(unsubtracted_q())
-    if not settings.TARGET_PERMISSIONS_ONLY:
+    datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target),
+                                         value__has_key='basename').filter(unsubtracted_q())
+    if not settings.TARGET_PERMISSIONS_ONLY and not target.standard:
         datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
 
     frames = OrderedDict()
