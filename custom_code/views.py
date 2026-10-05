@@ -42,7 +42,6 @@ from django_comments.models import Comment
 from django_filters.views import FilterView
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
-from guardian.mixins import PermissionListMixin
 from rest_framework.authtoken.models import Token
 from guardian.shortcuts import assign_perm, get_groups_with_perms, get_objects_for_user, get_users_with_perms, remove_perm
 from tom_common.views import UserUpdateView
@@ -65,7 +64,7 @@ from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import cached_frame, make_thumb
-from custom_code.target_names import TNS_PREFIX_RE
+from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSSubmitView
 from custom_code.utils import datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
@@ -144,12 +143,19 @@ class TargetListView(TOMTargetListView):
         return queryset.exclude(standard=True)
 
 def target_redirect_view(request):
-    search_entry = request.GET['name'].strip()
+    search_entry = request.GET.get('name', '').strip()
     logger.info('Redirecting search for %s', search_entry)
+    if not search_entry:
+        return redirect('/targets/')
 
+    coord = None
     if ':' in search_entry or '.' in search_entry:
-        ra, dec = search_entry.replace(',', ' ').split()[:2]
-        coord = SkyCoord(ra, dec, unit=(u.hourangle if ':' in ra else u.deg, u.deg))
+        try:
+            ra, dec = search_entry.replace(',', ' ').split()[:2]
+            coord = SkyCoord(ra, dec, unit=(u.hourangle if ':' in ra else u.deg, u.deg))
+        except ValueError:
+            coord = None
+    if coord is not None:
         ra, dec = coord.ra.deg, coord.dec.deg
         radius = 1.0 / 60.0
         matches = list(Target.matches.match_cone_search(ra, dec, radius * 3600)[:2])
@@ -374,7 +380,6 @@ class CustomDataProductUploadView(DataProductUploadView):
                 rdextra_value = {'data_product_id': int(dp.id)}
                 if dp_type == 'photometry':
                     extras = {'reduction_type': 'manual'}
-                    rdextra_value['photometry_type'] = form.cleaned_data['photometry_type']
                     background_subtracted = form.cleaned_data['background_subtracted']
                     if background_subtracted:
                         extras['background_subtracted'] = True
@@ -395,9 +400,6 @@ class CustomDataProductUploadView(DataProductUploadView):
                 elif dp_type == 'photometry' and reducer_group != 'LCO':
                     rdextra_value['reducer_group'] = reducer_group
 
-                used_in = form.cleaned_data['used_in']
-                if used_in:
-                    rdextra_value['used_in'] = int(used_in.id)
                 rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
                 reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value)
 
@@ -498,7 +500,8 @@ class PaperCreateView(FormView):
                 author_first_name=first_name,
                 author_last_name=last_name,
                 status=status,
-                description=description
+                description=description,
+                created_by=self.request.user
             )
         paper.save()
         
@@ -511,9 +514,14 @@ class PaperUpdateView(FormView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        self.paper = get_object_or_404(Papers, pk=self.kwargs['pk'])
         kwargs['instance'] = self.paper
         return kwargs
+
+    def dispatch(self, request, *args, **kwargs):
+        self.paper = get_object_or_404(Papers, pk=kwargs['pk'])
+        if not self.paper.can_be_edited_by(request.user):
+            return HttpResponseForbidden('Only the user who added this paper or an admin can edit it')
+        return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
         form.save()
@@ -523,6 +531,8 @@ class PaperUpdateView(FormView):
 class PaperDeleteView(View):
     def post(self, request, pk):
         paper = get_object_or_404(Papers, pk=pk)
+        if not paper.can_be_edited_by(request.user):
+            return HttpResponseForbidden('Only the user who added this paper or an admin can delete it')
         target_id = paper.target.id
         paper.delete()
         return HttpResponseRedirect('/targets/{}/'.format(target_id))
@@ -1086,6 +1096,10 @@ def load_manage_data_tab_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_data.html')
 
 
+def load_upload_data_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_upload_data.html')
+
+
 def load_manage_photometry_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_photometry.html')
 
@@ -1211,8 +1225,10 @@ def fit_lightcurve_view(request):
 def save_lightcurve_params_view(request):
 
     target_id = request.GET.get('target_id', None)
-    target = Target.objects.get(id=target_id)
+    target = get_object_or_404(targets_for_user(request.user, Target.objects.all(), 'change_target'), id=target_id)
     key = request.GET.get('key', None)
+    if key not in ('target_description', 'last_nondetection', 'first_detection', 'maximum'):
+        return HttpResponseBadRequest('Unknown light curve parameter')
 
     if key == 'target_description':
         value = request.GET.get('value', None)
@@ -1353,16 +1369,6 @@ class BrokerTargetView(FilterView):
         return context
 
 
-def query_swift_observations_view(request):
-    target_id = request.GET['target_id']
-    t = Target.objects.get(id=target_id)
-    ra, dec = t.ra, t.dec
-
-    ### NOT CURRENTLY FUNCTIONAL
-    content_response = {'success': 'No'}
-
-    return HttpResponse(json.dumps(content_response), content_type='application/json')
-
 def query_ztf_observations_view(request):
     target_id = request.GET['target_id']
     target = Target.objects.get(id=target_id)
@@ -1382,14 +1388,20 @@ def query_ztf_observations_view(request):
 
 def make_thumbnail_view(request):
 
-    filename_dict = json.loads(request.GET['filenamedict'])
-    zoom = float(request.GET['zoom'])
-    sigma = float(request.GET['sigma'])
+    try:
+        filename_dict = json.loads(request.GET['filenamedict'])
+        zoom = float(request.GET['zoom'])
+        sigma = float(request.GET['sigma'])
+    except (KeyError, ValueError):
+        return HttpResponseBadRequest('Expected filenamedict, zoom and sigma')
 
-    if filename_dict['psfx'] < 9999 and filename_dict['psfy'] < 9999:
-        f = make_thumb([filename_dict['filename']], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
-    else:
-        f = make_thumb([filename_dict['filename']], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
+    try:
+        if filename_dict['psfx'] < 9999 and filename_dict['psfy'] < 9999:
+            f = make_thumb([filename_dict['filename']], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
+        else:
+            f = make_thumb([filename_dict['filename']], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
+    except OSError as e:
+        raise Http404(f'Could not make a thumbnail: {e}')
 
     with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:
         b64_image = base64.b64encode(imagefile.read())
@@ -1418,10 +1430,13 @@ def download_data_product_view(request, pk):
                         filename=os.path.basename(dp.data.name))
 
 def download_fits_view(request):
-    object_basename = json.loads(request.GET.get('filename'))['filename']
+    try:
+        object_basename = json.loads(request.GET['filename'])['filename']
+    except (KeyError, ValueError, TypeError):
+        return HttpResponseBadRequest('Expected a filename')
     try:
         path = cached_frame(object_basename)
-    except FileNotFoundError:
+    except OSError:
         raise Http404(f'{object_basename} not found in the LCO archive')
     return FileResponse(open(path, 'rb'), filename=object_basename+'.fits', as_attachment=True)
 
@@ -1601,9 +1616,10 @@ class SNExTNSClassifySubmitView(TNSSubmitView):
 
     def _generated_spectrum(self):
         value = self.request.POST.get('ascii_file', '')
-        if not value.startswith(GENERATED_ASCII_PREFIX) or self.request.FILES.get('ascii_file_override'):
+        spectrum_id = value[len(GENERATED_ASCII_PREFIX):]
+        if not value.startswith(GENERATED_ASCII_PREFIX) or not spectrum_id.isdigit():
             return None
-        return _spectrum_for_user(self.request, self.kwargs['pk'], int(value[len(GENERATED_ASCII_PREFIX):]))[1]
+        return _spectrum_for_user(self.request, self.kwargs['pk'], int(spectrum_id))[1]
 
     def get_initial(self):
         initial = super().get_initial()
@@ -1615,7 +1631,7 @@ class SNExTNSClassifySubmitView(TNSSubmitView):
 
     def form_valid(self, form):
         spectrum = self._generated_spectrum()
-        if spectrum is not None:
+        if spectrum is not None and not form.cleaned_data.get('ascii_file_override'):
             form.cleaned_data['ascii_file_override'] = ContentFile(spectrum_ascii(spectrum), name=spectrum_ascii_name(spectrum))
         return super().form_valid(form)
 
@@ -1630,11 +1646,15 @@ class FloydsInboxView(TemplateView):
         raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', reduceddatum__isnull=True,
                                                  target__in=Target.objects.filter(standard=False))
         for dp in raw_spectra.select_related('target').order_by('-created'):
-            info = json.loads(dp.extra_data) if dp.extra_data else {}
             img = ''
-            if dp.thumbnail:
-                with dp.thumbnail.open('rb') as f:
-                    img = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('utf-8')
+            try:
+                info = json.loads(dp.extra_data) if dp.extra_data else {}
+                if dp.thumbnail:
+                    with dp.thumbnail.open('rb') as f:
+                        img = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('utf-8')
+            except (ValueError, OSError) as e:
+                logger.warning(f'FLOYDS inbox entry {dp.product_id} is incomplete: {e}')
+                info = {}
             inbox_rows.append({'targetid': dp.target_id,
                                'targetnames': custom_code_tags.smart_name_list(dp.target),
                                'propid': info.get('propid', ''),
@@ -1649,10 +1669,6 @@ class FloydsInboxView(TemplateView):
 class AuthorshipInformation(TemplateView):
 
     template_name = 'custom_code/authorship.html'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        return context
 
 
 def download_photometry_view(request, targetid):
@@ -1964,8 +1980,8 @@ class TargetFilteringView(FormView):
                 name_q = (
                     Q(name__icontains=name)
                   | Q(aliases__name__icontains=name)
-                  | Q(name__icontains=name.lower().replace('SN ',''))
-                  | Q(aliases__name__icontains=name.lower().replace('SN ',''))
+                  | Q(name__icontains=name.lower().replace('sn ',''))
+                  | Q(aliases__name__icontains=name.lower().replace('sn ',''))
                 )
                 filters &= name_q
 
