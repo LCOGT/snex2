@@ -77,7 +77,7 @@ class SpecProcessor(SpectroscopyProcessor):
             if rd_extras.get('date_obs'):
                 date_obs = datetime.fromisoformat(str(rd_extras['date_obs']).replace(' ', 'T'))
             else:
-                date_obs = Time(datetime.now()).to_datetime
+                date_obs = datetime.now()
         
         for keyword, possibles in self.field_keywords.items():
 
@@ -120,8 +120,8 @@ class SpecProcessor(SpectroscopyProcessor):
             wav_values = np.array(wav, dtype=float)
             valid_mask = ~np.isnan(flux_values)  # keep only non-NaN flux points
             spectrum = Spectrum1D(flux=flux_values[valid_mask] * flux_constant, spectral_axis=wav_values[valid_mask] * units.Angstrom)
-            
-        rd_extras.pop('date_obs')
+
+        rd_extras.pop('date_obs', None)
 
         return spectrum, date_obs, rd_extras
 
@@ -182,8 +182,6 @@ class SpecProcessor(SpectroscopyProcessor):
             value = parts[1].strip()
             if not date_obs and 'date-obs' in comment.lower():
                 date_obs = value.split('/')[0].strip()
-            else:
-                date_obs = datetime.now()
 
             if 'facility' in comment.lower():
                 facility_name = value
@@ -199,6 +197,6 @@ class SpecProcessor(SpectroscopyProcessor):
         spectral_axis = np.array(data['wavelength']) * wavelength_units
         flux = np.array(data['flux']) * flux_constant
         spectrum = Spectrum1D(flux=flux, spectral_axis=spectral_axis)
-        rd_extras.pop('date_obs')
+        rd_extras.pop('date_obs', None)
 
-        return spectrum, Time(date_obs).to_datetime(), rd_extras
+        return spectrum, Time(date_obs or datetime.now()).to_datetime(), rd_extras

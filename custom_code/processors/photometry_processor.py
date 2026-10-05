@@ -1,3 +1,4 @@
+import math
 import mimetypes
 
 from astropy import units
@@ -48,9 +49,9 @@ class PhotometryProcessor(DataProcessor):
             time.format = 'datetime'
             value = {
                 'timestamp': time.to_datetime(timezone=utc),
-                'magnitude': datum['magnitude'],
-                'filter': datum['filter'],
-                'error': datum['error']
+                'magnitude': float(datum['magnitude']) if math.isfinite(float(datum['magnitude'])) else None,
+                'filter': str(datum['filter']),
+                'error': float(datum['error']) if math.isfinite(float(datum['error'])) else None
             }
             value.update(extras)
 

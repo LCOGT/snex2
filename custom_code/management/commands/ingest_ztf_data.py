@@ -1,6 +1,5 @@
 from django.core.management.base import BaseCommand
 import requests
-import json
 import logging
 from astropy.time import Time, TimezoneInfo
 from tom_dataproducts.models import ReducedDatum, DataProduct
@@ -52,7 +51,6 @@ def get_ztf_data(target):
         datum_extra_value = {
             'data_product_id': dp.id,
             'instrument': 'ZTF',
-            'photometry_type': 'PSF',
             'data_product_product_id': f'{ztf_name}_photometry'
         }
         rd_extra, _ = ReducedDatumExtra.objects.get_or_create(
