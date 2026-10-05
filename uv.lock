@@ -759,19 +759,6 @@ wheels = [
 ]
 
 [[package]]
-name = "crispy-bootstrap4"
-version = "2026.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-    { name = "django-crispy-forms" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5b/cc/638d36595da9fbb2c9d0be98bf6007442a65a521b614cf4645d04311b061/crispy_bootstrap4-2026.2.tar.gz", hash = "sha256:66f8f14bf9c2c16ed94243236ed253a94e5a625afa1ee64022ce29db98c6cd85", size = 34645, upload-time = "2026-02-11T22:45:05.422Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/6d/b90d601ea2449cc6b35b4b08be90fb1f6ca1baf2be383ed195f7bfa91a32/crispy_bootstrap4-2026.2-py3-none-any.whl", hash = "sha256:4b2b99dfe3e3cacb548702159462110901bd38792b650b770e50c62284ac2227", size = 23178, upload-time = "2026-02-11T22:45:04.108Z" },
-]
-
-[[package]]
 name = "crispy-bootstrap5"
 version = "2026.9"
 source = { registry = "https://pypi.org/simple" }
@@ -973,19 +960,6 @@ wheels = [
 mfa = [
     { name = "fido2" },
     { name = "qrcode" },
-]
-
-[[package]]
-name = "django-bootstrap4"
-version = "26.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "django" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/81/00/e7467e5968219a04f5aae6d810c2d8a78c3bd667e62d18c20eb439ed3b53/django_bootstrap4-26.2.tar.gz", hash = "sha256:3d277c350f77ccfd2800f1997c6e79ac05c15d614a8b114764449774a82d9307", size = 49005, upload-time = "2026-08-28T08:54:59.444Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/5f/a5d6b9119e969db6463edc924239d9d266454314d50de8020825ced59ab8/django_bootstrap4-26.2-py3-none-any.whl", hash = "sha256:309930e2e2a81bd9c88cca52d9f8ae30b68eadb5ce582629231647ffe5965085", size = 25482, upload-time = "2026-08-28T08:54:58.424Z" },
 ]
 
 [[package]]
@@ -3932,9 +3906,7 @@ source = { editable = "." }
 dependencies = [
     { name = "astropy" },
     { name = "astroquery" },
-    { name = "crispy-bootstrap4" },
     { name = "dash" },
-    { name = "django-bootstrap4" },
     { name = "django-plotly-dash" },
     { name = "dpd-static-support" },
     { name = "gevent" },
@@ -3961,9 +3933,7 @@ dev = [
 requires-dist = [
     { name = "astropy", specifier = ">=5" },
     { name = "astroquery" },
-    { name = "crispy-bootstrap4" },
     { name = "dash" },
-    { name = "django-bootstrap4" },
     { name = "django-debug-toolbar", marker = "extra == 'dev'" },
     { name = "django-plotly-dash" },
     { name = "dpd-static-support" },

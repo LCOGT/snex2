@@ -47,8 +47,6 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = TOMTOOLKIT_INSTALLED_APPS + [
-    'bootstrap4',
-    'crispy_bootstrap4',
     'tom_alerts',
     'tom_catalogs',
     'custom_code',
