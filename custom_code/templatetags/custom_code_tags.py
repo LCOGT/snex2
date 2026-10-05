@@ -1446,9 +1446,6 @@ def spectra_list(context, target):
     form = DataShareForm(initial=initial)
     form.fields['data_type'].widget = forms.HiddenInput()
 
-    sharing = getattr(settings, "DATA_SHARING", None)
-    hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
-
     spectra = get_objects_for_user(
         request.user, 'tom_dataproducts.view_reduceddatum',
         klass=ReducedDatum.objects.filter(target=target, data_type='spectroscopy')).order_by('timestamp')
@@ -1474,7 +1471,6 @@ def spectra_list(context, target):
         'spectra_metadata': spectra_metadata,
         'target_data_share_form': form,
         'sharing_destinations': form.fields['share_destination'].choices,
-        'hermes_sharing': hermes_sharing,
         'request': request,
         'user': request.user,
     }
@@ -2248,14 +2244,6 @@ def snex2_get_photometry_data(context, target, target_share=False):
             rd_data['magnitude'] = reduced_datum.value['magnitude']
             rd_data['limit'] = False
 
-        messages = []
-        for message in reduced_datum.message.all():
-            if message.exchange_status == 'published':
-                messages.append(message.exchange_status + ' to ' + message.topic)
-            else:
-                messages.append(message.exchange_status + ' from ' + message.topic)
-        rd_data['messages'] = messages
-
         data.append(rd_data)
 
     initial = {'submitter': user,
@@ -2267,15 +2255,11 @@ def snex2_get_photometry_data(context, target, target_share=False):
     form.fields['share_title'].widget = forms.HiddenInput()
     form.fields['data_type'].widget = forms.HiddenInput()
 
-    sharing = getattr(settings, "DATA_SHARING", None)
-    hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
-
     context = {'data': data,
                'target': target,
                'target_data_share_form': form,
                'sharing_destinations': form.fields['share_destination'].choices,
-               'hermes_sharing': hermes_sharing,
-               'target_share': target_share}
+                      'target_share': target_share}
     return context
 
 

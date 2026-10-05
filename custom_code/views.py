@@ -42,7 +42,6 @@ from django_comments.models import Comment
 from django_filters.views import FilterView
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
-from rest_framework.authtoken.models import Token
 from guardian.shortcuts import assign_perm, get_groups_with_perms, get_objects_for_user, get_users_with_perms, remove_perm
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
@@ -50,13 +49,13 @@ from tom_dataproducts.models import DataProduct, ReducedDatum
 from tom_dataproducts.views import DataProductUploadView
 from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
 from tom_observations.views import ObservationCreateView, ObservationListView
-from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
+from tom_common.accounts.views import UserApprovalView
 from tom_targets.models import Target, TargetList, TargetName
 from tom_targets.permissions import targets_for_user
 from tom_targets.views import TargetCreateView, TargetListView as TOMTargetListView
 from custom_code.facilities.soar_facility import user_can_access_soar
 from custom_code.filters import BrokerTargetFilter, TNSTargetFilter
-from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
+from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
@@ -336,17 +335,12 @@ class CustomUserUpdateView(UserUpdateView):
         return redirect(self.get_success_url())
 
 
-class SNEx2ApprovalRegistrationView(ApprovalRegistrationView):
-    """Registration view that uses our custom form with the who_you_are field."""
-    form_class = SNEx2RegistrationApprovalForm
+class SNExUserApprovalView(UserApprovalView):
 
-
-class SNEx2UserApprovalView(UserApprovalView):
-
-    def form_valid(self, form):
-        if 'send_welcome_email' in self.request.POST:
-            return super().form_valid(form)
-        return super(UserApprovalView, self).form_valid(form)
+    def _notify_user_of_approval(self, request, user):
+        if 'send_welcome_email' not in request.POST:
+            return True
+        return super()._notify_user_of_approval(request, user)
 
 
 class CustomDataProductUploadView(DataProductUploadView):
@@ -452,13 +446,6 @@ def save_dataproduct_groups_view(request):
     groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
     set_dataproduct_view_groups(dp, groups)
     return JsonResponse({'success': sorted(group.name for group in groups)})
-
-
-def create_api_token_view(request):
-    if request.method != 'POST' or not request.user.is_superuser:
-        return HttpResponseForbidden('Only admins can replace an API token')
-    Token.objects.filter(user=request.user).delete()
-    return JsonResponse({'token': Token.objects.create(user=request.user).key})
 
 
 def set_target_standard_view(request):

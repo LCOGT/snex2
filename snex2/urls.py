@@ -22,17 +22,13 @@ from custom_code.api_views import SNExDataProductViewSet, SNExReducedDatumViewSe
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
-from django.contrib.auth import views as auth_views
-from custom_code.forms import SafeAuthenticationForm
 
 api_router = DefaultRouter()
 api_router.register(r'targets', SNExTargetViewSet, basename='targets')
 api_router.register(r'reduceddatums', SNExReducedDatumViewSet, basename='reduceddatums')
 api_router.register(r'dataproducts', SNExDataProductViewSet, basename='dataproducts')
 urlpatterns = [
-    path('accounts/register/', SNEx2ApprovalRegistrationView.as_view(), name='register'),
-    path('accounts/login/', auth_views.LoginView.as_view(authentication_form=SafeAuthenticationForm), name='login'),
-    path('accounts/', include('django.contrib.auth.urls')),
+    path('users/<int:pk>/approve/', SNExUserApprovalView.as_view(), name='user-approve'),
     path('api/', include(api_router.urls)),
     path('targets/', TargetListView.as_view(), name='list'),
     path('', include('tom_common.urls')),
@@ -45,7 +41,6 @@ urlpatterns = [
     path('custom-data-upload/', CustomDataProductUploadView.as_view(), name='custom-data-upload'),
     path('save_dataproduct_groups/', save_dataproduct_groups_view, name='save_dataproduct_groups'),
     path('set-target-standard/', set_target_standard_view, name='set-target-standard'),
-    path('create-api-token/', create_api_token_view, name='create-api-token'),
     path('change-target-known-to/', change_target_known_to_view, name='change-target-known-to'),
     path('change-interest/', change_interest_view, name='change-interest'),
     path('name-search/', search_name_view, name='name-search'),
@@ -93,12 +88,11 @@ urlpatterns = [
     path('cancel-gw-obs/', cancel_galaxy_observations_view, name='cancel-gw-obs'),
     path('floyds-inbox/', FloydsInboxView.as_view(), name='floyds-inbox'),
     path('nonlocalizedevents/sequence/<int:id>/obs/', EventSequenceGalaxiesImagesView.as_view(), name='nonlocalizedevents-sequence-images'),
-    path('snex2/accounts/approve/<int:pk>/', SNEx2UserApprovalView.as_view(), name="snex2-approve-user"),
     path('snex2/', include('custom_code.urls')),
-    path('nonlocalizedevents/', include('tom_nonlocalizedevents.urls', namespace='nonlocalizedevents')),
     path('django_plotly_dash/', include('django_plotly_dash.urls')),
     path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
-    path('tns/', include('tom_tns.urls', namespace='tns')),
+    path('alerts/', include('tom_alerts.urls', namespace='alerts')),
+    path('catalogs/', include('tom_catalogs.urls', namespace='catalogs')),
 ]
 
 if settings.DEBUG:

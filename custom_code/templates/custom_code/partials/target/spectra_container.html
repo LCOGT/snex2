@@ -42,10 +42,6 @@
             </div>
             <div class="col-sm-7 mb-3">
                 <input type="submit" class="btn btn-primary" id="submit_selected_spectra" value="Submit" name="share_targetdata_form" disabled onclick="setTargetOnSpectroscopyForm('')">
-                {% if hermes_sharing %}
-                <span class="mx-3">or</span>
-                <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnSpectroscopyForm('_blank')">Open in Hermes &#x1F5D7;</button>
-                {% endif %}
             </div>
         </div>
     {% else %}

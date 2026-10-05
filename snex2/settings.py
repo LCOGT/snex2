@@ -16,6 +16,7 @@ import logging.config
 import tempfile
 
 from lcogt_logging import LCOGTFormatter
+from tom_common.default_settings import *
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,39 +46,16 @@ ALLOWED_HOSTS = ['*']
 
 # Application definition
 
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'django.contrib.sites',
-    'django_extensions',
-    'django_htmx',
-    'guardian',
-    'tom_common',
-    'django_comments',
+INSTALLED_APPS = TOMTOOLKIT_INSTALLED_APPS + [
     'bootstrap4',
-    'crispy_forms',
     'crispy_bootstrap4',
-    'django_filters',
-    'django_gravatar',
-    'tom_targets',
     'tom_alerts',
     'tom_catalogs',
-    'tom_observations',
-    'tom_dataproducts',
     'custom_code',
     'gw',
-    'rest_framework',
-    'rest_framework.authtoken',
     'django_plotly_dash.apps.DjangoPlotlyDashConfig',
-    'tom_registration',
-    'tom_scimma',
     'tom_nonlocalizedevents',
     'tom_alertstreams',
-    'webpack_loader',
     'tom_tns'
 ]
 
@@ -88,24 +66,11 @@ if DEBUG:
 
 SITE_ID = 2
 
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django_htmx.middleware.HtmxMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+MIDDLEWARE = TOMTOOLKIT_MIDDLEWARE + [
     'django_plotly_dash.middleware.BaseMiddleware',
     'django_plotly_dash.middleware.ExternalRedirectionMiddleware',
-    'tom_common.middleware.Raise403Middleware',
-    'tom_common.middleware.ExternalServiceMiddleware',
-    'tom_common.middleware.AuthStrategyMiddleware',
-    'tom_registration.middleware.RedirectAuthenticatedUsersFromRegisterMiddleware',
-
 ]
+MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 
 if DEBUG:
     MIDDLEWARE.append('debug_toolbar.middleware.DebugToolbarMiddleware')
@@ -175,7 +140,7 @@ DATA_SHARING = {
 }
 
 
-CRISPY_TEMPLATE_PACK = 'bootstrap4'
+CRISPY_TEMPLATE_PACK = 'bootstrap5'
 
 WSGI_APPLICATION = 'snex2.wsgi.application'
 
@@ -228,11 +193,6 @@ AUTH_PASSWORD_VALIDATORS = [
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
-
-AUTHENTICATION_BACKENDS = (
-    'django.contrib.auth.backends.AllowAllUsersModelBackend',
-    'guardian.backends.ObjectPermissionBackend',
-)
 
 # Internationalization
 # https://docs.djangoproject.com/en/2.1/topics/i18n/
@@ -372,7 +332,6 @@ OPEN_URLS = [
     '/accounts/reset/*/',
     '/api/*/',
     '/api/',
-    '/accounts/register/',
     '/static/tom_common/css/main_snexclone.css',
 ]
 if DEBUG:
@@ -395,7 +354,6 @@ TOM_ALERT_CLASSES = [
     'tom_alerts.brokers.gaia.GaiaBroker',
     'tom_alerts.brokers.tns.TNSBroker',
     'tom_alerts.brokers.alerce.ALeRCEBroker',
-    'tom_scimma.scimma.SCIMMABroker',
 ]
 
 TOM_FACILITY_CLASSES = [
@@ -479,30 +437,10 @@ PASSWORD_HASHERS = [
 
 CSRF_TRUSTED_ORIGINS = ['https://supernova.exchange']
 
-TOM_REGISTRATION = {
-    'REGISTRATION_AUTHENTICATION_BACKEND': 'django.contrib.auth.backends.AllowAllUsersModelBackend',
-    'REGISTRATION_REDIRECT_PATTERN': 'home',
-    'REGISTRATION_STRATEGY': 'approval_required',
-    'SEND_APPROVAL_EMAILS': True,  
-    'APPROVAL_SUBJECT': 'Welcome to the Global Supernova Project!',
-    'APPROVAL_MESSAGE': (
-        '<p>Welcome to the Global Supernova Project!</p>'
-        '<ul>'
-        '<li>Read the <a href="https://docs.google.com/document/d/1lOUEJ4rbvJ_KyI1qPu_Kcz35jRwgRhdeAR2oErtjM3U/edit?usp=sharing">GSP Collaboration Guidelines</a> '
-        'and the <a href="https://docs.google.com/spreadsheets/d/1gn0OsNu7Px8-eBt7W-NNuPymm0kpT8HBRebnxZtiV9c/edit?usp=sharing">GSP Publication Rules</a>. '
-        'These answer a lot of common questions about data/publication policies.</li>'
-        '<li>Join the <a href="mailto:gsp@lco.global">gsp@lco.global</a> mailing list by going to '
-        '<a href="https://groups.google.com/a/lco.global/g/gsp">this page</a> and &ldquo;asking to join the group.&rdquo; '
-        'We typically see news about GSP-related proposals and observing runs here.</li>'
-        '<li>Join the GSP Slack workspace via '
-        '<a href="https://join.slack.com/t/global-supernova/shared_invite/zt-20hwt62ea-7FLJuWOq0HT9rYHMEgewrw">this invite link</a>. '
-        'We typically see discussion about individual supernovae here, as well as support running the GSP photometry pipeline.</li>'
-        '<li>Subscribe to the GSP Google calendar by going to '
-        '<a href="https://calendar.google.com/calendar/u/0?cid=Y19rcHRoaGJ0dXI1cTVsaWNnazNyY2FwODc4c0Bncm91cC5jYWxlbmRhci5nb29nbGUuY29t">this link</a> '
-        'and signing in to the same Google account used to subscribe to this mailing list.</li>'
-        '</ul>'
-    ),
-}
+TOM_REGISTRATION_STRATEGY = 'approval_required'
+ACCOUNT_SIGNUP_FORM_CLASS = 'custom_code.forms.SNExSignupForm'
+TOM_PASSWORD_RESET_ENABLED = True
+DEFAULT_FROM_EMAIL = 'snex@lco.global'
 
 MANAGERS = [("SNe", "sne@lco.global")]
 EMAIL_SUBJECT_PREFIX = f'[{TOM_NAME}]'
@@ -540,19 +478,6 @@ PLOTLY_COMPONENTS = [
     # Other components, as needed
     'dash_bootstrap_components',
 ]
-
-VUE_FRONTEND_DIR_TOM_NONLOCAL = os.path.join(STATIC_ROOT, 'tom_nonlocalizedevents/vue')
-WEBPACK_LOADER = {
-    'TOM_NONLOCALIZEDEVENTS': {
-        'CACHE': not DEBUG,
-        'BUNDLE_DIR_NAME': 'tom_nonlocalizedevents/vue/',  # must end with slash
-        'STATS_FILE': os.path.join(BASE_DIR, 'static/tom_nonlocalizedevents/vue/webpack-stats.json'),
-        #'STATS_FILE': os.path.join(VUE_FRONTEND_DIR_TOM_NONLOCAL, 'webpack-stats.json'),
-        'POLL_INTERVAL': 0.1,
-        'TIMEOUT': None,
-        'IGNORE': [r'.+\.hot-update.js', r'.+\.map']
-    }
-}
 
 TOM_API_URL = os.getenv('TOM_API_URL', 'http://127.0.0.1:8000')
 HERMES_API_URL = os.getenv('HERMES_API_URL', 'https://hermes.lco.global')

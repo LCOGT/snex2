@@ -16,24 +16,14 @@ except ImportError:
     from django.contrib.auth.forms import UserCreationForm
 from tom_dataproducts.forms import DataProductUploadForm
 from tom_observations.widgets import FilterField
-from tom_registration.registration_flows.approval_required.forms import RegistrationApprovalForm
+from tom_common.accounts.forms import TomSignupForm
 from tom_targets.forms import SiderealTargetCreateForm
 from custom_code.models import Papers, ScienceTags, TargetTags, UserRegistrationInfo
 import logging
 
 logger = logging.getLogger(__name__)
 
-from django.contrib.auth.forms import AuthenticationForm
 
-class SafeAuthenticationForm(AuthenticationForm):
-    def clean(self):
-        try:
-            return super().clean()
-        except AttributeError:
-            raise forms.ValidationError(
-                'Your password needs to be reset. Please follow the link below.'
-            )
-        
 class CustomTargetCreateForm(SiderealTargetCreateForm):
 
     sciencetags = forms.ModelMultipleChoiceField(ScienceTags.objects.all().order_by(Lower('tag')), widget=forms.CheckboxSelectMultiple, label='Science Tags', required=False)
@@ -123,11 +113,7 @@ class SNEx2UserCreationForm(UserCreationForm):
             return user
 
 
-class SNEx2RegistrationApprovalForm(RegistrationApprovalForm):
-    """
-    Registration form with an extra required field: who you are / who you are working with.
-    Saves the extra field to UserRegistrationInfo after creating the user.
-    """
+class SNExSignupForm(TomSignupForm):
     who_you_are = forms.CharField(
         required=True,
         widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'e.g. PhD student at University X, working with Prof. Y on supernova follow-up'}),
@@ -135,22 +121,9 @@ class SNEx2RegistrationApprovalForm(RegistrationApprovalForm):
         help_text='Please briefly describe who you are or which group/institution you work with.',
     )
 
-    def clean_email(self):
-        email = self.cleaned_data.get('email')
-
-        if User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("A user already exists with this email address.")
-
-        return email
-    
-    def save(self, commit=True):
-        user = super().save(commit=commit)
-        if commit and user and hasattr(self, 'cleaned_data') and self.cleaned_data.get('who_you_are'):
-            UserRegistrationInfo.objects.update_or_create(
-                user=user,
-                defaults={'who_you_are': self.cleaned_data['who_you_are']},
-            )
-        return user
+    def signup(self, request, user):
+        super().signup(request, user)
+        UserRegistrationInfo.objects.update_or_create(user=user, defaults={'who_you_are': self.cleaned_data['who_you_are']})
 
 
 class CustomDataProductUploadForm(DataProductUploadForm):
