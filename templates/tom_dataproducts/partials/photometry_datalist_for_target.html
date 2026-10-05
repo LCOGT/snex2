@@ -15,7 +15,7 @@
                 <tr>
                     <th><div class="form-check">
                     <input type="checkbox" class="form-check-input" id="share-all-phot" onclick="select_all_phot()" value=""/>
-                    <label class="form-check-label" for="share-all-phot">Share</label>
+                    <label class="form-check-label" for="share-all-phot">Select</label>
                     </div></th>
                     <th>TNS Discovery</th>
                     <th>Timestamp</th>
@@ -62,42 +62,32 @@
             </tbody>
         </table>
         {% if not target_share %}
-            <div class="card">
+            <div class="card mt-4 mb-4">
                 <div class="card-header">
-                    Share Selected Data
+                    Share selected photometry
                 </div>
+                <div class="card-body">
                 {% if sharing_destinations %}
-                    <div class="form-row" style="padding-inline:1rem">
-                        <div class="col-sm-12">
-                            {% bootstrap_field target_data_share_form.share_title %}
-                        </div>
-                    </div>
-                    <div class="form-row" style="padding-inline:1rem">
-                        <div class="col-sm-12">
-                            {% bootstrap_field target_data_share_form.share_message %}
-                        </div>
-                    </div>
-                    <div class="form-row" style="padding-inline:1rem">
-                        <div class="col-sm-4">
+                    {% bootstrap_field target_data_share_form.share_title %}
+                    {% bootstrap_field target_data_share_form.share_message %}
+                    <div class="form-row align-items-end">
+                        <div class="col-sm-5">
                             {% bootstrap_field target_data_share_form.share_destination %}
                         </div>
-                        <div class="col-sm-2 offset-sm-1">
-                            <input type="submit" class="btn btn-primary" id="submit_selected_phot" value="Submit" name="share_targetdata_form" style="position:absolute; bottom:1rem" disabled onclick="setTargetOnPhotometryForm('')">
+                        <div class="col-sm-7 mb-3">
+                            <input type="submit" class="btn btn-primary" id="submit_selected_phot" value="Submit" name="share_targetdata_form" disabled onclick="setTargetOnPhotometryForm('')">
+                            {% if hermes_sharing %}
+                            <span class="mx-3">or</span>
+                            <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnPhotometryForm('_blank')">Open in Hermes &#x1F5D7;</button>
+                            {% endif %}
                         </div>
-                        {% if hermes_sharing %}
-                        <div class="col-sm-1">
-                            <b style="position:absolute; bottom:1.2rem">or</b>
-                        </div>
-                        <div class="col-sm-4">
-                            <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnPhotometryForm('_blank')" style="position:absolute; bottom:1rem">Open in Hermes &#x1F5D7;</button>
-                        </div>
-                        {% endif %}
                     </div>
                 {% else %}
-                    <em style="padding-inline:1rem">Not Configured. See
+                    <em>Not Configured. See
                         <a href="https://tom-toolkit.readthedocs.io/en/stable/managing_data/tom_direct_sharing.html"
                            target="_blank">Documentation</a>.</em>
                 {% endif %}
+                </div>
             </div>
         {% endif %}
     </div>

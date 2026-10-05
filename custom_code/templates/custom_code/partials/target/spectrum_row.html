@@ -2,9 +2,9 @@
 
 <tr valign="top" id="spectrum-row-{{ entry.spectrum.id }}">
   <td width=200>
-    <div class="row">
+    <div class="row align-items-center mb-2">
       <input type="checkbox" class="spectrum-row" id="share-box-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
-      <label class="form-check-label" for="share-box-{{ entry.spectrum.id }}">Share</label>
+      <label class="form-check-label ml-2" for="share-box-{{ entry.spectrum.id }}">Select</label>
     </div>
         <div class="row"><b>{{ entry.time }}</b></div>
     <div class="row">Telescope: {{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</div>
@@ -26,7 +26,7 @@
         hx-swap="beforebegin"
         hx-on::after-request="if(event.detail.successful) this.value=''">
     </div>
-    <div class="row mt-2">
+    <div class="row mt-2 align-items-center">
       <span class="mr-2">Download:</span>
       <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
       <button type="button" class="btn btn-sm btn-outline-primary" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
