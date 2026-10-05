@@ -62,32 +62,42 @@
             </tbody>
         </table>
         {% if not target_share %}
-            <div class="card mt-4 mb-4">
+            <div class="card">
                 <div class="card-header">
-                    Share selected photometry
+                    Share Selected Data <span class="text-muted ml-2" id="selected-phot-count">(none selected)</span>
                 </div>
-                <div class="card-body">
                 {% if sharing_destinations %}
-                    {% bootstrap_field target_data_share_form.share_title %}
-                    {% bootstrap_field target_data_share_form.share_message %}
-                    <div class="form-row align-items-end">
-                        <div class="col-sm-5">
-                            {% bootstrap_field target_data_share_form.share_destination %}
-                        </div>
-                        <div class="col-sm-7 mb-3">
-                            <input type="submit" class="btn btn-primary" id="submit_selected_phot" value="Submit" name="share_targetdata_form" disabled onclick="setTargetOnPhotometryForm('')">
-                            {% if hermes_sharing %}
-                            <span class="mx-3">or</span>
-                            <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnPhotometryForm('_blank')">Open in Hermes &#x1F5D7;</button>
-                            {% endif %}
+                    <div class="form-row" style="padding-inline:1rem">
+                        <div class="col-sm-12">
+                            {% bootstrap_field target_data_share_form.share_title %}
                         </div>
                     </div>
+                    <div class="form-row" style="padding-inline:1rem">
+                        <div class="col-sm-12">
+                            {% bootstrap_field target_data_share_form.share_message %}
+                        </div>
+                    </div>
+                    <div class="form-row" style="padding-inline:1rem">
+                        <div class="col-sm-4">
+                            {% bootstrap_field target_data_share_form.share_destination %}
+                        </div>
+                        <div class="col-sm-2 offset-sm-1">
+                            <input type="submit" class="btn btn-primary" id="submit_selected_phot" value="Submit" name="share_targetdata_form" style="position:absolute; bottom:1rem" disabled onclick="setTargetOnPhotometryForm('')">
+                        </div>
+                        {% if hermes_sharing %}
+                        <div class="col-sm-1">
+                            <b style="position:absolute; bottom:1.2rem">or</b>
+                        </div>
+                        <div class="col-sm-4">
+                            <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnPhotometryForm('_blank')" style="position:absolute; bottom:1rem">Open in Hermes &#x1F5D7;</button>
+                        </div>
+                        {% endif %}
+                    </div>
                 {% else %}
-                    <em>Not Configured. See
+                    <em style="padding-inline:1rem">Not Configured. See
                         <a href="https://tom-toolkit.readthedocs.io/en/stable/managing_data/tom_direct_sharing.html"
                            target="_blank">Documentation</a>.</em>
                 {% endif %}
-                </div>
             </div>
         {% endif %}
     </div>
@@ -115,12 +125,9 @@
   function check_selected_phot()  {
   var share_boxes = document.querySelectorAll("[name='share-box'][class='phot-row']");
   var submit_btn = document.getElementById('submit_selected_phot');
-    for (const box of share_boxes) {
-        if(box.checked == true) {
-            submit_btn.disabled = false;
-            return;
-        }
-    }
-    submit_btn.disabled = true;
+    var selected = [...share_boxes].filter(box => box.checked).length;
+    var count = document.getElementById('selected-phot-count');
+    if (count) { count.textContent = selected ? '(' + selected + ' selected)' : '(none selected)'; }
+    if (submit_btn) { submit_btn.disabled = selected === 0; }
   }
 </script>
