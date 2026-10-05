@@ -36,8 +36,7 @@ dependencies = [
     "gevent>1.4",
     "gunicorn", 
     "dpd_static_support",
-    "slack_sdk",
-    "pymysql"
+    "slack_sdk"
 ]
 
 [project.optional-dependencies]
