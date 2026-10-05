@@ -2,7 +2,6 @@ from django.conf import settings
 from django import forms
 from crispy_forms.layout import Layout, Div, HTML, Column, Row
 from crispy_forms.bootstrap import PrependedText, AppendedText
-from astropy import units as u
 from datetime import timedelta
 from django.utils import timezone
 import copy
@@ -40,21 +39,6 @@ def _default_permission_groups(target_id):
             return groups
     return Group.objects.filter(name__in=settings.DEFAULT_GROUPS)
 
-# Determine settings for this module.
-try:
-    LCO_SETTINGS = settings.FACILITIES['LCO']
-except (AttributeError, KeyError):
-    LCO_SETTINGS = {
-        'portal_url': 'https://observe.lco.global',
-        'api_key': '',
-    }
-
-# Module specific settings.
-PORTAL_URL = LCO_SETTINGS['portal_url']
-
-# Units of flux and wavelength for converting to Specutils Spectrum1D objects
-FLUX_CONSTANT = (1e-15 * u.erg) / (u.cm ** 2 * u.second * u.angstrom)
-WAVELENGTH_UNITS = u.angstrom
 
 
 class SnexCadenceStrategyField(forms.ChoiceField):

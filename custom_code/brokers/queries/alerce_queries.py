@@ -1,9 +1,7 @@
-from datetime import datetime, timedelta
-import os
+from datetime import datetime
 import json
 from astropy.time import Time
 import requests
-import time
 import copy
 import logging
 

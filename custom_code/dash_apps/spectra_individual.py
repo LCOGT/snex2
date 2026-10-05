@@ -1,8 +1,7 @@
-import dash
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
-import dash_core_components as dcc
-import dash_html_components as html
+from dash import dcc
+from dash import html
 import plotly.graph_objs as go
 import numpy as np
 import json
@@ -24,7 +23,6 @@ from custom_code.dash_apps.spectra_utils import elements, calculate_flux_range
 
 logger = logging.getLogger(__name__)
 
-external_stylesheets = [dbc.themes.BOOTSTRAP]
 
 app = DjangoDash(name='Spectra_Individual', add_bootstrap_links=True, suppress_callback_exceptions=True)   # replaces dash.Dash
 app.css.append_css({'external_url': static('custom_code/css/dash.css')})
@@ -558,7 +556,7 @@ def display_output(selected_rows,
 
         if 'mask' in mask_value:
             t = Target.objects.get(pk=spectrum.target_id)
-            object_z = t.redshift
+            object_z = t.redshift or 0
 
             pfit = np.poly1d(np.polyfit(wavelength, flux, 4))
             for galaxy_wave in elements['Galaxy']['waves']:

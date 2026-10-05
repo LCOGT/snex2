@@ -1,4 +1,4 @@
-import dash_core_components as dcc
+from dash import dcc
 import dash_bootstrap_components as dbc
 from dash import html
 import plotly.graph_objs as go
@@ -7,7 +7,6 @@ import json
 import numpy as np
 from django_plotly_dash import DjangoDash
 from tom_dataproducts.models import DataProduct, ReducedDatum
-from django.conf import settings
 from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
@@ -247,7 +246,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         data_product__in=viewable_dataproducts(user, DataProduct.objects.filter(target=target)))
     
     datums = []
-    final_products = {de.value.get('data_product_id') for de in datumextras if de.value.get('final_reduction')}
+    final_products = {de.data_product_id for de in datumextras if de.value.get('final_reduction')}
     
     ### Get the data for the selected telescope
     selected_telescope = selected_telescope or []
@@ -256,7 +255,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         de_value = de.value
 
         if de_value.get('instrument', '') in selected_telescope and de_value.get('reducer_group', '') in selected_groups:
-            dp_id = de_value.get('data_product_id', '')
+            dp_id = de.data_product_id
             datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                klass=ReducedDatum.objects.filter(
                                                    target=target, data_type='photometry',
@@ -264,7 +263,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
 
     ### Finally, get the data that was uploaded by the pipeline
     if 'LCO' in selected_telescope and '' in selected_groups:
-        uploaded_products = [de.value['data_product_id'] for de in datumextras if de.value.get('data_product_id')]
+        uploaded_products = [de.data_product_id for de in datumextras if de.value.get('instrument')]
         datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                            klass=ReducedDatum.objects.filter(
                                                target=target, data_type='photometry',
