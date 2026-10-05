@@ -14,6 +14,7 @@ from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct
 from tom_targets.api_views import TargetViewSet
 from tom_targets.models import Target, TargetName
+from tom_targets.permissions import targets_for_user
 
 from custom_code.filters import SNExReducedDatumFilter
 from custom_code.models import ReducedDatumExtra
@@ -50,9 +51,14 @@ class SNExTargetViewSet(TargetViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
 
         target, matched_by = duplicate
+        can_view = targets_for_user(request.user, Target.objects.filter(pk=target.pk), 'view_target').exists()
+        can_change = targets_for_user(request.user, Target.objects.filter(pk=target.pk), 'change_target').exists()
+        if not can_view and not target.standard:
+            return Response({'detail': 'A matching target exists but you do not have access to it.'},
+                            status=status.HTTP_403_FORBIDDEN)
         alias_added = None
         new_name = str(request.data.get('name') or '').strip()
-        if matched_by == 'position' and new_name:
+        if matched_by == 'position' and new_name and can_change:
             TargetName.objects.get_or_create(target=target, name=new_name)
             alias_added = new_name
             logger.info(f'Added alias {new_name} to target {target.id} ({target.name}) via API position match')
@@ -110,6 +116,8 @@ class SNExDataProductViewSet(DataProductViewSet):
         if existing and str(existing.target_id) != str(data.get('target')):
             return Response({'product_id': f'{product_id} already belongs to target {existing.target_id}'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if existing and not targets_for_user(request.user, Target.objects.filter(pk=existing.target_id), 'change_target').exists():
+            return Response({'product_id': f'You do not have access to {product_id}.'}, status=status.HTTP_403_FORBIDDEN)
         if raw and existing:
             return Response({'id': existing.id, 'product_id': product_id, 'already_posted': True,
                              'already_reduced': existing.reduceddatum_set.exists()}, status=status.HTTP_200_OK)
