@@ -13,7 +13,7 @@ import logging
 import requests
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError
-from custom_code.target_names import TNS_PREFIX_RE
+from custom_code.match_managers import TNS_PREFIX_RE
 
 logger = logging.getLogger(__name__)
 
@@ -312,3 +312,7 @@ def spectrum_ascii_name(datum):
 
 def datum_value(datum):
     return json.loads(datum.value) if isinstance(datum.value, str) else datum.value
+
+
+def photometry_data_type(target):
+    return 'photometric_standard' if getattr(target, 'standard', False) else 'photometry'
