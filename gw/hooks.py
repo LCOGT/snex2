@@ -1,12 +1,9 @@
-import os
 from gw.models import GWFollowupGalaxy
-from tom_common.hooks import run_hook
 from tom_targets.models import Target
 from tom_observations.models import ObservationGroup
 from tom_nonlocalizedevents.models import EventSequence
 from custom_code.scheduling import cancel_observation
 import logging
-from django.conf import settings
 
 
 logger = logging.getLogger(__name__)

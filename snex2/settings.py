@@ -27,7 +27,6 @@ SN_DIR = os.getenv('SUPERNOVA_DIR','/supernova/')
 THUMB_DIR = os.path.join(DATA_DIR,'thumbs')
 FITS_DIR = os.path.join(DATA_DIR,'fits')
 LSC_DIR = os.path.join(SN_DIR,'data','lsc')
-FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
 OBS_WINDOW_MINIMUM = 24 # Minimum observation window in hours
 
@@ -41,7 +40,7 @@ SLACK_BOT_TOKEN =  os.getenv('SLACK_BOT_TOKEN', '')
 SECRET_KEY = 'ks#e!w3m*y1g_=)%vmrdcyn*5dt0$)o^mq2f=vtj#myw#&amp;p3%i'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('SNEX2_DEBUG', False)
+DEBUG = os.getenv('SNEX2_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 ALLOWED_HOSTS = ['*']
 
@@ -150,7 +149,6 @@ DATA_SHARING = {
             'rp': 'r-P1',
             'ip': 'i-P1'
         },
-        # TODO: Set your proper instrument mapping from datum instrument to TNS instrument
         'INSTRUMENT_MAPPING': {
             'en06': 'FTN - FS02',
             'en12': 'FTN - FS01',
@@ -247,8 +245,6 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 
 USE_I18N = True
-
-USE_L10N = False
 
 USE_TZ = True
 
@@ -431,10 +427,6 @@ PROPOSAL_ROLLOVERS = [
     {'old_id': 'KEY2023B-002', 'new_id': 'KEY2026B-003', 'semester_start': '2026-08-01'},
 ]
 
-DATA_TYPES = (
-    ('SPECTROSCOPY', 'Spectroscopy'),
-    ('PHOTOMETRY', 'Photometry')
-)
 
 DATA_PRODUCT_TYPES = {
     'photometry': ('photometry', 'Photometry'),
@@ -609,7 +601,6 @@ ALERT_STREAMS = [
     }
 ]
 
-DOWNLOAD_TEST_THUMBNAIL = True
 
 if DEBUG:
     INTERNAL_IPS = [

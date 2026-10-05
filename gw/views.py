@@ -1,4 +1,3 @@
-from django.shortcuts import render
 from django.conf import settings
 from django.http import HttpResponse
 from django.db import transaction
@@ -14,10 +13,9 @@ import os
 from astropy.io import fits
 import sep
 from datetime import datetime, timedelta
-from tom_nonlocalizedevents.models import NonLocalizedEvent, EventSequence, EventLocalization
+from tom_nonlocalizedevents.models import EventSequence
 from gw.models import GWFollowupGalaxy
 from gw.forms import GWGalaxyObservationForm
-from gw.treasure_map_utils import build_tm_pointings, submit_tm_pointings
 from tom_common.hooks import run_hook
 from tom_targets.models import Target
 from tom_observations.facility import get_service_class

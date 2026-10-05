@@ -1,4 +1,4 @@
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import Group
 from django import template
 from plotly import offline
 from plotly import graph_objs as go
@@ -8,7 +8,6 @@ from astropy.wcs import WCS
 from astropy.wcs.utils import pixel_to_skycoord, skycoord_to_pixel
 from astropy.coordinates import SkyCoord
 import numpy as np
-import sep
 import logging
 
 from tom_targets.models import Target
