@@ -47,8 +47,6 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = TOMTOOLKIT_INSTALLED_APPS + [
-    'tom_alerts',
-    'tom_catalogs',
     'custom_code',
     'gw',
     'django_plotly_dash.apps.DjangoPlotlyDashConfig',
@@ -343,16 +341,14 @@ else:
         'find_images': 'custom_code.hooks.find_images',
     }
 
-BROKERS = {
-    'TNS': {'api_key': os.getenv('TNS_APIKEY', '')}
+DATA_SERVICES = {
+    'TNS': {
+        'api_key': os.getenv('TNS_APIKEY', ''),
+        'bot_id': os.getenv('TNS_APIID', ''),
+        'bot_name': 'SNEx_Bot1',
+        'base_url': os.getenv('TNS_BASE_URL', 'https://sandbox.wis-tns.org'),
+    },
 }
-
-TOM_ALERT_CLASSES = [
-    'tom_alerts.brokers.lasair.LasairBroker',
-    'tom_alerts.brokers.gaia.GaiaBroker',
-    'tom_alerts.brokers.tns.TNSBroker',
-    'tom_alerts.brokers.alerce.ALeRCEBroker',
-]
 
 TOM_FACILITY_CLASSES = [
     'custom_code.facilities.gemini_facility.GeminiFacility',
@@ -360,12 +356,6 @@ TOM_FACILITY_CLASSES = [
     'custom_code.facilities.lco_facility.SnexLCOFacility',
     'custom_code.facilities.soar_facility.SOARFacility',
     #'tom_observations.facilities.soar.SOARFacility'
-]
-
-TOM_HARVESTER_CLASSES = [
-    'custom_code.harvesters.tns_harvester.TNSHarvester',
-    'tom_catalogs.harvesters.simbad.SimbadHarvester',
-    'tom_catalogs.harvesters.ned.NEDHarvester',
 ]
 
 TOM_CADENCE_STRATEGIES = [

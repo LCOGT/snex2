@@ -91,8 +91,6 @@ urlpatterns = [
     path('snex2/', include('custom_code.urls')),
     path('django_plotly_dash/', include('django_plotly_dash.urls')),
     path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
-    path('alerts/', include('tom_alerts.urls', namespace='alerts')),
-    path('catalogs/', include('tom_catalogs.urls', namespace='catalogs')),
 ]
 
 if settings.DEBUG:
