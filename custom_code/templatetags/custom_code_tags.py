@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.utils import photometry_data_type, datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -254,7 +254,7 @@ def get_color(filter_name, filter_translate):
     return color
 
 
-def generic_lightcurve_plot(target, user):
+def generic_lightcurve_plot(target, user, subtracted=None):
     """
     Writing a generic function to return the data to plot
     for the different light curve applications SNEx2 uses
@@ -283,6 +283,8 @@ def generic_lightcurve_plot(target, user):
             value = json.loads(value)
 
         if measured(value.get('magnitude')) is None:
+            continue
+        if subtracted is not None and (value.get('background_subtracted') == True) != subtracted:
             continue
         filt = filter_translate.get(value.get('filter', ''), '')
    
@@ -407,7 +409,7 @@ def bin_spectra(waves, fluxes, b):
         b = int(b)
     except (TypeError, ValueError):
         b = 1
-    if b < 1 or not fluxes or len(fluxes) < b:
+    if b < 1 or len(fluxes) < max(b, 1):
         return list(waves), list(fluxes)
 
     binned_waves = []
@@ -636,7 +638,6 @@ def custom_upload_dataproduct(context, obj):
     if isinstance(obj, Target):
         initial['target'] = obj
         initial['referrer'] = reverse('tom_targets:detail', args=(obj.id,))
-        initial['used_in'] = ('', '')
 
     elif isinstance(obj, ObservationRecord):
         initial['observation_record'] = obj
@@ -719,8 +720,8 @@ def dash_lightcurve(context, target, height):
     except (TypeError, ValueError):
         frame_height = f'{400 + LIGHTCURVE_CONTROLS_HEIGHT}px'
 
-    frames = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename')
-    viewable = frames if settings.TARGET_PERMISSIONS_ONLY else get_objects_for_user(
+    frames = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target), value__has_key='basename')
+    viewable = frames if settings.TARGET_PERMISSIONS_ONLY or target.standard else get_objects_for_user(
         user, 'tom_dataproducts.view_reduceddatum', klass=frames)
     viewable_ids = set(viewable.values_list('pk', flat=True))
     raw_frames, reduced_frames, viewable_frames = set(), set(), set()
@@ -806,8 +807,8 @@ def dash_spectra(context, target):
 @register.inclusion_tag('custom_code/partials/target/photometry_data_list.html', takes_context=True)
 def photometry_data_list(context, target):
     user = context['request'].user
-    datums = ReducedDatum.objects.filter(target=target, data_type='photometry')
-    if not settings.TARGET_PERMISSIONS_ONLY:
+    datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
+    if not settings.TARGET_PERMISSIONS_ONLY and not target.standard:
         datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
     visible = reduceddatum_view_groups(datums) if user.is_superuser else {}
     datums = list(datums.order_by('-timestamp'))
@@ -1138,14 +1139,17 @@ def observation_summary(context, target = None, is_active = False):
         'is_active': is_active
     }
 
-@register.inclusion_tag('custom_code/papers_list.html')
-def papers_list(target):
+@register.inclusion_tag('custom_code/papers_list.html', takes_context=True)
+def papers_list(context, target):
+    request = getattr(context, 'request', None)
     paper_query = Papers.objects.filter(target=target)
     papers = []
     for paper in paper_query:
+        can_edit = request is not None and paper.can_be_edited_by(request.user)
         papers.append({
             'paper': paper,
-            'edit_form': PapersForm(instance=paper)
+            'can_edit': can_edit,
+            'edit_form': PapersForm(instance=paper) if can_edit else None
         })
     return {
         'object': target,
@@ -1843,13 +1847,12 @@ def image_slideshow(context, target):
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
-def lightcurve_fits(target, user, filt=False, days=None):
+def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
     
     filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
         'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
         'UVW1': 'UVW1'}
-    plot_data = generic_lightcurve_plot(target, user)     
     photometry_data = {}
 
     if settings.TARGET_PERMISSIONS_ONLY:
@@ -1869,6 +1872,8 @@ def lightcurve_fits(target, user, filt=False, days=None):
             value = json.loads(value)
 
         if measured(value.get('magnitude')) is None:
+            continue
+        if (value.get('background_subtracted') == True) != subtracted:
             continue
         current_filt = filter_translate.get(value.get('filter', ''), '')
    
@@ -1980,6 +1985,7 @@ def lightcurve_fits(target, user, filt=False, days=None):
         logger.info(e)
         logger.info('Quadratic light curve fit failed for target {}'.format(target.id))
         maximum = ''
+        max_mag = ''
 
     return {
         'target': target,
@@ -1992,13 +1998,13 @@ def lightcurve_fits(target, user, filt=False, days=None):
 
 
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
-def lightcurve_with_extras(target, user):
+def lightcurve_with_extras(target, user, subtracted=False):
     
     filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
         'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
         'UVW1': 'UVW1'}
-    plot_data = generic_lightcurve_plot(target, user)         
+    plot_data = generic_lightcurve_plot(target, user, subtracted)
     spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                 klass=ReducedDatum.objects.filter(
                                     target=target,
