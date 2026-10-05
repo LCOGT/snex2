@@ -38,6 +38,16 @@
     padding: 50px;
     color: #666;
   }
+  #aladin-lite-div .aladin-cooFrame,
+  #aladin-lite-div .aladin-location,
+  #aladin-lite-div .aladin-fov,
+  #aladin-lite-div .aladin-projection-control,
+  #aladin-lite-div .aladin-status-bar,
+  #aladin-lite-div .aladin-widgets-toolbar,
+  #aladin-lite-div .aladin-logo-container,
+  #aladin-lite-div:has(.aladin-imageCanvas) #aladin-spinner {
+    display: none !important;
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -149,11 +159,11 @@
         </div>
         <hr/>
         <div class="row">
-          <div class="col-md-3" style="overflow: hidden;">
+          <div class="col-md-auto">
             <h4>Aladin Viewer</h4>
             {% aladin_finderchart object %}
           </div>
-          <div class="col-md-9">
+          <div class="col-md">
             <div hx-get="{% url 'load-thumbnail' target.id %}" hx-trigger="load" hx-swap="outerHTML">
               <div class="tab-placeholder">Loading thumbnail...</div>
             </div>
