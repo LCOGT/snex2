@@ -111,10 +111,8 @@ body {
   }
 }
 
-.row > :not([class*="col"]) {
-  width: auto;
-  max-width: none;
-  flex-shrink: 1;
+.row > :not(.col, [class*="col-"]) {
+  --bs-gutter-x: 0;
 }
 
 .row > :not([class]) {
@@ -122,9 +120,10 @@ body {
   padding-right: revert;
 }
 
-.row > [class]:not([class*="col"]):not(.btn):not(.form-control):not(.form-select) {
-  padding-left: 0;
-  padding-right: 0;
+.row > :where(:not(.col, [class*="col-"], .form-control, .form-select, .input-group, .table)) {
+  width: auto;
+  max-width: none;
+  flex-shrink: 1;
 }
 
 a {
