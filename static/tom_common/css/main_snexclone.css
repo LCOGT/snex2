@@ -117,7 +117,12 @@ body {
   flex-shrink: 1;
 }
 
-.row > :not([class*="col"]):not(.btn):not(.form-control):not(.form-select) {
+.row > :not([class]) {
+  padding-left: revert;
+  padding-right: revert;
+}
+
+.row > [class]:not([class*="col"]):not(.btn):not(.form-control):not(.form-select) {
   padding-left: 0;
   padding-right: 0;
 }
