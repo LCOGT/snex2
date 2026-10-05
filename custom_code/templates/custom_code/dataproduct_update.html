@@ -1,6 +1,6 @@
 <div class="dropdown">
-  <button type="button" class="btn dropdown-toggle" data-bs-toggle="dropdown" style="background-color: #164560; color: white;">Update</button>
-  <div class="dropdown-menu p-2" style="max-height: 250px; overflow-y: auto;" onclick="event.stopPropagation()">
+  <button type="button" class="btn dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" style="background-color: #164560; color: white;">Update</button>
+  <div class="dropdown-menu p-2" style="max-height: 250px; overflow-y: auto;">
     {% for group in groups %}<label class="dropdown-item mb-0"><input type="checkbox" class="dp-group" value="{{ group }}" {% if group in visible_groups %}checked{% endif %}> {{ group }}</label>{% endfor %}
     <button type="button" class="btn btn-sm mt-2 dp-apply-groups" data-dp="{{ dataproduct.id }}" style="background-color: #164560; color: white;">Apply</button>
   </div>
