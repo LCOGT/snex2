@@ -15,7 +15,7 @@ from django.core.paginator import Paginator
 from tom_targets.models import Target, TargetList
 from tom_targets.permissions import targets_for_user
 from tom_observations import facility
-from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum
 from tom_dataproducts.forms import DataShareForm
 from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
 from tom_observations.models import ObservationRecord, ObservationGroup
@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import photometry_data_type, datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.utils import photometry_datums, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -266,32 +266,18 @@ def generic_lightcurve_plot(target, user, subtracted=None):
         'UVW1': 'UVW1'}
     photometry_data = {}
 
-    if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
-    
-    else:
-        datums = get_objects_for_user(user,
-                                      'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(
-                                        target=target,
-                                        data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+    datums = photometry_datums(target, user)
     for rd in datums:
-        value = rd.value
-        if not value:  # empty
+        if measured(rd.brightness) is None:
             continue
-        if isinstance(value, str):
-            value = json.loads(value)
-
-        if measured(value.get('magnitude')) is None:
+        if subtracted is not None and (rd.value.get('background_subtracted') == True) != subtracted:
             continue
-        if subtracted is not None and (value.get('background_subtracted') == True) != subtracted:
-            continue
-        filt = filter_translate.get(value.get('filter', ''), '')
+        filt = filter_translate.get(rd.bandpass, '')
    
         photometry_data.setdefault(filt, {})
         photometry_data[filt].setdefault('time', []).append(rd.timestamp)
-        photometry_data[filt].setdefault('magnitude', []).append(value.get('magnitude',None))
-        photometry_data[filt].setdefault('error', []).append(value.get('error', None))
+        photometry_data[filt].setdefault('magnitude', []).append(rd.brightness)
+        photometry_data[filt].setdefault('error', []).append(rd.brightness_error)
 
     plot_data = [
         go.Scatter(
@@ -721,14 +707,12 @@ def dash_lightcurve(context, target, height):
     except (TypeError, ValueError):
         frame_height = f'{400 + LIGHTCURVE_CONTROLS_HEIGHT}px'
 
-    frames = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target), value__has_key='basename')
-    viewable = frames if settings.TARGET_PERMISSIONS_ONLY or target.standard else get_objects_for_user(
-        user, 'tom_dataproducts.view_reduceddatum', klass=frames)
-    viewable_ids = set(viewable.values_list('pk', flat=True))
+    frames = PhotometryReducedDatum.objects.filter(target=target, value__has_key='basename')
+    viewable_ids = set(photometry_datums(target, user).values_list('pk', flat=True))
     raw_frames, reduced_frames, viewable_frames = set(), set(), set()
-    for pk, value in frames.values_list('pk', 'value'):
+    for pk, value, brightness in frames.values_list('pk', 'value', 'brightness'):
         raw_frames.add(value['basename'])
-        if measured(value.get('magnitude')) is not None:
+        if measured(brightness) is not None:
             reduced_frames.add(value['basename'])
             if pk in viewable_ids:
                 viewable_frames.add(value['basename'])
@@ -808,31 +792,28 @@ def dash_spectra(context, target):
 @register.inclusion_tag('custom_code/partials/target/photometry_data_list.html', takes_context=True)
 def photometry_data_list(context, target):
     user = context['request'].user
-    datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
-    if not settings.TARGET_PERMISSIONS_ONLY and not target.standard:
-        datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
+    datums = photometry_datums(target, user)
     visible = reduceddatum_view_groups(datums) if user.is_superuser else {}
     datums = list(datums.order_by('-timestamp'))
     rows = []
     for d in datums:
-        v = datum_value(d)
+        v = d.value
         basename = v.get('basename') or ''
         rows.append({'datum': d, 'groups': visible.get(d.pk, []), 'basename': basename,
-                     'magnitude': measured(v.get('magnitude')),
-                     'filter': v.get('filter') or '',
+                     'brightness': measured(d.brightness),
                      'subtracted': v.get('background_subtracted') == True,
                      'wcs': v.get('wcs'),
                      'exptime': v.get('exptime'),
                      'fwhm': measured(v.get('fwhm')),
                      'uploaded_by': v.get('uploaded_by') or '',
-                     'instrument': v.get('instrument') or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
+                     'instrument': d.instrument or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
     dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
     one_day = datetime.timedelta(days=1)
     return {'target': target,
             'rows': rows,
             'date_min': (min(dates) - one_day).isoformat() if dates else '',
             'date_max': (max(dates) + one_day).isoformat() if dates else '',
-            'filters': sorted({r['filter'] for r in rows if r['filter']}),
+            'filters': sorted({r['datum'].bandpass for r in rows if r['datum'].bandpass}),
             'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
             'groups': list(Group.objects.values_list('name', flat=True)),
             'is_admin': user.is_superuser,
@@ -861,12 +842,10 @@ def _frame_setups(basename, filt):
 @register.inclusion_tag('custom_code/partials/target/photometric_standards_list.html', takes_context=True)
 def photometric_standards_list(context, target):
     user = context['request'].user
-    photometry = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename')
-    if not settings.TARGET_PERMISSIONS_ONLY:
-        photometry = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=photometry)
+    photometry = photometry_datums(target, user).filter(value__has_key='basename')
     exact_setups, site_setups, times = set(), set(), []
-    for value, timestamp in photometry.values_list('value', 'timestamp'):
-        exact, site = _frame_setups(value['basename'], value.get('filter'))
+    for value, bandpass, timestamp in photometry.values_list('value', 'bandpass', 'timestamp'):
+        exact, site = _frame_setups(value['basename'], bandpass)
         if exact:
             exact_setups.add(exact)
             site_setups.add(site)
@@ -875,21 +854,21 @@ def photometric_standards_list(context, target):
     rows = []
     one_day = datetime.timedelta(days=1)
     if site_setups:
-        standards = ReducedDatum.objects.filter(data_type='photometric_standard', value__has_key='basename',
-                                                timestamp__gte=min(times) - one_day, timestamp__lte=max(times) + one_day)
+        standards = PhotometryReducedDatum.objects.filter(target__in=Target.objects.filter(standard=True), value__has_key='basename',
+                                                          timestamp__gte=min(times) - one_day, timestamp__lte=max(times) + one_day)
         for rd in standards.select_related('target').order_by('-timestamp'):
-            v = rd.value
-            exact, site = _frame_setups(v['basename'], v.get('filter'))
+            basename = rd.value['basename']
+            exact, site = _frame_setups(basename, rd.bandpass)
             if site in site_setups:
-                rows.append({'datum': rd, 'name': rd.target.name, 'basename': v['basename'], 'filter': v.get('filter') or '',
+                rows.append({'datum': rd, 'name': rd.target.name, 'basename': basename,
                              'same_telescope': exact in exact_setups,
-                             'telescope': v.get('telescope') or '', 'instrument': v.get('instrument') or v['basename'].split('-')[1]})
+                             'instrument': rd.instrument or basename.split('-')[1]})
     dates = [timezone.localtime(r['datum'].timestamp).date() for r in rows]
     return {'target': target,
             'rows': rows,
             'date_min': (min(dates) - one_day).isoformat() if dates else '',
             'date_max': (max(dates) + one_day).isoformat() if dates else '',
-            'filters': sorted({r['filter'] for r in rows if r['filter']}),
+            'filters': sorted({r['datum'].bandpass for r in rows if r['datum'].bandpass}),
             'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
             'is_admin': user.is_superuser,
             'archive_root': settings.FACILITIES['LCO']['archive_url'],
@@ -1852,32 +1831,19 @@ def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
         'UVW1': 'UVW1'}
     photometry_data = {}
 
-    if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
-    else:
-        datums = get_objects_for_user(user,
-                                      'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(
-                                        target=target,
-                                        data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+    datums = photometry_datums(target, user)
 
     for rd in datums:
-        value = rd.value
-        if not value:  # empty
+        if measured(rd.brightness) is None:
             continue
-        if isinstance(value, str):
-            value = json.loads(value)
-
-        if measured(value.get('magnitude')) is None:
+        if (rd.value.get('background_subtracted') == True) != subtracted:
             continue
-        if (value.get('background_subtracted') == True) != subtracted:
-            continue
-        current_filt = filter_translate.get(value.get('filter', ''), '')
+        current_filt = filter_translate.get(rd.bandpass, '')
    
         photometry_data.setdefault(current_filt, {})
         photometry_data[current_filt].setdefault('time', []).append(rd.timestamp)
-        photometry_data[current_filt].setdefault('magnitude', []).append(value.get('magnitude',None))
-        photometry_data[current_filt].setdefault('error', []).append(value.get('error', None))        
+        photometry_data[current_filt].setdefault('magnitude', []).append(rd.brightness)
+        photometry_data[current_filt].setdefault('error', []).append(rd.brightness_error)
 
     plot_data = [
         go.Scatter(
@@ -2219,29 +2185,24 @@ def broker_target_lightcurve(target):
 def snex2_get_photometry_data(context, target, target_share=False):
 
     user = context['request'].user
-    photometry = get_objects_for_user(user,
-                                  'tom_dataproducts.view_reduceddatum',
-                                  klass=ReducedDatum.objects.filter(
-                                    target=target,
-                                    data_type=settings.DATA_PRODUCT_TYPES['photometry'][0],
-                                    value__has_key='filter')).order_by('timestamp')
+    photometry = photometry_datums(target, user).order_by('timestamp')
     data = []
     for reduced_datum in photometry:
-        if 'limit' not in reduced_datum.value and measured(reduced_datum.value.get('magnitude')) is None:
+        if reduced_datum.limit is None and measured(reduced_datum.brightness) is None:
             continue
         rd_data = {'id': reduced_datum.pk,
                    'timestamp': reduced_datum.timestamp,
                    'source': reduced_datum.source_name,
-                   'filter': reduced_datum.value.get('filter', ''),
-                   'telescope': reduced_datum.value.get('telescope', ''),
-                   'error': reduced_datum.value.get('error', reduced_datum.value.get('magnitude_error', ''))
+                   'filter': reduced_datum.bandpass,
+                   'telescope': reduced_datum.telescope,
+                   'error': reduced_datum.brightness_error
                    }
 
-        if 'limit' in reduced_datum.value.keys():
-            rd_data['magnitude'] = reduced_datum.value['limit']
+        if reduced_datum.limit is not None:
+            rd_data['magnitude'] = reduced_datum.limit
             rd_data['limit'] = True
         else:
-            rd_data['magnitude'] = reduced_datum.value['magnitude']
+            rd_data['magnitude'] = reduced_datum.brightness
             rd_data['limit'] = False
 
         data.append(rd_data)

@@ -4,25 +4,29 @@ import logging
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Q
-from guardian.shortcuts import get_objects_for_user
+from django_filters import rest_framework as drf_filters
+from django.contrib.auth.models import Group
+from guardian.shortcuts import get_groups_with_perms, get_objects_for_user
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
-from rest_framework.mixins import UpdateModelMixin
+from rest_framework.mixins import CreateModelMixin, DestroyModelMixin, ListModelMixin, UpdateModelMixin
+from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from tom_dataproducts.api_views import DataProductViewSet, ReducedDatumViewSet
 from tom_dataproducts.exceptions import InvalidFileFormatException
-from tom_dataproducts.models import DataProduct
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum
 from tom_targets.api_views import TargetViewSet
 from tom_targets.models import Target, TargetName
 from tom_targets.permissions import targets_for_user
 
-from custom_code.filters import SNExReducedDatumFilter
+from custom_code.filters import SNExPhotometryFilter
 from custom_code.models import ReducedDatumExtra
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.processors.spectroscopy_processor import SpecProcessor
 from custom_code.scheduling import save_comments
-from custom_code.serializers import SNExDataProductSerializer, SNExReducedDatumSerializer, SNExTargetSerializer
-from custom_code.utils import groups_from_payload, set_dataproduct_view_groups
+from custom_code.serializers import (SNExDataProductSerializer, SNExPhotometrySerializer, SNExReducedDatumSerializer,
+                                     SNExTargetSerializer)
+from custom_code.utils import dataproduct_datums, dataproduct_view_groups, groups_from_payload, set_dataproduct_view_groups, view_datum_perm
 
 logger = logging.getLogger(__name__)
 
@@ -68,21 +72,35 @@ class SNExTargetViewSet(TargetViewSet):
                          'message': 'Target already exists.'},
                         status=status.HTTP_200_OK)
 
-class SNExReducedDatumViewSet(UpdateModelMixin, ReducedDatumViewSet):
-    serializer_class = SNExReducedDatumSerializer
-    filterset_class = SNExReducedDatumFilter
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
-            return queryset
-        viewable = get_objects_for_user(self.request.user, 'tom_dataproducts.view_reduceddatum', klass=queryset)
-        return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(data_type='photometric_standard'))
-
+class AdminDestroyMixin(DestroyModelMixin):
     def destroy(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             return Response({'detail': 'Only admins can delete reduced datums.'}, status=status.HTTP_403_FORBIDDEN)
         return super().destroy(request, *args, **kwargs)
+
+
+class SNExPhotometryViewSet(CreateModelMixin, ListModelMixin, AdminDestroyMixin, GenericViewSet):
+    serializer_class = SNExPhotometrySerializer
+    filter_backends = (drf_filters.DjangoFilterBackend,)
+    filterset_class = SNExPhotometryFilter
+
+    def get_queryset(self):
+        queryset = PhotometryReducedDatum.objects.order_by('pk')
+        if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
+            return queryset
+        viewable = get_objects_for_user(self.request.user, view_datum_perm(PhotometryReducedDatum), klass=queryset)
+        return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(target__in=Target.objects.filter(standard=True)))
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({**serializer.data, 'result': serializer.result},
+                        status=status.HTTP_201_CREATED if serializer.result == 'created' else status.HTTP_200_OK)
+
+
+class SNExReducedDatumViewSet(UpdateModelMixin, AdminDestroyMixin, ReducedDatumViewSet):
+    serializer_class = SNExReducedDatumSerializer
 
 
 class SNExDataProductViewSet(DataProductViewSet):
@@ -97,6 +115,7 @@ class SNExDataProductViewSet(DataProductViewSet):
             data['data'] = file
         elif not raw or image:
             return Response({'file': 'This field is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        inherit_groups = 'groups' not in data
         groups = data.pop('groups', [])
         try:
             groups = groups_from_payload(json.loads(groups) if isinstance(groups, str) else groups)
@@ -121,13 +140,20 @@ class SNExDataProductViewSet(DataProductViewSet):
             return Response({'product_id': f'You do not have access to {product_id}.'}, status=status.HTTP_403_FORBIDDEN)
         if raw and existing:
             return Response({'id': existing.id, 'product_id': product_id, 'already_posted': True,
-                             'already_reduced': existing.reduceddatum_set.exists()}, status=status.HTTP_200_OK)
+                             'already_reduced': any(datums.exists() for datums in dataproduct_datums(existing))}, status=status.HTTP_200_OK)
+
+        if inherit_groups and existing:
+            groups = list(Group.objects.filter(name__in=dataproduct_view_groups(existing)))
+        elif inherit_groups:
+            target = Target.objects.filter(pk=data['target'], standard=False).first() if str(data.get('target')).isdigit() else None
+            groups = list(get_groups_with_perms(target)) if target else []
 
         with transaction.atomic():
             if existing:
                 dp = existing
-                replaced = dp.reduceddatum_set.exists()
-                dp.reduceddatum_set.all().delete()
+                replaced = any(datums.exists() for datums in dataproduct_datums(dp))
+                for datums in dataproduct_datums(dp):
+                    datums.delete()
                 ReducedDatumExtra.objects.filter(data_product=dp).delete()
                 dp.data_product_type = data['data_product_type']
                 if file:

@@ -16,7 +16,7 @@ from tom_common.hooks import run_hook
 from tom_targets.models import Target
 from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
-from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum
 from custom_code.thumbnails import cached_frame
 from custom_code.utils import format_form_errors, unsubtracted_q
 import logging
@@ -80,9 +80,9 @@ class EventSequenceGalaxiesImagesView(LoginRequiredMixin, ListView):
         rows = []
         for galaxy in context['object_list']:
             images = []
-            photometry = ReducedDatum.objects.filter(
+            photometry = PhotometryReducedDatum.objects.filter(
                 target__in=Target.objects.filter(Q(gwfollowupgalaxy_id=galaxy.id) | Q(name=galaxy.catalog_objname)),
-                data_type='photometry', value__has_key='basename')
+                value__has_key='basename')
             subtractions = {datum.value['basename']: datum.value for datum in photometry.filter(value__background_subtracted=True)}
             for datum in photometry.filter(unsubtracted_q()).order_by('timestamp'):
                 try:
@@ -99,7 +99,7 @@ class EventSequenceGalaxiesImagesView(LoginRequiredMixin, ListView):
                         filenames.append(product.data.path)
                 images.append({
                     'obsdate': datum.timestamp.date(),
-                    'filter': datum.value.get('filter'),
+                    'filter': datum.bandpass,
                     'exposure_time': datum.value.get('exptime'),
                     'filenames': filenames,
                 })

@@ -1,6 +1,5 @@
 from custom_code.models import TNSTarget, BrokerTarget
-from tom_dataproducts.filters import ReducedDatumFilter
-from custom_code.utils import unsubtracted_q
+from tom_dataproducts.models import PhotometryReducedDatum
 import django_filters
 from django.db.models import Q
 from astropy.time import Time
@@ -10,14 +9,12 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout, Div
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
-class SNExReducedDatumFilter(ReducedDatumFilter):
+class SNExPhotometryFilter(django_filters.rest_framework.FilterSet):
     basename = django_filters.CharFilter(field_name='value__basename')
-    background_subtracted = django_filters.BooleanFilter(method='filter_background_subtracted')
 
-    def filter_background_subtracted(self, queryset, name, value):
-        if value:
-            return queryset.filter(value__background_subtracted=True)
-        return queryset.filter(unsubtracted_q())
+    class Meta:
+        model = PhotometryReducedDatum
+        fields = ['target__id', 'source_name', 'bandpass', 'reduction_version']
 
 
 class TNSTargetForm(forms.Form): 

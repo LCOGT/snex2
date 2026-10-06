@@ -57,13 +57,13 @@
   </thead>
   <tbody>
   {% for row in rows %}
-    <tr class="std-row" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}" data-band="{{ row.filter }}"
+    <tr class="std-row" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}" data-band="{{ row.datum.bandpass }}"
         data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}" data-same-telescope="{{ row.same_telescope|yesno:'1,0' }}">
       <td><input type="checkbox" class="std-check" checked></td>
       <td>{{ row.datum.timestamp|date:'Y-m-d H:i' }}</td>
       <td>{% if is_admin %}<a href="{% url 'targets:detail' row.datum.target_id %}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
-      <td>{{ row.filter }}</td>
-      <td>{{ row.telescope }}</td>
+      <td>{{ row.datum.bandpass }}</td>
+      <td>{{ row.datum.telescope }}</td>
       <td>{{ row.instrument }}</td>
       <td>{{ row.basename }}</td>
     </tr>

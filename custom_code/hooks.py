@@ -5,12 +5,9 @@ from astropy.time import Time
 import json
 
 from datetime import date
-from django.conf import settings
-from custom_code.utils import measured, photometry_data_type, unsubtracted_q
+from custom_code.utils import measured, photometry_datums, unsubtracted_q
 
 from collections import OrderedDict
-from guardian.shortcuts import get_objects_for_user
-from tom_dataproducts.models import ReducedDatum
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +91,7 @@ def _get_tns_params(target):
     return response_data
         
 def find_images(target, user, allimages=False):
-    datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target),
-                                         value__has_key='basename').filter(unsubtracted_q())
-    if not settings.TARGET_PERMISSIONS_ONLY and not target.standard:
-        datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
+    datums = photometry_datums(target, user).filter(value__has_key='basename').filter(unsubtracted_q())
 
     frames = OrderedDict()
     for rd in datums.order_by('-timestamp'):
@@ -122,9 +116,9 @@ def find_images(target, user, allimages=False):
     basenames, datums = list(frames), list(frames.values())
     return (basenames,
             [rd.timestamp.strftime('%m/%d/%Y') for rd in datums],
-            [(rd.value.get('telescope') or '')[:3] for rd in datums],
-            [rd.value.get('instrument') or b.split('-')[1] for b, rd in zip(basenames, datums)],
-            [rd.value.get('filter', '') for rd in datums],
+            [rd.telescope[:3] for rd in datums],
+            [rd.instrument or b.split('-')[1] for b, rd in zip(basenames, datums)],
+            [rd.bandpass for rd in datums],
             ['' if rd.value.get('exptime') is None else f"{rd.value['exptime']:.2f}s" for rd in datums],
             [pixel(rd.value.get('psfx')) for rd in datums],
             [pixel(rd.value.get('psfy')) for rd in datums],

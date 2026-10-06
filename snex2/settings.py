@@ -377,7 +377,6 @@ DATA_PRODUCT_TYPES = {
     'spectroscopy': ('spectroscopy', 'Spectroscopy'),
     'image_file': ('image_file', 'Image File'),
     'raw_spectrum': ('raw_spectrum', 'Raw Spectrum'),
-    'photometric_standard': ('photometric_standard', 'Photometric Standard'),
     'difference_image': ('difference_image', 'Difference Image'),
     'template_image': ('template_image', 'Template Image'),
 }
@@ -407,7 +406,8 @@ TARGET_CLASSIFICATIONS = [
 ]
 
 DEFAULT_GROUPS = [
-    'ANU', 'ARIES', 'CSP', 'CU Boulder', 'DLT40', 'e/PESSTO', 'ex-LCOGT', 'KIPMU', 'KMTNet', 'LBNL', 'LCOGT', 'LSQ', 'NAOC', 'Padova', 'QUB', 'SAAO', 'SIRAH', 'Skymapper', 'Tel Aviv U', 'U Penn', 'UC Berkeley', 'US GSP', 'UT Austin'
+    'lcogt', 'gsp', 'passta'
+    # 'ANU', 'ARIES', 'CSP', 'CU Boulder', 'DLT40', 'e/PESSTO', 'ex-LCOGT', 'KIPMU', 'KMTNet', 'LBNL', 'LCOGT', 'LSQ', 'NAOC', 'Padova', 'QUB', 'SAAO', 'SIRAH', 'Skymapper', 'Tel Aviv U', 'U Penn', 'UC Berkeley', 'US GSP', 'UT Austin'
 ]
 
 X_FRAME_OPTIONS = 'ALLOWALL'

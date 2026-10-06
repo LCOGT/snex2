@@ -45,7 +45,7 @@ from django.contrib.auth.decorators import login_required
 from guardian.shortcuts import assign_perm, get_groups_with_perms, get_objects_for_user, get_users_with_perms, remove_perm
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
-from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum
 from tom_dataproducts.views import DataProductUploadView
 from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
 from tom_observations.views import ObservationCreateView, ObservationListView
@@ -66,7 +66,7 @@ from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSSubmitView
-from custom_code.utils import datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -417,10 +417,9 @@ class CustomDataProductUploadView(DataProductUploadView):
                     for group in user_groups:
                         assign_perm('tom_dataproducts.view_dataproduct', group, dp)
                         assign_perm('tom_dataproducts.delete_dataproduct', group, dp)
-                        assign_perm('tom_dataproducts.view_reduceddatum', group, reduced_data)
+                        assign_perm(view_datum_perm(reduced_data.model), group, reduced_data)
                 successful_uploads.append(str(dp))
             except InvalidFileFormatException as iffe:
-                ReducedDatum.objects.filter(data_product=dp).delete()
                 dp.delete()
                 messages.error(
                     self.request,
@@ -460,14 +459,11 @@ def set_target_standard_view(request):
         elif target.classification == 'Standard':
             target.classification = ''
         target.save()
-        old_type, new_type = ('photometry', 'photometric_standard') if standard else ('photometric_standard', 'photometry')
-        datums = ReducedDatum.objects.filter(target=target, data_type=old_type)
         if standard:
-            set_reduceddatum_view_groups(datums, [])
+            set_reduceddatum_view_groups(PhotometryReducedDatum.objects.filter(target=target), [])
             for group in get_groups_with_perms(target):
                 for permission in ('view_target', 'change_target', 'delete_target'):
                     remove_perm(f'custom_code.{permission}', group, target)
-        datums.update(data_type=new_type)
     return JsonResponse({'standard': standard})
 
 
@@ -1099,11 +1095,11 @@ def load_manage_standards_view(request, pk):
 def update_photometry_groups_view(request):
     if not request.user.is_superuser:
         return HttpResponseForbidden('Only admins can change photometry visibility')
-    datums = ReducedDatum.objects.filter(pk__in=json.loads(request.POST.get('datum_ids', '[]')), data_type='photometry')
+    datums = PhotometryReducedDatum.objects.filter(pk__in=json.loads(request.POST.get('datum_ids', '[]')))
     pks = list(datums.values_list('pk', flat=True))
     groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
     set_reduceddatum_view_groups(datums, groups)
-    affected = ReducedDatum.objects.filter(
+    affected = PhotometryReducedDatum.objects.filter(
         Q(pk__in=pks) | Q(data_product__in=datums.exclude(data_product=None).values('data_product')))
     visible = reduceddatum_view_groups(affected)
     return JsonResponse({'updated': len(pks),
@@ -1371,7 +1367,7 @@ def query_ztf_observations_view(request):
     
     try:
         get_ztf_data(target)
-        count = ReducedDatum.objects.filter(target=target, data_type='photometry', source_name=ztf_name).count()
+        count = PhotometryReducedDatum.objects.filter(target=target, source_name=ztf_name).count()
         return HttpResponse(json.dumps({'success': f'Ingested {count} ZTF photometry points for {ztf_name}'}), content_type='application/json')
     except Exception as e:
         logger.warning(f'ZTF ingestion failed for {target.name}: {e}')
@@ -1667,15 +1663,7 @@ def download_photometry_view(request, targetid):
     user = request.user
     target = Target.objects.get(id=int(targetid))
 
-    if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
-
-    else:
-        datums = get_objects_for_user(user,
-                                      'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(
-                                        target=target,
-                                        data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+    datums = photometry_datums(target, user)
 
     if 'datum_ids' in request.POST:
         datums = datums.filter(pk__in=json.loads(request.POST['datum_ids']))
@@ -1686,9 +1674,8 @@ def download_photometry_view(request, targetid):
     newfile.write('mjd mag err filter subtracted?\n')
 
     for d in datums:
-        value = datum_value(d)
-        if all(k in value.keys() for k in ['magnitude', 'error', 'filter']) and measured(value['magnitude']) is not None:
-            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 2), value['magnitude'], value['error'], value['filter'], value.get('background_subtracted', False)))
+        if measured(d.brightness) is not None and d.brightness_error is not None and d.bandpass:
+            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 2), d.brightness, d.brightness_error, d.bandpass, d.value.get('background_subtracted', False)))
 
     response = HttpResponse(newfile.getvalue(), content_type='text/plain')
     response['Content-Disposition'] = 'attachment; filename={}.txt'.format(target.name.replace(' ',''))
@@ -1941,7 +1928,7 @@ class TargetFilteringView(FormView):
         filters = Q()
 
         # Use SNExTarget since redshift and classification are direct fields on it
-        photometry_q = Q(reduceddatum__data_type='photometry') & Q(reduceddatum__value__has_key='magnitude')
+        photometry_q = Q(photometryreduceddatum__brightness__isnull=False)
         spectroscopy_q = Q(reduceddatum__data_type='spectroscopy')
 
         # Start with only targets the user has permission to view
@@ -1951,13 +1938,13 @@ class TargetFilteringView(FormView):
                 'custom_code.view_target',
                 accept_global_perms=True
             ).annotate(
-                phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
+                phot_count=Count('photometryreduceddatum', filter=photometry_q, distinct=True),
                 spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
             )
         else:
             # Anonymous users get empty queryset
             qs = Target.objects.none().annotate(
-                phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
+                phot_count=Count('photometryreduceddatum', filter=photometry_q, distinct=True),
                 spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
             )
 
@@ -2049,11 +2036,11 @@ class TargetFilteringView(FormView):
                     target=OuterRef('pk'),
                     **ts_kw
                 )
-                recent_phot_sq = ReducedDatum.objects.filter(
+                recent_phot_sq = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='photometry',
+                    brightness__isnull=False,
                     **ts_kw
-                ).filter(value__has_key='magnitude')  # keep consistent with your photometry count
+                )
                 recent_spec_sq = ReducedDatum.objects.filter(
                     target=OuterRef('pk'),
                     data_type='spectroscopy',
@@ -2068,7 +2055,7 @@ class TargetFilteringView(FormView):
                 )
 
                 if kind == 'any':
-                    filters &= Q(has_recent_any=True)
+                    filters &= Q(has_recent_any=True) | Q(has_recent_phot=True)
                 elif kind == 'phot':
                     filters &= Q(has_recent_phot=True)
                 elif kind == 'spec':
@@ -2083,11 +2070,11 @@ class TargetFilteringView(FormView):
                     target=OuterRef('pk'),
                     timestamp__date__gte=date_cut,
                 )
-                recent_phot_sq = ReducedDatum.objects.filter(
+                recent_phot_sq = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='photometry',
+                    brightness__isnull=False,
                     timestamp__date__gte=date_cut,
-                ).filter(value__has_key='magnitude')
+                )
                 recent_spec_sq = ReducedDatum.objects.filter(
                     target=OuterRef('pk'),
                     data_type='spectroscopy',
@@ -2100,7 +2087,7 @@ class TargetFilteringView(FormView):
                     has_since_spec = Exists(recent_spec_sq),
                 )
                 filters &= {
-                    'any':  Q(has_since_any=True),
+                    'any':  Q(has_since_any=True) | Q(has_since_phot=True),
                     'phot': Q(has_since_phot=True),
                     'spec': Q(has_since_spec=True),
                 }[kind]
@@ -2114,11 +2101,11 @@ class TargetFilteringView(FormView):
                     target=OuterRef('pk'),
                     timestamp__date__lte=date_cut,
                 )
-                recent_phot_sq = ReducedDatum.objects.filter(
+                recent_phot_sq = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='photometry',
+                    brightness__isnull=False,
                     timestamp__date__lte=date_cut,
-                ).filter(value__has_key='magnitude')
+                )
                 recent_spec_sq = ReducedDatum.objects.filter(
                     target=OuterRef('pk'),
                     data_type='spectroscopy',
@@ -2131,7 +2118,7 @@ class TargetFilteringView(FormView):
                     has_before_spec = Exists(recent_spec_sq),
                 )
                 filters &= {
-                    'any':  Q(has_before_any=True),
+                    'any':  Q(has_before_any=True) | Q(has_before_phot=True),
                     'phot': Q(has_before_phot=True),
                     'spec': Q(has_before_spec=True),
                 }[kind]
@@ -2145,36 +2132,21 @@ class TargetFilteringView(FormView):
 
             if X is not None:
                 # Base photometry queryset: has numeric magnitude in JSON
-                base_phot = ReducedDatum.objects.filter(
+                base_phot = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='photometry',
-                    value__has_key='magnitude',
+                    brightness__isnull=False,
                 )
 
                 # ANY obs: fast Exists()
                 if mode == 'any':
-                    any_bright_sq = base_phot.annotate(
-                        mag_txt=KeyTextTransform('magnitude', F('value')),
-                        mag=Cast('mag_txt', FloatField()),
-                    ).filter(mag__lt=X)
+                    any_bright_sq = base_phot.filter(brightness__lt=X)
 
                     qs = qs.annotate(has_any_bright=Exists(any_bright_sq))
                     filters &= Q(has_any_bright=True)
 
                 # LAST obs: get latest row id, then its mag
                 else:
-                    latest_phot_id_sq = base_phot.order_by('-timestamp').values('pk')[:1]
-
-                    qs = qs.annotate(
-                        latest_phot_id=Subquery(latest_phot_id_sq)
-                    )
-
-                    last_mag_sq = ReducedDatum.objects.filter(
-                        pk=OuterRef('latest_phot_id')
-                    ).annotate(
-                        mag_txt=KeyTextTransform('magnitude', F('value')),
-                        mag=Cast('mag_txt', FloatField()),
-                    ).values('mag')[:1]
+                    last_mag_sq = base_phot.order_by('-timestamp').values('brightness')[:1]
 
                     qs = qs.annotate(last_mag=Subquery(last_mag_sq))
                     filters &= Q(last_mag__lt=X)

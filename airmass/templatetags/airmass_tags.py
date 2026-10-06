@@ -5,7 +5,7 @@ from django import template
 from tom_targets.models import Target
 from tom_targets.forms import TargetVisibilityForm
 from tom_observations import utils, facility
-from tom_dataproducts.models import DataProduct, ReducedDatum, ObservationRecord
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum, ObservationRecord
 
 from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
 import datetime
@@ -134,12 +134,11 @@ def lightcurve(target):
         return color
          
     photometry_data = {}
-    for rd in ReducedDatum.objects.filter(target=target, data_type='photometry'):
-        value = rd.value
-        photometry_data.setdefault(value.get('filter', ''), {})
-        photometry_data[value.get('filter', '')].setdefault('time', []).append(rd.timestamp)
-        photometry_data[value.get('filter', '')].setdefault('magnitude', []).append(value.get('magnitude',None))
-        photometry_data[value.get('filter', '')].setdefault('error', []).append(value.get('error', None))
+    for rd in PhotometryReducedDatum.objects.filter(target=target, brightness__lt=9999):
+        photometry_data.setdefault(rd.bandpass, {})
+        photometry_data[rd.bandpass].setdefault('time', []).append(rd.timestamp)
+        photometry_data[rd.bandpass].setdefault('magnitude', []).append(rd.brightness)
+        photometry_data[rd.bandpass].setdefault('error', []).append(rd.brightness_error)
     plot_data = [
         go.Scatter(
             x=filter_values['time'],

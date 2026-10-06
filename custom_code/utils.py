@@ -8,7 +8,6 @@ from django.core.exceptions import NON_FIELD_ERRORS
 from django.urls import reverse
 from django.utils import timezone
 
-import json
 import logging
 import requests
 from django.db.models import Q
@@ -116,26 +115,47 @@ def sync_group_permissions_to_target(obs_group, records, target):
             assign_perm(f'tom_observations.change_{codename_model}', group, obj)
             assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
+def _datum_models():
+    from tom_dataproducts.models import PhotometryReducedDatum, ReducedDatum
+    return ReducedDatum, PhotometryReducedDatum
+
+
+def view_datum_perm(model):
+    return f'tom_dataproducts.view_{model._meta.model_name}'
+
+
+def photometry_datums(target, user=None):
+    from tom_dataproducts.models import PhotometryReducedDatum
+    datums = PhotometryReducedDatum.objects.filter(target=target)
+    if user is None or settings.TARGET_PERMISSIONS_ONLY or target.standard:
+        return datums
+    return get_objects_for_user(user, view_datum_perm(PhotometryReducedDatum), klass=datums)
+
+
 def viewable_dataproducts(user, queryset):
-    from tom_dataproducts.models import ReducedDatum
-    direct = get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset)
-    via_datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(data_product__in=queryset))
-    return queryset.filter(Q(pk__in=direct.values('pk')) | Q(pk__in=via_datums.values('data_product_id')))
+    viewable = Q(pk__in=get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset).values('pk'))
+    for model in _datum_models():
+        via_datums = get_objects_for_user(user, view_datum_perm(model), klass=model.objects.filter(data_product__in=queryset))
+        viewable |= Q(pk__in=via_datums.values('data_product_id'))
+    return queryset.filter(viewable)
 
 
 def dataproduct_view_groups(dp):
-    from tom_dataproducts.models import ReducedDatum
-    datum_pks = [str(pk) for pk in dp.reduceddatum_set.values_list('pk', flat=True)]
-    perms = GroupObjectPermission.objects.filter(
-        Q(content_type=ContentType.objects.get_for_model(dp), object_pk=str(dp.pk),
-          permission__codename='view_dataproduct') |
-        Q(content_type=ContentType.objects.get_for_model(ReducedDatum), object_pk__in=datum_pks,
-          permission__codename='view_reduceddatum'))
-    return set(perms.values_list('group__name', flat=True))
+    perms = Q(content_type=ContentType.objects.get_for_model(dp), object_pk=str(dp.pk),
+              permission__codename='view_dataproduct')
+    for model in _datum_models():
+        datum_pks = [str(pk) for pk in model.objects.filter(data_product=dp).values_list('pk', flat=True)]
+        perms |= Q(content_type=ContentType.objects.get_for_model(model), object_pk__in=datum_pks,
+                   permission__codename=f'view_{model._meta.model_name}')
+    return set(GroupObjectPermission.objects.filter(perms).values_list('group__name', flat=True))
 
 
-def _set_view_groups(codename, queryset, groups):
+def dataproduct_datums(dp):
+    return [model.objects.filter(data_product=dp) for model in _datum_models()]
+
+
+def _set_view_groups(queryset, groups):
+    codename = f'view_{queryset.model._meta.model_name}'
     for group in groups:
         assign_perm(f'tom_dataproducts.{codename}', group, queryset)
     current = GroupObjectPermission.objects.filter(
@@ -146,25 +166,33 @@ def _set_view_groups(codename, queryset, groups):
 
 
 def set_dataproduct_view_groups(dp, groups):
-    _set_view_groups('view_dataproduct', type(dp).objects.filter(pk=dp.pk), groups)
-    _set_view_groups('view_reduceddatum', dp.reduceddatum_set.all(), groups)
+    _set_view_groups(type(dp).objects.filter(pk=dp.pk), groups)
+    for datums in dataproduct_datums(dp):
+        _set_view_groups(datums, groups)
 
 
 def set_reduceddatum_view_groups(datums, groups):
     from tom_dataproducts.models import DataProduct
     for dp in DataProduct.objects.filter(pk__in=datums.exclude(data_product=None).values('data_product')):
         set_dataproduct_view_groups(dp, groups)
-    _set_view_groups('view_reduceddatum', datums.filter(data_product=None), groups)
+    _set_view_groups(datums.filter(data_product=None), groups)
 
 
 def reduceddatum_view_groups(datums):
     perms = GroupObjectPermission.objects.filter(
-        content_type=ContentType.objects.get_for_model(datums.model), permission__codename='view_reduceddatum',
+        content_type=ContentType.objects.get_for_model(datums.model),
+        permission__codename=f'view_{datums.model._meta.model_name}',
         object_pk__in=[str(pk) for pk in datums.values_list('pk', flat=True)]).values_list('object_pk', 'group__name')
     visible = {}
     for pk, name in perms:
         visible.setdefault(int(pk), []).append(name)
     return {pk: sorted(names) for pk, names in visible.items()}
+
+
+def default_target_groups(user):
+    if user.is_superuser:
+        return Group.objects.filter(name__in=settings.DEFAULT_GROUPS)
+    return user.groups.all()
 
 
 def groups_from_payload(groups):
@@ -184,6 +212,13 @@ def measured(value):
     except (TypeError, ValueError):
         return None
     return None if value >= 9999 else value
+
+
+MEASURED_KEYS = ('magnitude', 'error', 'psfmag', 'psfdmag', 'apmag', 'dapmag', 'fwhm', 'psfx', 'psfy')
+
+
+def without_sentinels(value):
+    return {key: measured(item) if key in MEASURED_KEYS else item for key, item in value.items()}
 
 
 def unsubtracted_q():
@@ -310,9 +345,11 @@ def spectrum_ascii_name(datum):
     return '{}_{}.ascii'.format(datum.target.name.replace(' ', '_'), datum.timestamp.strftime('%Y%m%dT%H%M%S'))
 
 
-def datum_value(datum):
-    return json.loads(datum.value) if isinstance(datum.value, str) else datum.value
-
-
-def photometry_data_type(target):
-    return 'photometric_standard' if getattr(target, 'standard', False) else 'photometry'
+def photometry_reduction_version(value, data_product_id=None):
+    if data_product_id:
+        return f'upload-{data_product_id}'
+    if not value.get('basename'):
+        return ''
+    if not value.get('background_subtracted'):
+        return 'unsubtracted'
+    return '{}-{}'.format(value.get('subtraction_algorithm') or 'subtracted', value.get('template_source') or '')

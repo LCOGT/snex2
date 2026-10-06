@@ -79,16 +79,15 @@
   </thead>
   <tbody>
   {% for row in rows %}
-  {% with v=row.datum.value %}
     <tr class="phot-row" data-id="{{ row.datum.pk }}" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}"
-        data-band="{{ row.filter }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}">
+        data-band="{{ row.datum.bandpass }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}">
       <td><input type="checkbox" class="phot-check" checked></td>
       <td>{{ row.datum.timestamp|date:'m/d/y H:i' }}</td>
-      <td>{{ row.filter }}</td>
+      <td>{{ row.datum.bandpass }}</td>
       <td>{% if row.subtracted %}Y{% else %}N{% endif %}</td>
-      <td>{% if row.magnitude is not None %}{{ row.magnitude|floatformat:3 }}{% elif v.limit %}&gt;{{ v.limit|floatformat:3 }}{% else %}&mdash;{% endif %}</td>
-      <td>{% if row.magnitude is not None and v.error is not None %}{{ v.error|floatformat:3 }}{% endif %}</td>
-      <td>{{ v.telescope|default:'' }}</td>
+      <td>{% if row.brightness is not None %}{{ row.brightness|floatformat:3 }}{% elif row.datum.limit is not None %}&gt;{{ row.datum.limit|floatformat:3 }}{% else %}&mdash;{% endif %}</td>
+      <td>{% if row.brightness is not None and row.datum.brightness_error is not None %}{{ row.datum.brightness_error|floatformat:3 }}{% endif %}</td>
+      <td>{{ row.datum.telescope }}</td>
       <td>{{ row.instrument }}</td>
       <td>{% if row.exptime is not None %}{{ row.exptime|floatformat:2 }}{% endif %}</td>
       <td>{% if row.fwhm is not None %}{{ row.fwhm|floatformat:2 }}{% endif %}</td>
@@ -97,7 +96,6 @@
       <td>{{ row.uploaded_by }}</td>
       {% if is_admin %}<td class="phot-groups" data-groups="{{ row.groups|join:'|' }}"></td>{% endif %}
     </tr>
-  {% endwith %}
   {% empty %}
     <tr><td colspan="14">No photometry you can view for this target.</td></tr>
   {% endfor %}

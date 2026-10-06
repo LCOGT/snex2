@@ -18,7 +18,7 @@ from django.conf import settings
 
 from django.urls import include
 from custom_code.views import *
-from custom_code.api_views import SNExDataProductViewSet, SNExReducedDatumViewSet, SNExTargetViewSet
+from custom_code.api_views import SNExDataProductViewSet, SNExPhotometryViewSet, SNExReducedDatumViewSet, SNExTargetViewSet
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
@@ -26,6 +26,7 @@ from gw.views import *
 api_router = DefaultRouter()
 api_router.register(r'targets', SNExTargetViewSet, basename='targets')
 api_router.register(r'reduceddatums', SNExReducedDatumViewSet, basename='reduceddatums')
+api_router.register(r'photometry', SNExPhotometryViewSet, basename='photometry')
 api_router.register(r'dataproducts', SNExDataProductViewSet, basename='dataproducts')
 urlpatterns = [
     path('users/<int:pk>/approve/', SNExUserApprovalView.as_view(), name='user-approve'),
