@@ -15,7 +15,7 @@ from django.core.paginator import Paginator
 from tom_targets.models import Target, TargetList
 from tom_targets.permissions import targets_for_user
 from tom_observations import facility
-from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, SpectroscopyReducedDatum
 from tom_dataproducts.forms import DataShareForm
 from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
 from tom_observations.models import ObservationRecord, ObservationGroup
@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import photometry_datums, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.utils import photometry_datums, spectroscopy_datums, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -301,10 +301,7 @@ def lightcurve_collapse(target, user):
     
     plot_data = generic_lightcurve_plot(target, user)   
 
-    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                klass=ReducedDatum.objects.filter(
-                                    target=target,
-                                    data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0])) 
+    spec = spectroscopy_datums(target, user) 
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -414,9 +411,7 @@ def bin_spectra(waves, fluxes, b):
 def spectra_plot(context, target, dataproduct=None):
     user = context['request'].user
     spectra = []
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                 klass=ReducedDatum.objects.filter(
-                                                     target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectral_dataproducts = spectroscopy_datums(target, user).order_by('timestamp')
     
     if dataproduct:
         spectral_dataproducts = DataProduct.objects.get(dataproduct=dataproduct)
@@ -431,7 +426,7 @@ def spectra_plot(context, target, dataproduct=None):
 
     for spectrum in spectral_dataproducts:
         name = str(spectrum.timestamp).split(' ')[0]
-        wavelength, flux = extract_spectrum_arrays(spectrum)
+        wavelength, flux = spectrum.wavelength, spectrum.flux
         if not wavelength or not flux:
             continue
 
@@ -482,23 +477,9 @@ def spectra_plot(context, target, dataproduct=None):
 @register.inclusion_tag('custom_code/spectra_collapse.html')
 def spectra_collapse(target,user):
     spectra = []
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                 klass=ReducedDatum.objects.filter(
-                                                     target=target, data_type='spectroscopy')).order_by('-timestamp')
+    spectral_dataproducts = spectroscopy_datums(target, user).order_by('-timestamp')
     for spectrum in spectral_dataproducts:
-        datum = spectrum.value
-        wavelength = []
-        flux = []
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(float(value['wavelength']))
-                flux.append(float(value['flux']))
+        wavelength, flux = spectrum.wavelength, spectrum.flux
         
         binned_wavelength, binned_flux = bin_spectra(wavelength, flux, 5)
         spectra.append((binned_wavelength, binned_flux))
@@ -736,9 +717,7 @@ def dash_spectra(context, target):
 
     ### Send the min and max flux values 
     user = User.objects.get(username=request.user)
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                 klass=ReducedDatum.objects.filter(
-                                                     target=target, data_type='spectroscopy'))
+    spectral_dataproducts = spectroscopy_datums(target, user)
     dash_context = {'target_id': {'value': target.id},
                     'user_id': {'value': user.id},
                     'target_redshift': {'value': z},
@@ -762,20 +741,8 @@ def dash_spectra(context, target):
     min_flux = 0
     for i in range(len(spectral_dataproducts)):
         spectrum = spectral_dataproducts[i]
-        datum = spectrum.value
-        wavelength = []
-        flux = []
         name = str(spectrum.timestamp).split(' ')[0]
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(value['wavelength'])
-                flux.append(float(value['flux']))
+        wavelength, flux = spectrum.wavelength, spectrum.flux
         if max(flux) > max_flux: max_flux = max(flux)
         if min(flux) < min_flux: min_flux = min(flux)
 
@@ -1425,9 +1392,7 @@ def spectra_list(context, target):
     form = DataShareForm(initial=initial)
     form.fields['data_type'].widget = forms.HiddenInput()
 
-    spectra = get_objects_for_user(
-        request.user, 'tom_dataproducts.view_reduceddatum',
-        klass=ReducedDatum.objects.filter(target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectra = spectroscopy_datums(target, request.user).order_by('timestamp')
 
     extras = {
         row.data_product_id: row.value or {}
@@ -1455,28 +1420,8 @@ def spectra_list(context, target):
     }
 
 
-def extract_spectrum_arrays(spectrum):
-    datum = spectrum.value or {}
-    wavelength = []
-    flux = []
-    if datum.get('photon_flux'):
-        wavelength = list(datum.get('wavelength') or [])
-        flux = list(datum.get('photon_flux'))
-    elif datum.get('flux'):
-        wavelength = list(datum.get('wavelength') or [])
-        flux = list(datum.get('flux'))
-    else:
-        for value in datum.values():
-            try:
-                wavelength.append(float(value['wavelength']))
-                flux.append(float(value['flux']))
-            except (KeyError, TypeError, ValueError):
-                continue
-    return wavelength, flux
-
-
 def build_spectrum_plot(spectrum, bin_factor=5):
-    wavelength, flux = extract_spectrum_arrays(spectrum)
+    wavelength, flux = spectrum.wavelength, spectrum.flux
     if not wavelength or not flux:
         return ''
 
@@ -1503,7 +1448,7 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
     if redshift is None:
         redshift = getattr(target, 'redshift', 0) or 0
 
-    _, flux = extract_spectrum_arrays(spectrum)
+    flux = spectrum.flux
 
     max_flux = max(flux) if flux else 0
     min_flux = min(flux) if flux else 0
@@ -1518,7 +1463,7 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         spec_extras['site'] = '(COJ 2m)'
         spec_extras['instrument'] += ' (FLOYDS)'
 
-    content_type = ContentType.objects.get_for_model(ReducedDatum)
+    content_type = ContentType.objects.get_for_model(SpectroscopyReducedDatum)
     comments = Comment.objects.filter(
         object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
     spec_extras['comments'] = comments
@@ -1968,10 +1913,7 @@ def lightcurve_with_extras(target, user, subtracted=False):
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
         'UVW1': 'UVW1'}
     plot_data = generic_lightcurve_plot(target, user, subtracted)
-    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                klass=ReducedDatum.objects.filter(
-                                    target=target,
-                                    data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0]))
+    spec = spectroscopy_datums(target, user)
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -2279,8 +2221,8 @@ def tns_generated_ascii_choice(context, form):
     request = context.request
     kwargs = request.resolver_match.kwargs
     spectrum = get_objects_for_user(
-        request.user, 'tom_dataproducts.view_reduceddatum',
-        klass=ReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'], data_type='spectroscopy')).first()
+        request.user, 'tom_dataproducts.view_spectroscopyreduceddatum',
+        klass=SpectroscopyReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'])).first()
     if spectrum is not None and spectrum_ascii(spectrum) is not None:
         value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'
         form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + list(form.fields['ascii_file'].choices)

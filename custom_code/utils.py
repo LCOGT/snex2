@@ -116,20 +116,29 @@ def sync_group_permissions_to_target(obs_group, records, target):
             assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
 def _datum_models():
-    from tom_dataproducts.models import PhotometryReducedDatum, ReducedDatum
-    return ReducedDatum, PhotometryReducedDatum
+    from tom_dataproducts.models import PhotometryReducedDatum, ReducedDatum, SpectroscopyReducedDatum
+    return ReducedDatum, PhotometryReducedDatum, SpectroscopyReducedDatum
 
 
 def view_datum_perm(model):
     return f'tom_dataproducts.view_{model._meta.model_name}'
 
 
-def photometry_datums(target, user=None):
-    from tom_dataproducts.models import PhotometryReducedDatum
-    datums = PhotometryReducedDatum.objects.filter(target=target)
+def _viewable_datums(model, target, user):
+    datums = model.objects.filter(target=target)
     if user is None or settings.TARGET_PERMISSIONS_ONLY or target.standard:
         return datums
-    return get_objects_for_user(user, view_datum_perm(PhotometryReducedDatum), klass=datums)
+    return get_objects_for_user(user, view_datum_perm(model), klass=datums)
+
+
+def photometry_datums(target, user=None):
+    from tom_dataproducts.models import PhotometryReducedDatum
+    return _viewable_datums(PhotometryReducedDatum, target, user)
+
+
+def spectroscopy_datums(target, user=None):
+    from tom_dataproducts.models import SpectroscopyReducedDatum
+    return _viewable_datums(SpectroscopyReducedDatum, target, user)
 
 
 def viewable_dataproducts(user, queryset):
@@ -211,7 +220,7 @@ def measured(value):
         value = float(value)
     except (TypeError, ValueError):
         return None
-    return None if value >= 9999 else value
+    return None if value >= 9000 else value
 
 
 MEASURED_KEYS = ('magnitude', 'error', 'psfmag', 'psfdmag', 'apmag', 'dapmag', 'fwhm', 'psfx', 'psfy')
@@ -326,18 +335,9 @@ GENERATED_ASCII_PREFIX = 'spectrum-'
 
 
 def spectrum_ascii(rd):
-    if not rd or not isinstance(rd.value, dict):
+    if not rd or not rd.wavelength or not rd.flux or len(rd.wavelength) != len(rd.flux):
         return None
-    if rd.value.get('photon_flux'):
-        wavelength, flux = rd.value.get('wavelength'), rd.value['photon_flux']
-    elif rd.value.get('flux'):
-        wavelength, flux = rd.value.get('wavelength'), rd.value['flux']
-    else:
-        points = [point for point in rd.value.values() if isinstance(point, dict) and 'wavelength' in point and 'flux' in point]
-        wavelength, flux = [point['wavelength'] for point in points], [point['flux'] for point in points]
-    if not wavelength or not flux or len(wavelength) != len(flux):
-        return None
-    lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
+    lines = [f'{w} {f}' for w, f in zip(rd.wavelength, rd.flux)]
     return ('\n'.join(lines)).encode('utf-8')
 
 
@@ -345,9 +345,13 @@ def spectrum_ascii_name(datum):
     return '{}_{}.ascii'.format(datum.target.name.replace(' ', '_'), datum.timestamp.strftime('%Y%m%dT%H%M%S'))
 
 
+def upload_reduction_version(data_product_id):
+    return f'upload-{data_product_id}'
+
+
 def photometry_reduction_version(value, data_product_id=None):
     if data_product_id:
-        return f'upload-{data_product_id}'
+        return upload_reduction_version(data_product_id)
     if not value.get('basename'):
         return ''
     if not value.get('background_subtracted'):

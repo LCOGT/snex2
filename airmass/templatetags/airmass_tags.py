@@ -5,7 +5,7 @@ from django import template
 from tom_targets.models import Target
 from tom_targets.forms import TargetVisibilityForm
 from tom_observations import utils, facility
-from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum, ObservationRecord
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, SpectroscopyReducedDatum, ObservationRecord
 
 from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
 import datetime
@@ -134,7 +134,7 @@ def lightcurve(target):
         return color
          
     photometry_data = {}
-    for rd in PhotometryReducedDatum.objects.filter(target=target, brightness__lt=9999):
+    for rd in PhotometryReducedDatum.objects.filter(target=target, brightness__lt=9000):
         photometry_data.setdefault(rd.bandpass, {})
         photometry_data[rd.bandpass].setdefault('time', []).append(rd.timestamp)
         photometry_data[rd.bandpass].setdefault('magnitude', []).append(rd.brightness)
@@ -173,17 +173,12 @@ def lightcurve(target):
 @register.inclusion_tag('airmass/spectra.html')
 def spectra_plot(target, dataproduct=None):
     spectra = []
-    spectral_dataproducts = ReducedDatum.objects.filter(target=target, data_type='spectroscopy')
+    spectral_dataproducts = SpectroscopyReducedDatum.objects.filter(target=target)
     if dataproduct:
         spectral_dataproducts = DataProduct.objects.get(dataproduct=dataproduct)
     for spectrum in spectral_dataproducts:
-        datum = spectrum.value
-        wavelength = []
-        flux = []
         name = str(spectrum.timestamp).split(' ')[0]
-        for key, value in datum.items():
-            wavelength.append(value['wavelength'])
-            flux.append(float(value['flux']))
+        wavelength, flux = spectrum.wavelength, spectrum.flux
         spectra.append((wavelength, flux, name))
     plot_data = [
         go.Scatter(

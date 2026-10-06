@@ -45,7 +45,7 @@ from django.contrib.auth.decorators import login_required
 from guardian.shortcuts import assign_perm, get_groups_with_perms, get_objects_for_user, get_users_with_perms, remove_perm
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
-from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum, SpectroscopyReducedDatum
 from tom_dataproducts.views import DataProductUploadView
 from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
 from tom_observations.views import ObservationCreateView, ObservationListView
@@ -1146,8 +1146,8 @@ def load_airmass_plot_view(request, pk):
 def _spectrum_for_user(request, pk, spectrum_id):
     target = _target_for_user(request, pk)
     spectrum = get_objects_for_user(
-        request.user, 'tom_dataproducts.view_reduceddatum',
-        klass=ReducedDatum.objects.filter(id=spectrum_id, target=target, data_type='spectroscopy')).first()
+        request.user, 'tom_dataproducts.view_spectroscopyreduceddatum',
+        klass=SpectroscopyReducedDatum.objects.filter(id=spectrum_id, target=target)).first()
     if spectrum is None:
         raise Http404('Spectrum not found or not visible to this user')
     return target, spectrum
@@ -1474,7 +1474,7 @@ class BulkDownloadView(LoginRequiredMixin, View):
                     zip_file.write(fits_path, arcname=file_name)
                     written += 1
                 elif download_format != 'fits':
-                    content = spectrum_ascii(product.reduceddatum_set.filter(data_type='spectroscopy').first())
+                    content = spectrum_ascii(product.spectroscopyreduceddatum_set.first())
                     if content:
                         zip_file.writestr(ascii_name, content)
                         written += 1
@@ -1630,7 +1630,7 @@ class FloydsInboxView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         inbox_rows = []
-        raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', reduceddatum__isnull=True,
+        raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', spectroscopyreduceddatum__isnull=True,
                                                  target__in=Target.objects.filter(standard=False))
         for dp in raw_spectra.select_related('target').order_by('-created'):
             img = ''
@@ -1929,7 +1929,6 @@ class TargetFilteringView(FormView):
 
         # Use SNExTarget since redshift and classification are direct fields on it
         photometry_q = Q(photometryreduceddatum__brightness__isnull=False)
-        spectroscopy_q = Q(reduceddatum__data_type='spectroscopy')
 
         # Start with only targets the user has permission to view
         if self.request.user.is_authenticated:
@@ -1939,13 +1938,13 @@ class TargetFilteringView(FormView):
                 accept_global_perms=True
             ).annotate(
                 phot_count=Count('photometryreduceddatum', filter=photometry_q, distinct=True),
-                spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
+                spectra_count=Count('spectroscopyreduceddatum', distinct=True),  
             )
         else:
             # Anonymous users get empty queryset
             qs = Target.objects.none().annotate(
                 phot_count=Count('photometryreduceddatum', filter=photometry_q, distinct=True),
-                spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
+                spectra_count=Count('spectroscopyreduceddatum', distinct=True),  
             )
 
         if not (cd.get('apply_name_filter') and cd.get('target_name', '').strip()):
@@ -2041,9 +2040,8 @@ class TargetFilteringView(FormView):
                     brightness__isnull=False,
                     **ts_kw
                 )
-                recent_spec_sq = ReducedDatum.objects.filter(
+                recent_spec_sq = SpectroscopyReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='spectroscopy',
                     **ts_kw
                 )
 
@@ -2055,7 +2053,7 @@ class TargetFilteringView(FormView):
                 )
 
                 if kind == 'any':
-                    filters &= Q(has_recent_any=True) | Q(has_recent_phot=True)
+                    filters &= Q(has_recent_any=True) | Q(has_recent_phot=True) | Q(has_recent_spec=True)
                 elif kind == 'phot':
                     filters &= Q(has_recent_phot=True)
                 elif kind == 'spec':
@@ -2075,9 +2073,8 @@ class TargetFilteringView(FormView):
                     brightness__isnull=False,
                     timestamp__date__gte=date_cut,
                 )
-                recent_spec_sq = ReducedDatum.objects.filter(
+                recent_spec_sq = SpectroscopyReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='spectroscopy',
                     timestamp__date__gte=date_cut,
                 )
 
@@ -2087,7 +2084,7 @@ class TargetFilteringView(FormView):
                     has_since_spec = Exists(recent_spec_sq),
                 )
                 filters &= {
-                    'any':  Q(has_since_any=True) | Q(has_since_phot=True),
+                    'any':  Q(has_since_any=True) | Q(has_since_phot=True) | Q(has_since_spec=True),
                     'phot': Q(has_since_phot=True),
                     'spec': Q(has_since_spec=True),
                 }[kind]
@@ -2106,9 +2103,8 @@ class TargetFilteringView(FormView):
                     brightness__isnull=False,
                     timestamp__date__lte=date_cut,
                 )
-                recent_spec_sq = ReducedDatum.objects.filter(
+                recent_spec_sq = SpectroscopyReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='spectroscopy',
                     timestamp__date__lte=date_cut,
                 )
 
@@ -2118,7 +2114,7 @@ class TargetFilteringView(FormView):
                     has_before_spec = Exists(recent_spec_sq),
                 )
                 filters &= {
-                    'any':  Q(has_before_any=True) | Q(has_before_phot=True),
+                    'any':  Q(has_before_any=True) | Q(has_before_phot=True) | Q(has_before_spec=True),
                     'phot': Q(has_before_phot=True),
                     'spec': Q(has_before_spec=True),
                 }[kind]

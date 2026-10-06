@@ -5,16 +5,15 @@ import plotly.graph_objs as go
 from dash.dependencies import Input, Output
 import numpy as np
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.models import DataProduct
 from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
-from custom_code.utils import measured, photometry_datums, viewable_dataproducts
+from custom_code.utils import measured, photometry_datums, spectroscopy_datums, viewable_dataproducts
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
 from astropy.time import Time
-from guardian.shortcuts import get_objects_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -263,9 +262,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         datums.append(photometry_datums(target, user).exclude(data_product_id__in=uploaded_products))
     
     ### Plot the data
-    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                klass=ReducedDatum.objects.filter(
-                                    target=target, data_type='spectroscopy'))
+    spec = spectroscopy_datums(target, user)
         
     for data in datums:
         for rd in data:

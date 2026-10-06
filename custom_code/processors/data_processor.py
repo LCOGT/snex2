@@ -1,9 +1,9 @@
 from importlib import import_module
 from django.conf import settings
-from tom_dataproducts.models import PhotometryReducedDatum, ReducedDatum, try_parse_reduced_datum
+from tom_dataproducts.models import try_parse_reduced_datum
 from tom_targets.sharing import continuous_share_data
 
-from custom_code.utils import photometry_reduction_version
+from custom_code.utils import upload_reduction_version
 
 DEFAULT_DATA_PROCESSOR_CLASS = 'tom_dataproducts.data_processor.DataProcessor'
 
@@ -22,15 +22,10 @@ def run_custom_data_processor(dp, extras, rd_extras):
     data_processor = clazz()
     data, rd_extras = data_processor.process_data(dp, extras, rd_extras)
 
-    if dp.data_product_type == 'photometry':
-        model = PhotometryReducedDatum
-        reduced_datums = [try_parse_reduced_datum({
-            'target': dp.target, 'data_product': dp, 'data_type': 'photometry', 'timestamp': datum[0],
-            'reduction_version': photometry_reduction_version(datum[1], dp.id), 'value': datum[1]}) for datum in data]
-    else:
-        model = ReducedDatum
-        reduced_datums = [ReducedDatum(target=dp.target, data_product=dp, data_type=dp.data_product_type,
-                                       timestamp=datum[0], value=datum[1]) for datum in data]
+    reduced_datums = [try_parse_reduced_datum({
+        'target': dp.target, 'data_product': dp, 'data_type': dp.data_product_type, 'timestamp': datum[0],
+        'reduction_version': upload_reduction_version(dp.id), 'value': datum[1]}) for datum in data]
+    model = type(reduced_datums[0])
     reduced_datums = model.objects.bulk_create(reduced_datums)
     continuous_share_data(dp.target, reduced_datums)
 

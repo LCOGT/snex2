@@ -5,7 +5,6 @@ from dash import html
 import plotly.graph_objs as go
 import numpy as np
 import json
-from guardian.shortcuts import get_objects_for_user
 from tom_targets.models import Target
 from django.contrib.auth.models import User
 import logging
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 ### Jamie: "lots of help from https://community.plot.ly/t/django-and-dash-eads-method/7717"
 
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import ReducedDatum
+from custom_code.utils import spectroscopy_datums
 from custom_code.templatetags.custom_code_tags import bin_spectra
 from django.templatetags.static import static
 import matplotlib.pyplot as plt
@@ -321,8 +320,7 @@ def display_output(selected_rows,
                       'layout': []}
 
     # If the page just loaded, plot all the spectra
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=ReducedDatum.objects.filter(
-                                                         target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectral_dataproducts = spectroscopy_datums(target, user).order_by('timestamp')
     if not spectral_dataproducts:
         return 'No spectra yet'
 
@@ -337,20 +335,8 @@ def display_output(selected_rows,
         all_data = []
         for i in range(len(spectral_dataproducts)):
             spectrum = spectral_dataproducts[i]
-            datum = spectrum.value
-            wavelength = []
-            flux = []
             name = str(spectrum.timestamp).split(' ')[0]
-            if datum.get('photon_flux'):
-                wavelength = datum.get('wavelength')
-                flux = datum.get('photon_flux')
-            elif datum.get('flux'):
-                wavelength = datum.get('wavelength')
-                flux = datum.get('flux')
-            else:
-                for key, value in datum.items():
-                    wavelength.append(float(value['wavelength']))
-                    flux.append(float(value['flux']))
+            wavelength, flux = spectrum.wavelength, spectrum.flux
             
             binned_wavelength, binned_flux = bin_spectra(wavelength, flux, 5)
             scatter_obj = go.Scatter(

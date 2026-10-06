@@ -11,9 +11,9 @@ from statistics import median
 ### Jamie: "lots of help from https://community.plot.ly/t/django-and-dash-eads-method/7717"
 
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import ReducedDatum
+from tom_dataproducts.models import SpectroscopyReducedDatum
 from tom_targets.models import Target
-from custom_code.templatetags.custom_code_tags import bin_spectra, extract_spectrum_arrays
+from custom_code.templatetags.custom_code_tags import bin_spectra
 from django.contrib.auth.models import User
 from django.db.models import Q
 from guardian.shortcuts import get_objects_for_user
@@ -435,7 +435,7 @@ def display_output(selected_rows,
             min_flux = 0
             max_flux = 0
 
-            spectrum = ReducedDatum.objects.get(id=spectrum_id)
+            spectrum = SpectroscopyReducedDatum.objects.get(id=spectrum_id)
             target_first = Target.objects.get(pk=spectrum.target_id)
             object_z = target_first.redshift or 0
 
@@ -443,7 +443,7 @@ def display_output(selected_rows,
                 return 'No spectra yet'
                 
             name = str(spectrum.timestamp).split(' ')[0]
-            wavelength, flux = extract_spectrum_arrays(spectrum)
+            wavelength, flux = spectrum.wavelength, spectrum.flux
                     
             if not flux:
                 logger.warning('No flux values for spectrum %s, skipping comparison', spectrum_id)
@@ -474,20 +474,20 @@ def display_output(selected_rows,
                 return graph_data
             compare_z = target_compare.redshift or 0
 
-            spectral_dataproducts = ReducedDatum.objects.filter(
-                target=target_compare, data_type='spectroscopy').order_by('-timestamp')
+            spectral_dataproducts = SpectroscopyReducedDatum.objects.filter(
+                target=target_compare).order_by('-timestamp')
             if user_id:
                 compare_user = User.objects.filter(id=user_id).first()
                 if compare_user:
                     spectral_dataproducts = get_objects_for_user(
-                        compare_user, 'tom_dataproducts.view_reduceddatum',
+                        compare_user, 'tom_dataproducts.view_spectroscopyreduceddatum',
                         klass=spectral_dataproducts)
             if not spectral_dataproducts:
                 logger.info('No viewable spectra for compare target %s', target_compare)
                 return graph_data
             for spectrum in spectral_dataproducts:
                 name = target_compare.name + ' --- ' +  str(spectrum.timestamp).split(' ')[0]
-                wavelength, flux = extract_spectrum_arrays(spectrum)
+                wavelength, flux = spectrum.wavelength, spectrum.flux
                 if not flux:
                     continue
                 shifted_wavelength = [w * (1+object_z) / (1+compare_z) for w in wavelength]
@@ -520,13 +520,13 @@ def display_output(selected_rows,
     # If the page just loaded, plot all the spectra
     if not graph_data['data']:
         logger.info('Plotting dash spectrum for reduceddatum %s', spectrum_id)
-        spectrum = ReducedDatum.objects.get(id=spectrum_id)
+        spectrum = SpectroscopyReducedDatum.objects.get(id=spectrum_id)
  
         if not spectrum:
             return 'No spectra yet'
             
         name = str(spectrum.timestamp).split(' ')[0]
-        wavelength, flux = extract_spectrum_arrays(spectrum)
+        wavelength, flux = spectrum.wavelength, spectrum.flux
         
         if not bin_factor:
             bin_factor = 1
@@ -546,13 +546,13 @@ def display_output(selected_rows,
             if d['name'] not in elements.keys():
                 graph_data['data'].remove(d)
 
-        spectrum = ReducedDatum.objects.get(id=spectrum_id)
+        spectrum = SpectroscopyReducedDatum.objects.get(id=spectrum_id)
 
         if not spectrum:
             return 'No spectra yet'
 
         name = str(spectrum.timestamp).split(' ')[0]
-        wavelength, flux = extract_spectrum_arrays(spectrum)
+        wavelength, flux = spectrum.wavelength, spectrum.flux
 
         if 'mask' in mask_value:
             t = Target.objects.get(pk=spectrum.target_id)

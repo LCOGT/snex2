@@ -83,7 +83,7 @@
           {% endif %}
         </td>
         <td>
-          {% with rd=product.reduceddatum_set.first %}
+          {% with rd=product.spectroscopyreduceddatum_set.first %}
             {{ rd.timestamp|date:"Y-m-d" }}
           {% endwith %}
         </td>
