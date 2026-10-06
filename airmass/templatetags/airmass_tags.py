@@ -5,7 +5,8 @@ from django import template
 from tom_targets.models import Target
 from tom_targets.forms import TargetVisibilityForm
 from tom_observations import utils, facility
-from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, SpectroscopyReducedDatum, ObservationRecord
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ObservationRecord
+from custom_code.utils import observed_spectra
 
 from astroplan import Observer, FixedTarget, AtNightConstraint, time_grid_from_range, moon_illumination
 import datetime
@@ -173,7 +174,7 @@ def lightcurve(target):
 @register.inclusion_tag('airmass/spectra.html')
 def spectra_plot(target, dataproduct=None):
     spectra = []
-    spectral_dataproducts = SpectroscopyReducedDatum.objects.filter(target=target)
+    spectral_dataproducts = observed_spectra(target)
     if dataproduct:
         spectral_dataproducts = DataProduct.objects.get(dataproduct=dataproduct)
     for spectrum in spectral_dataproducts:

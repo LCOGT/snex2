@@ -78,7 +78,8 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
     try:
         model_map = {
             'observationgroup': 'observationgroup',
-            'spec': 'reduceddatum',
+            'spec': 'dataproduct',
+            'spectrum': 'spectroscopyreduceddatum',
             'targets': 'snextarget'
         }
         actual_model = model_map.get(model_name, model_name)

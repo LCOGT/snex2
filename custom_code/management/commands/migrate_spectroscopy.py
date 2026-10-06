@@ -5,10 +5,11 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django_comments.models import Comment
 from guardian.models import GroupObjectPermission, UserObjectPermission
-from tom_dataproducts.models import ReducedDatum, SpectroscopyReducedDatum
+from tom_dataproducts.models import DataProduct, ReducedDatum, SpectroscopyReducedDatum
 
 from custom_code.management.commands.migrate_photometry import Command as PhotometryCommand
-from custom_code.utils import upload_reduction_version
+from custom_code.models import ReducedDatumExtra
+from custom_code.utils import file_version, measured, upload_reduction_version
 
 BATCH_SIZE = 100
 SPECTRUM_KEYS = ('flux', 'photon_flux', 'wavelength', 'error', 'flux_error', 'flux_units', 'photon_flux_units',
@@ -24,7 +25,7 @@ def _floats(values):
 
 class Command(PhotometryCommand):
     help = ('Moves spectroscopy ReducedDatum rows into SpectroscopyReducedDatum, converting every stored spectrum '
-            'shape to wavelength and flux arrays and keeping per-datum permissions and comments.')
+            'shape to wavelength and flux arrays and keeping per-datum permissions. Comments move to the data product.')
 
     def build(self, rd, seen):
         value = json.loads(rd.value) if isinstance(rd.value, str) else rd.value
@@ -43,23 +44,35 @@ class Command(PhotometryCommand):
             flux_unit, extras = '', {}
         if not flux or len(wavelength) != len(flux):
             return None, False
-        version = upload_reduction_version(rd.data_product_id) if rd.data_product_id else ''
+        version = self.version(rd.data_product) if rd.data_product_id else ''
+        upload = ReducedDatumExtra.objects.filter(data_product_id=rd.data_product_id).first() if rd.data_product_id else None
+        facts = (upload.value or {}) if upload else {}
+        extras.update({key: facts[key] for key in ('reducer', 'final_reduction') if facts.get(key)})
         key = (rd.timestamp, tuple(flux), version)
         if key in seen:
             return seen[key], True
         seen[key] = SpectroscopyReducedDatum(
             target_id=rd.target_id, data_product_id=rd.data_product_id, timestamp=rd.timestamp,
             source_name=rd.source_name, source_location=rd.source_location,
-            telescope=str(value.get('telescope') or rd.telescope), instrument=str(value.get('instrument') or rd.instrument),
+            telescope=str(value.get('telescope') or facts.get('telescope') or rd.telescope),
+            instrument=str(value.get('instrument') or facts.get('instrument') or rd.instrument),
+            exposure_time=measured(facts.get('exptime')),
             wavelength=wavelength, flux=flux, error=_floats(value.get('error') or value.get('flux_error') or []),
             flux_unit=str(flux_unit), wavelength_unit=str(value.get('wavelength_units') or ''),
             reduction_version=version, value=extras)
         return seen[key], False
 
+    def version(self, product):
+        try:
+            return file_version(product.data)
+        except (OSError, ValueError):
+            return upload_reduction_version(product.pk)
+
     def handle(self, *args, **options):
         dry_run = options['dry_run']
         old_type = ContentType.objects.get_for_model(ReducedDatum)
         new_type = ContentType.objects.get_for_model(SpectroscopyReducedDatum)
+        product_type = ContentType.objects.get_for_model(DataProduct)
         permissions = {
             Permission.objects.get(content_type=old_type, codename=f'{action}_reduceddatum').pk:
             Permission.objects.get(content_type=new_type, codename=f'{action}_spectroscopyreduceddatum')
@@ -93,9 +106,12 @@ class Command(PhotometryCommand):
                 new_pks.update({old: datum.pk for old, datum in kept.items()})
                 for model in (GroupObjectPermission, UserObjectPermission):
                     copied += self.copy_permissions(model, old_type, new_type, permissions, new_pks)
+                products = dict(SpectroscopyReducedDatum.objects.filter(pk__in=new_pks.values()).exclude(
+                    data_product=None).values_list('pk', 'data_product_id'))
                 for old, new in new_pks.items():
-                    comments += Comment.objects.filter(content_type=old_type, object_pk=str(old)).update(
-                        content_type=new_type, object_pk=str(new))
+                    moved_to = {'content_type': product_type, 'object_pk': str(products[new])} if new in products else {
+                        'content_type': new_type, 'object_pk': str(new)}
+                    comments += Comment.objects.filter(content_type=old_type, object_pk=str(old)).update(**moved_to)
                 ReducedDatum.objects.filter(pk__in=list(new_pks)).delete()
 
         label = 'Would move' if dry_run else 'Moved'

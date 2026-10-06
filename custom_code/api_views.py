@@ -14,19 +14,19 @@ from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from tom_dataproducts.api_views import DataProductViewSet, ReducedDatumViewSet
 from tom_dataproducts.exceptions import InvalidFileFormatException
-from tom_dataproducts.models import DataProduct, PhotometryReducedDatum
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, SpectroscopyReducedDatum
 from tom_targets.api_views import TargetViewSet
 from tom_targets.models import Target, TargetName
 from tom_targets.permissions import targets_for_user
 
 from custom_code.filters import SNExPhotometryFilter
 from custom_code.models import ReducedDatumExtra
-from custom_code.processors.data_processor import run_custom_data_processor
+from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.processors.spectroscopy_processor import SpecProcessor
 from custom_code.scheduling import save_comments
 from custom_code.serializers import (SNExDataProductSerializer, SNExPhotometrySerializer, SNExReducedDatumSerializer,
                                      SNExTargetSerializer)
-from custom_code.utils import dataproduct_datums, dataproduct_view_groups, groups_from_payload, set_dataproduct_view_groups, view_datum_perm
+from custom_code.utils import dataproduct_datums, dataproduct_view_groups, file_version, groups_from_payload, set_dataproduct_view_groups, view_datum_perm
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +142,12 @@ class SNExDataProductViewSet(DataProductViewSet):
             return Response({'id': existing.id, 'product_id': product_id, 'already_posted': True,
                              'already_reduced': any(datums.exists() for datums in dataproduct_datums(existing))}, status=status.HTTP_200_OK)
 
+        spectrum = data.get('data_product_type') == 'spectroscopy'
+        versions = SpectroscopyReducedDatum.objects.filter(data_product=existing) if existing else None
+        if existing and spectrum and file and versions.filter(reduction_version=file_version(file)).exists():
+            return Response({'id': existing.id, 'product_id': product_id, 'unchanged': True, 'versions': versions.count()},
+                            status=status.HTTP_200_OK)
+
         if inherit_groups and existing:
             groups = list(Group.objects.filter(name__in=dataproduct_view_groups(existing)))
         elif inherit_groups:
@@ -151,9 +157,10 @@ class SNExDataProductViewSet(DataProductViewSet):
         with transaction.atomic():
             if existing:
                 dp = existing
-                replaced = any(datums.exists() for datums in dataproduct_datums(dp))
-                for datums in dataproduct_datums(dp):
-                    datums.delete()
+                replaced = not spectrum and any(datums.exists() for datums in dataproduct_datums(dp))
+                if not spectrum:
+                    for datums in dataproduct_datums(dp):
+                        datums.delete()
                 ReducedDatumExtra.objects.filter(data_product=dp).delete()
                 dp.data_product_type = data['data_product_type']
                 if file:
@@ -172,7 +179,11 @@ class SNExDataProductViewSet(DataProductViewSet):
             reduceddatums, rd_extras = [], {}
             if not raw:
                 try:
-                    reduced_data, rd_extras = run_custom_data_processor(dp, {}, {'data_product_id': dp.id, **posted})
+                    reduced_data, rd_extras = run_custom_data_processor(
+                        dp, {}, {'data_product_id': dp.id, **posted}, uploaded_by=request.user.username)
+                    uploaded = dp
+                    if not existing:
+                        dp, reduced_data = merge_into_observation(dp, reduced_data)
                 except Exception as e:
                     transaction.set_rollback(True)
                     if isinstance(e, InvalidFileFormatException):
@@ -180,8 +191,11 @@ class SNExDataProductViewSet(DataProductViewSet):
                     logger.exception(f'Processing failed for uploaded data product {dp.data.name}')
                     return Response({'file': f'Could not process file: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 reduceddatums = list(reduced_data.values_list('id', flat=True))
-                ReducedDatumExtra.objects.create(target_id=dp.target_id, data_product=dp, data_type=dp.data_product_type,
-                                                 key='upload_extras', value=rd_extras)
+                if dp == uploaded:
+                    ReducedDatumExtra.objects.create(target_id=dp.target_id, data_product=dp, data_type=dp.data_product_type,
+                                                     key='upload_extras', value=rd_extras)
+                else:
+                    groups = list(Group.objects.filter(name__in=dataproduct_view_groups(dp)))
                 if dp.data_product_type == 'spectroscopy':
                     DataProduct.objects.filter(pk=dp.pk).update(created=reduced_data.first().timestamp)
             if not settings.TARGET_PERMISSIONS_ONLY:
@@ -190,5 +204,6 @@ class SNExDataProductViewSet(DataProductViewSet):
         return Response({'id': dp.id, 'product_id': dp.product_id, 'target': dp.target_id,
                          'data': dp.data.name or None, 'thumbnail': dp.thumbnail.name or None,
                          'reduceddatums': reduceddatums, 'extras': rd_extras,
-                         'groups': sorted(g.name for g in groups), 'replaced': replaced},
+                         'groups': sorted(g.name for g in groups), 'replaced': replaced,
+                         'versions': SpectroscopyReducedDatum.objects.filter(data_product=dp).count()},
                         status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)

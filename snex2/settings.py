@@ -94,7 +94,7 @@ TEMPLATES = [
 DATA_SHARING = {
     'hermes': {
         'DISPLAY_NAME': os.getenv('HERMES_DISPLAY_NAME', 'Hermes'),
-        'BASE_URL': os.getenv('HERMES_BASE_URL', 'https://hermes-dev.lco.global/'),
+        'BASE_URL': os.getenv('HERMES_BASE_URL', ''),
         'HERMES_API_KEY': os.getenv('HERMES_API_KEY', 'yourHermesAPIKeyHere'),
         'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', ''),
         'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
@@ -121,11 +121,6 @@ DATA_SHARING = {
             'fa03': 'LCO1m - Sinistro'
         },
         'ENABLE_TNS': True
-    },
-    'tom-demo-dev': {
-        'BASE_URL': os.getenv('TOM_DEMO_BASE_URL', 'http://tom-demo-dev.lco.gtn/'),
-        'USERNAME': os.getenv('TOM_DEMO_USERNAME', 'set TOM_DEMO_USERNAME value in environment'),
-        'PASSWORD': os.getenv('TOM_DEMO_PASSWORD', 'set TOM_DEMO_PASSWORD value in environment'),
     },
     'localhost-tom': {
         # for testing; share with yourself
@@ -346,7 +341,11 @@ DATA_SERVICES = {
         'api_key': os.getenv('TNS_APIKEY', ''),
         'bot_id': os.getenv('TNS_APIID', ''),
         'bot_name': 'SNEx_Bot1',
-        'base_url': os.getenv('TNS_BASE_URL', 'https://sandbox.wis-tns.org'),
+        'base_url': os.getenv('TNS_BASE_URL', ''),
+        'group_names': DATA_SHARING['hermes']['GROUP_NAMES'],
+        'default_authors': DATA_SHARING['hermes']['DEFAULT_AUTHORS'],
+        'filter_mapping': DATA_SHARING['hermes']['FILTER_MAPPING'],
+        'instrument_mapping': DATA_SHARING['hermes']['INSTRUMENT_MAPPING'],
     },
 }
 
@@ -481,7 +480,7 @@ ALERT_STREAMS = [
             'USERNAME': os.getenv('SCIMMA_AUTH_USERNAME', ''),
             'PASSWORD': os.getenv('SCIMMA_AUTH_PASSWORD', ''),
             # Group ID must be prefixed with SCiMMA SCRAM credential username to open the SCiMMA kafka stream
-            'GROUP_ID': os.getenv('SCIMMA_AUTH_USERNAME', '') + '-' + os.getenv('HOPSKOTCH_GROUP_ID', 'hermes-dev'),
+            'GROUP_ID': os.getenv('SCIMMA_AUTH_USERNAME', '') + '-' + os.getenv('HOPSKOTCH_GROUP_ID', ''),
             'TOPIC_HANDLERS': {
                 'hermes.*': 'custom_code.alertstreams.hopskotch.alert_logger',
                 'tomtoolkit.test': 'custom_code.alertstreams.hopskotch.alert_logger',

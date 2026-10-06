@@ -59,14 +59,14 @@ from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateFor
 from custom_code.hooks import _get_tns_params
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
-from custom_code.processors.data_processor import run_custom_data_processor
+from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
-from tom_tns.views import TNSSubmitView
-from custom_code.utils import photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from tom_tns.views import TNSFormView, TNSSubmitView
+from custom_code.utils import can_delete_spectrum, default_version, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -395,16 +395,20 @@ class CustomDataProductUploadView(DataProductUploadView):
                     rdextra_value['reducer_group'] = reducer_group
 
                 rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
-                reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value)
+                reduced_data, rdextra_value = run_custom_data_processor(
+                    dp, extras, rdextra_value, uploaded_by=self.request.user.username)
+                uploaded = dp
+                dp, reduced_data = merge_into_observation(dp, reduced_data)
 
-                reduced_datum_extra = ReducedDatumExtra(
-                    target = target,
-                    data_product = dp,
-                    data_type = dp_type,
-                    key = 'upload_extras',
-                    value = rdextra_value
-                )
-                reduced_datum_extra.save()
+                if dp == uploaded:
+                    reduced_datum_extra = ReducedDatumExtra(
+                        target = target,
+                        data_product = dp,
+                        data_type = dp_type,
+                        key = 'upload_extras',
+                        value = rdextra_value
+                    )
+                    reduced_datum_extra.save()
 
                 ### -------------------------------------------------------------------
                 
@@ -1436,10 +1440,28 @@ def cache_frame_view(request):
     return HttpResponse(status=204)
 
 
+def delete_spectrum_version_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    if request.method != 'POST' or not can_delete_spectrum(request.user, spectrum):
+        return HttpResponseForbidden('Only admins and the uploader can delete this version')
+    product = spectrum.data_product
+    spectrum.delete()
+    remaining = SpectroscopyReducedDatum.objects.filter(data_product=product) if product else []
+    if not remaining:
+        if product:
+            product.delete()
+        return HttpResponse('')
+    entry = custom_code_tags.build_spectrum_entry(target, default_version(remaining), user=request.user)
+    return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
+
+
 def download_spectrum_view(request, pk, spectrum_id, file_format):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
     product = spectrum.data_product
-    has_file = bool(product and product.data and os.path.exists(product.data.path))
+    extra = product.reduceddatumextra_set.first() if product else None
+    kept_version = (extra.value or {}).get('file_version') if extra else None
+    has_file = bool(product and product.data and os.path.exists(product.data.path)
+                    and kept_version in (None, spectrum.reduction_version))
     if file_format == 'fits':
         if not has_file:
             raise Http404('This spectrum has no file')
@@ -1474,7 +1496,8 @@ class BulkDownloadView(LoginRequiredMixin, View):
                     zip_file.write(fits_path, arcname=file_name)
                     written += 1
                 elif download_format != 'fits':
-                    content = spectrum_ascii(product.spectroscopyreduceddatum_set.first())
+                    versions = list(product.spectroscopyreduceddatum_set.all())
+                    content = spectrum_ascii(default_version(versions)) if versions else None
                     if content:
                         zip_file.writestr(ascii_name, content)
                         written += 1
@@ -1591,11 +1614,13 @@ def change_broker_target_status_view(request):
     return HttpResponse(json.dumps(context), content_type='application/json')
 
 
-class SNEx2SpectroscopyTNSSharePassthrough(RedirectView):
+class SNExTNSSpectrumView(TNSFormView):
 
-    def get_redirect_url(self, *args, **kwargs):
-        target, datum = _spectrum_for_user(self.request, kwargs['pk'], kwargs['datum_pk'])
-        return reverse('tns:report-tns', kwargs={'pk': target.pk, 'datum_pk': datum.pk})
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['datum'] = _spectrum_for_user(self.request, kwargs['pk'], kwargs['datum_pk'])[1]
+        context['default_form'] = 'classify'
+        return context
 
 
 class SNExTNSClassifySubmitView(TNSSubmitView):
@@ -1619,7 +1644,7 @@ class SNExTNSClassifySubmitView(TNSSubmitView):
     def form_valid(self, form):
         spectrum = self._generated_spectrum()
         if spectrum is not None and not form.cleaned_data.get('ascii_file_override'):
-            form.cleaned_data['ascii_file_override'] = ContentFile(spectrum_ascii(spectrum), name=spectrum_ascii_name(spectrum))
+            form.cleaned_data['ascii_file_override'] = ContentFile(spectrum_ascii(spectrum, header=False), name=spectrum_ascii_name(spectrum))
         return super().form_valid(form)
 
 

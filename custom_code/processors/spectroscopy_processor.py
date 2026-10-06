@@ -16,6 +16,7 @@ class SpecProcessor(SpectroscopyProcessor):
 
     PLAINTEXT_MIMETYPES = ['text/plain', 'text/csv', 'text/ascii']
     DEFAULT_FLUX_CONSTANT = (1 * units.erg) / units.cm ** 2 / units.second / units.angstrom
+    ERROR_COLUMNS = ('error', 'err', 'fluxerror', 'flux_error', 'fluxerr', 'flux_err', 'sigma')
     field_keywords = {
         "objname": ["object", "objname", "target"],
         "date_obs": ["mjd", "mjd-obs", "mjd_obs", "mjdobs", "obsmjd",
@@ -27,13 +28,14 @@ class SpecProcessor(SpectroscopyProcessor):
         "slit": ["APERWID", "slit", "aperture", "slitname"],
         "exptime": ["exptime", "exposure", "itot"],
         "airmass": ["airmass", "am", "tcs_am"],
-        "grism": ["grism"],
+        "grism": ["grism", "grating"],
         "observer": ["observer"],
         "reducer": ["reducer", "reducedby"],
     }
 
     def process_data(self, data_product, extras, rd_extras):
         mimetype = mimetypes.guess_type(data_product.data.name)[0]
+        self.error = None
         if mimetype in self.FITS_MIMETYPES:
             spectrum, obs_date, rd_extras = self._process_spectrum_from_fits(data_product, rd_extras)
         elif mimetype in self.PLAINTEXT_MIMETYPES:
@@ -44,6 +46,9 @@ class SpecProcessor(SpectroscopyProcessor):
             except:
                 raise InvalidFileFormatException('Unsupported file type')
         serialized_spectrum = SpectrumSerializer().serialize(spectrum)
+        if self.error is not None and len(self.error) == len(serialized_spectrum['flux']):
+            serialized_spectrum['error'] = np.nan_to_num(
+                np.array(self.error, dtype=float), nan=0.0, posinf=0.0, neginf=0.0).tolist()
 
         return [(obs_date, serialized_spectrum)], rd_extras
 
@@ -59,6 +64,7 @@ class SpecProcessor(SpectroscopyProcessor):
             spec_table = hlist['SPECTRUM'].data
             flux = spec_table['flux']
             wav = spec_table['wavelength']
+            error_column = next((name for name in spec_table.names if name.lower() in self.ERROR_COLUMNS), None)
         else:
             flux, header = fits.getdata(data_aws.open(), header=True)
 
@@ -106,6 +112,10 @@ class SpecProcessor(SpectroscopyProcessor):
         if not banzai_reduc:
             dim = len(flux.shape)
             if dim == 3:
+                sigma_band = next((int(key[6:]) - 1 for key, label in header.items()
+                                   if key.startswith('BANDID') and key[6:].isdigit() and 'sigma' in str(label).lower()), None)
+                if sigma_band is not None and sigma_band < flux.shape[0]:
+                    self.error = flux[sigma_band, 0, :]
                 flux = flux[0, 0, :]
             elif flux.shape[0] == 2:
                 flux = flux[0, :]
@@ -119,6 +129,8 @@ class SpecProcessor(SpectroscopyProcessor):
             flux_values = np.array(flux, dtype=float)
             wav_values = np.array(wav, dtype=float)
             valid_mask = ~np.isnan(flux_values)  # keep only non-NaN flux points
+            if error_column:
+                self.error = np.array(spec_table[error_column], dtype=float)[valid_mask]
             spectrum = Spectrum1D(flux=flux_values[valid_mask] * flux_constant, spectral_axis=wav_values[valid_mask] * units.Angstrom)
 
         rd_extras.pop('date_obs', None)
@@ -152,7 +164,7 @@ class SpecProcessor(SpectroscopyProcessor):
             pass
         elif 'wavelength' in data.colnames and 'flux' not in data.colnames:
             data.rename_column(data.colnames[1], 'flux')
-        elif data.colnames == ['col1', 'col2']:
+        elif data.colnames[:2] == ['col1', 'col2']:
             data.rename_column('col1', 'wavelength')
             data.rename_column('col2', 'flux')
         elif data.colnames == ['col2', 'col1'] or (len(data.colnames) == 2 and 'col' in data.colnames[0]):
@@ -193,6 +205,12 @@ class SpecProcessor(SpectroscopyProcessor):
         facility = get_service_class(facility_name)() if facility_name else None
         wavelength_units = facility.get_wavelength_units() if facility else self.DEFAULT_WAVELENGTH_UNITS
         flux_constant = facility.get_flux_constant() if facility else self.DEFAULT_FLUX_CONSTANT
+
+        error_column = next((name for name in data.colnames if name.lower() in self.ERROR_COLUMNS), None)
+        if error_column is None and len(data.colnames) == 3 and data.colnames[2] == 'col3':
+            error_column = 'col3'
+        if error_column:
+            self.error = np.array(data[error_column], dtype=float)
 
         spectral_axis = np.array(data['wavelength']) * wavelength_units
         flux = np.array(data['flux']) * flux_constant

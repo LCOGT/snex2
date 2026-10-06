@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import photometry_datums, spectroscopy_datums, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.utils import can_delete_spectrum, observed_spectra, photometry_datums, spectrum_comment_object, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -301,7 +301,7 @@ def lightcurve_collapse(target, user):
     
     plot_data = generic_lightcurve_plot(target, user)   
 
-    spec = spectroscopy_datums(target, user) 
+    spec = observed_spectra(target, user)
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -411,7 +411,7 @@ def bin_spectra(waves, fluxes, b):
 def spectra_plot(context, target, dataproduct=None):
     user = context['request'].user
     spectra = []
-    spectral_dataproducts = spectroscopy_datums(target, user).order_by('timestamp')
+    spectral_dataproducts = observed_spectra(target, user)
     
     if dataproduct:
         spectral_dataproducts = DataProduct.objects.get(dataproduct=dataproduct)
@@ -477,7 +477,7 @@ def spectra_plot(context, target, dataproduct=None):
 @register.inclusion_tag('custom_code/spectra_collapse.html')
 def spectra_collapse(target,user):
     spectra = []
-    spectral_dataproducts = spectroscopy_datums(target, user).order_by('-timestamp')
+    spectral_dataproducts = observed_spectra(target, user)[::-1]
     for spectrum in spectral_dataproducts:
         wavelength, flux = spectrum.wavelength, spectrum.flux
         
@@ -717,7 +717,7 @@ def dash_spectra(context, target):
 
     ### Send the min and max flux values 
     user = User.objects.get(username=request.user)
-    spectral_dataproducts = spectroscopy_datums(target, user)
+    spectral_dataproducts = observed_spectra(target, user)
     dash_context = {'target_id': {'value': target.id},
                     'user_id': {'value': user.id},
                     'target_redshift': {'value': z},
@@ -1392,7 +1392,7 @@ def spectra_list(context, target):
     form = DataShareForm(initial=initial)
     form.fields['data_type'].widget = forms.HiddenInput()
 
-    spectra = spectroscopy_datums(target, request.user).order_by('timestamp')
+    spectra = observed_spectra(target, request.user)
 
     extras = {
         row.data_product_id: row.value or {}
@@ -1463,10 +1463,13 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         spec_extras['site'] = '(COJ 2m)'
         spec_extras['instrument'] += ' (FLOYDS)'
 
-    content_type = ContentType.objects.get_for_model(SpectroscopyReducedDatum)
+    if spectrum.value.get('reducer'):
+        spec_extras['reducer'] = spectrum.value['reducer']
+    commented = spectrum_comment_object(spectrum)
     comments = Comment.objects.filter(
-        object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
+        object_pk=commented.id, content_type=ContentType.objects.get_for_model(commented)).order_by('id').select_related('user')
     spec_extras['comments'] = comments
+    versions = SpectroscopyReducedDatum.objects.filter(data_product=spectrum.data_product).order_by('-pk') if spectrum.data_product else []
     spec_extras['comments_list'] = [
         '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
 
@@ -1481,6 +1484,14 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         'time': str(spectrum.timestamp).split('+')[0],
         'spec_extras': spec_extras,
         'spectrum': spectrum,
+        'comment_table': 'spec' if spectrum.data_product else 'spectrum',
+        'comment_object_id': commented.id,
+        'versions': [{'id': version.id, 'final': bool(version.value.get('final_reduction')),
+                      'reducer': version.value.get('reducer') or 'Unknown reducer',
+                      'uploaded': (version.value.get('uploaded') or '')[:10],
+                      'hash': version.reduction_version[:7]} for version in versions],
+        'can_delete': can_delete_spectrum(user, spectrum) if user else False,
+        'has_fits': spec_extras.get('file_version') in (None, spectrum.reduction_version),
         'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
     }
 
@@ -1913,7 +1924,7 @@ def lightcurve_with_extras(target, user, subtracted=False):
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
         'UVW1': 'UVW1'}
     plot_data = generic_lightcurve_plot(target, user, subtracted)
-    spec = spectroscopy_datums(target, user)
+    spec = observed_spectra(target, user)
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -2227,12 +2238,17 @@ def tns_generated_ascii_choice(context, form):
         value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'
         form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + list(form.fields['ascii_file'].choices)
         form.initial['ascii_file'] = value
+    if spectrum is not None:
+        upload = spectrum.data_product.reduceddatumextra_set.first() if spectrum.data_product else None
+        facts = (upload.value or {}) if upload else {}
+        form.initial['reducer'] = spectrum.value.get('reducer') or facts.get('reducer') or ''
+        form.initial['observer'] = facts.get('observer') or ''
     return ''
 
 
 @register.simple_tag
 def tns_author_placeholder(form, field_name):
-    if not settings.DATA_SHARING['hermes']['DEFAULT_AUTHORS']:
+    if not settings.DATA_SERVICES['TNS']['default_authors']:
         form.initial[field_name] = ''
         form.fields[field_name].widget.attrs['placeholder'] = 'Your default author list here'
     return ''

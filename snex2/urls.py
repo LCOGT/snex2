@@ -32,6 +32,7 @@ urlpatterns = [
     path('users/<int:pk>/approve/', SNExUserApprovalView.as_view(), name='user-approve'),
     path('api/', include(api_router.urls)),
     path('targets/', TargetListView.as_view(), name='list'),
+    path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
     path('', include('tom_common.urls')),
     path('view_object/', view_object_view, name='view-object'),
     path('redirect/', target_redirect_view, name='redirect'),
@@ -69,6 +70,7 @@ urlpatterns = [
     path('targets/<int:pk>/plot/thumbnail/', load_thumbnail_view, name='load-thumbnail'),
     path('targets/<int:pk>/plot/airmass/', load_airmass_plot_view, name='load-airmass-plot'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/', load_single_spectrum_view, name='load-single-spectrum'),
+    path('targets/<int:pk>/spectrum/<int:spectrum_id>/delete/', delete_spectrum_version_view, name='delete-spectrum-version'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/download/<str:file_format>/', download_spectrum_view, name='download-spectrum'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/interactive/', load_spectrum_interactive_view, name='load-spectrum-interactive'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
@@ -91,7 +93,6 @@ urlpatterns = [
     path('nonlocalizedevents/sequence/<int:id>/obs/', EventSequenceGalaxiesImagesView.as_view(), name='nonlocalizedevents-sequence-images'),
     path('snex2/', include('custom_code.urls')),
     path('django_plotly_dash/', include('django_plotly_dash.urls')),
-    path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
 ]
 
 if settings.DEBUG:

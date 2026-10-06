@@ -7,6 +7,16 @@
       <label class="form-check-label ms-2" for="share-box-{{ entry.spectrum.id }}">Select</label>
     </div>
         <div class="row"><b>{{ entry.time }}</b></div>
+    {% if entry.versions|length > 1 %}
+    <div class="row mb-1">
+      <select class="form-select form-select-sm" title="Reduction version"
+        onchange="htmx.ajax('GET', '{% url 'load-single-spectrum' entry.spectrum.target.id 0 %}'.replace('/0/', '/' + this.value + '/'), {target: '#spectrum-row-{{ entry.spectrum.id }}', swap: 'outerHTML'})">
+        {% for version in entry.versions %}
+        <option value="{{ version.id }}"{% if version.id == entry.spectrum.id %} selected{% endif %}>{{ version.reducer }}{% if version.uploaded %} {{ version.uploaded }}{% endif %} ({{ version.hash }}){% if version.final %} final{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
     <div class="row">Telescope: {{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</div>
     <div class="row">Instrument: {{ entry.spec_extras.instrument }}</div>
     <div class="row">Exposure Time: {{ entry.spec_extras.exptime|floatformat:0 }}s</div>
@@ -20,7 +30,7 @@
       <input id="comment-{{ entry.spectrum.id }}" type="text" name="comment" title="Press Enter to submit" placeholder="Add a comment"
         onkeydown="if (event.key === 'Enter') { event.preventDefault(); }"
         hx-get="{% url 'save-comment' %}"
-        hx-vals='{"object_id": {{ entry.spectrum.id }}, "tablename": "spec"}'
+        hx-vals='{"object_id": {{ entry.comment_object_id }}, "tablename": "{{ entry.comment_table }}"}'
         hx-trigger="keyup[key=='Enter'&&target.value!='']"
         hx-target="closest .row"
         hx-swap="beforebegin"
@@ -28,9 +38,18 @@
     </div>
     <div class="row mt-2 align-items-center">
       <span class="me-2">Download:</span>
-      <button type="button" class="btn btn-sm btn-outline-primary me-1" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
+      <button type="button" class="btn btn-sm btn-outline-primary me-1"{% if not entry.has_fits %} disabled title="The FITS file is kept for the most recently uploaded version only"{% endif %} onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
       <button type="button" class="btn btn-sm btn-outline-primary" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
     </div>
+    {% if entry.can_delete %}
+    <div class="row mt-2">
+      <button type="button" class="btn btn-sm btn-outline-danger"
+        hx-post="{% url 'delete-spectrum-version' entry.spectrum.target.id entry.spectrum.id %}"
+        hx-confirm="Delete this version of the spectrum?"
+        hx-target="#spectrum-row-{{ entry.spectrum.id }}"
+        hx-swap="outerHTML">Delete this version</button>
+    </div>
+    {% endif %}
     <div class="row mt-2">
       <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title=TNS class="btn  btn-info">Submit TNS Classification</a>
     </div>

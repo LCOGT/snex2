@@ -8,6 +8,7 @@ from django.core.exceptions import NON_FIELD_ERRORS
 from django.urls import reverse
 from django.utils import timezone
 
+import hashlib
 import logging
 import requests
 from django.db.models import Q
@@ -139,6 +140,27 @@ def photometry_datums(target, user=None):
 def spectroscopy_datums(target, user=None):
     from tom_dataproducts.models import SpectroscopyReducedDatum
     return _viewable_datums(SpectroscopyReducedDatum, target, user)
+
+
+def default_version(versions):
+    versions = sorted(versions, key=lambda spectrum: spectrum.pk)
+    final = [spectrum for spectrum in versions if spectrum.value.get('final_reduction')]
+    return (final or versions)[-1]
+
+
+def observed_spectra(target, user=None):
+    observations = {}
+    for spectrum in spectroscopy_datums(target, user):
+        observations.setdefault(spectrum.data_product_id or f'spectrum-{spectrum.pk}', []).append(spectrum)
+    return sorted((default_version(versions) for versions in observations.values()), key=lambda spectrum: spectrum.timestamp)
+
+
+def spectrum_comment_object(spectrum):
+    return spectrum.data_product or spectrum
+
+
+def can_delete_spectrum(user, spectrum):
+    return user.is_superuser or (user.is_authenticated and spectrum.value.get('uploaded_by') == user.username)
 
 
 def viewable_dataproducts(user, queryset):
@@ -334,10 +356,30 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
 GENERATED_ASCII_PREFIX = 'spectrum-'
 
 
-def spectrum_ascii(rd):
+SPECTRUM_HEADER_FACTS = (('TELESCOPE', 'telescope'), ('INSTRUMENT', 'instrument'), ('EXPTIME', 'exptime'), ('SLIT', 'slit'),
+                         ('GRISM', 'grism'), ('AIRMASS', 'airmass'), ('OBSERVER', 'observer'))
+
+
+def spectrum_ascii_header(rd, columns):
+    upload = rd.data_product.reduceddatumextra_set.first() if rd.data_product else None
+    facts = dict((upload.value or {}) if upload else {}, telescope=rd.telescope, instrument=rd.instrument)
+    if rd.exposure_time is not None:
+        facts['exptime'] = rd.exposure_time
+    header = [('OBJECT', rd.target.name), ('DATE-OBS', rd.timestamp.strftime('%Y-%m-%dT%H:%M:%S'))]
+    header += [(label, facts.get(key)) for label, key in SPECTRUM_HEADER_FACTS]
+    header += [('REDUCER', rd.value.get('reducer') or facts.get('reducer')),
+               ('FINAL', 'yes' if rd.value.get('final_reduction') else 'no'),
+               ('WAVELENGTH_UNIT', rd.wavelength_unit), ('FLUX_UNIT', rd.flux_unit)]
+    return ['# ' + ' '.join(columns)] + [f'# {label} = {item}' for label, item in header if item not in (None, '')]
+
+
+def spectrum_ascii(rd, header=True):
     if not rd or not rd.wavelength or not rd.flux or len(rd.wavelength) != len(rd.flux):
         return None
-    lines = [f'{w} {f}' for w, f in zip(rd.wavelength, rd.flux)]
+    columns = [rd.wavelength, rd.flux] + ([rd.error] if len(rd.error) == len(rd.flux) else [])
+    names = ['wavelength', 'flux', 'error'][:len(columns)]
+    lines = spectrum_ascii_header(rd, names) if header else []
+    lines += [' '.join(str(item) for item in row) for row in zip(*columns)]
     return ('\n'.join(lines)).encode('utf-8')
 
 
@@ -347,6 +389,14 @@ def spectrum_ascii_name(datum):
 
 def upload_reduction_version(data_product_id):
     return f'upload-{data_product_id}'
+
+
+def file_version(uploaded):
+    digest = hashlib.md5()
+    for chunk in uploaded.chunks():
+        digest.update(chunk)
+    uploaded.seek(0)
+    return digest.hexdigest()
 
 
 def photometry_reduction_version(value, data_product_id=None):

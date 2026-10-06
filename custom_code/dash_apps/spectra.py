@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 ### Jamie: "lots of help from https://community.plot.ly/t/django-and-dash-eads-method/7717"
 
 from django_plotly_dash import DjangoDash
-from custom_code.utils import spectroscopy_datums
+from custom_code.utils import observed_spectra
 from custom_code.templatetags.custom_code_tags import bin_spectra
 from django.templatetags.static import static
 import matplotlib.pyplot as plt
@@ -320,7 +320,7 @@ def display_output(selected_rows,
                       'layout': []}
 
     # If the page just loaded, plot all the spectra
-    spectral_dataproducts = spectroscopy_datums(target, user).order_by('timestamp')
+    spectral_dataproducts = observed_spectra(target, user)
     if not spectral_dataproducts:
         return 'No spectra yet'
 

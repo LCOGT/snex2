@@ -9,7 +9,7 @@ from tom_dataproducts.models import DataProduct
 from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
-from custom_code.utils import measured, photometry_datums, spectroscopy_datums, viewable_dataproducts
+from custom_code.utils import measured, observed_spectra, photometry_datums, viewable_dataproducts
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
@@ -262,7 +262,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         datums.append(photometry_datums(target, user).exclude(data_product_id__in=uploaded_products))
     
     ### Plot the data
-    spec = spectroscopy_datums(target, user)
+    spec = observed_spectra(target, user)
         
     for data in datums:
         for rd in data:
