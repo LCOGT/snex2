@@ -4,6 +4,8 @@ from django.core.management.base import BaseCommand
 from sqlalchemy import bindparam, create_engine, pool, text
 from tom_dataproducts.models import ReducedDatum
 
+from custom_code.utils import measured
+
 logger = logging.getLogger(__name__)
 
 PHOTLCO_QUERY = text(
@@ -14,21 +16,21 @@ PHOTLCO_QUERY = text(
 
 def photlco_value(row):
     value = {
-        'magnitude': row.mag,
-        'error': row.dmag,
+        'magnitude': measured(row.mag),
+        'error': measured(row.dmag),
         'filter': row.filter,
         'telescope': row.telescope,
         'instrument': row.instrument,
         'basename': row.filename.split('.')[0] if row.filename else None,
         'exptime': row.exptime,
-        'fwhm': row.fwhm,
+        'fwhm': measured(row.fwhm),
         'wcs': None if row.wcs is None else int(row.wcs),
-        'psfx': row.psfx,
-        'psfy': row.psfy,
-        'psfmag': row.psfmag,
-        'psfdmag': row.psfdmag,
-        'apmag': row.apmag,
-        'dapmag': row.dapmag,
+        'psfx': measured(row.psfx),
+        'psfy': measured(row.psfy),
+        'psfmag': measured(row.psfmag),
+        'psfdmag': measured(row.psfdmag),
+        'apmag': measured(row.apmag),
+        'dapmag': measured(row.dapmag),
         'background_subtracted': row.filetype == 3,
     }
     if value['background_subtracted']:
