@@ -60,8 +60,10 @@ app.layout = html.Div([
         dcc.Input(id='target_redshift', type='hidden', value=0),
         dcc.Input(id='min-flux', type='hidden', value=0),
         dcc.Input(id='max-flux', type='hidden', value=0),
-        html.Div('Binning Factor: ', style={'color': 'black', 'fontSize': 18}),
-        dcc.Input(id='bin-factor', type='number', value=5, size=2),
+        html.Div([
+            html.Div('Binning Factor: ', style={'color': 'black', 'fontSize': 18}),
+            dcc.Input(id='bin-factor', type='number', value=5, size=2, style={'width': '5rem'}),
+        ], style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}),
         dcc.Checklist(
             id='line-plotting-checklist',
             options=[{'label': 'Show line plotting interface', 'value': 'display'}],
@@ -156,7 +158,7 @@ def get_target_list(value, existing, *args, **kwargs):
     [Input('line-plotting-checklist', 'value')])
 def show_table(value, *args, **kwargs):
     if 'display' in value:
-        return {'display': 'block'}
+        return {'display': 'block', 'maxHeight': '300px', 'overflowY': 'auto'}
     else:
         return {'display': 'none'}
 

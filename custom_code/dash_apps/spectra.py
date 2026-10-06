@@ -135,7 +135,8 @@ app.layout = html.Div([
         dcc.Checklist(
             id='line-plotting-checklist',
             options=[{'label': 'Show line plotting interface', 'value': 'display'}],
-            value=''
+            value='',
+            style={'fontSize': 18}
         ),
         html.Div(
             children=[],
@@ -170,7 +171,7 @@ app.layout = html.Div([
     [Input('line-plotting-checklist', 'value')])
 def show_table(value, *args, **kwargs):
     if 'display' in value:
-        return {'display': 'block'}
+        return {'display': 'block', 'maxHeight': '300px', 'overflowY': 'auto'}
     else:
         return {'display': 'none'}
 
