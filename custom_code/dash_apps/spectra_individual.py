@@ -171,6 +171,14 @@ def show_compare(value, *args, **kwargs):
         return {'display': 'none'}
 
 
+@app.callback(
+    Output('spectra-compare-dropdown', 'value'),
+    [Input('compare-spectra-checklist', 'value'),
+     State('spectra-compare-dropdown', 'value')])
+def clear_compare(value, existing, *args, **kwargs):
+    return existing if 'display' in value else ''
+
+
 line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('standalone-checkbox-custom-wavelength-1', 'value'), Input('standalone-checkbox-custom-wavelength-2', 'value')]
 line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('v-custom-wavelength-1', 'value'), Input('v-custom-wavelength-2', 'value')]
 line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('z-custom-wavelength-1', 'value'), Input('z-custom-wavelength-2', 'value')]
