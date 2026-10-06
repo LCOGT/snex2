@@ -183,7 +183,7 @@ def measured(value):
         value = float(value)
     except (TypeError, ValueError):
         return None
-    return None if value >= 9999 else value
+    return None if value >= 9000 else value
 
 
 def unsubtracted_q():
