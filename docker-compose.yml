@@ -35,8 +35,6 @@ services:
             - SNEX2_USER=${SNEX2_USER}
             - SNEX2_DB_USER=${SNEX2_DB_USER}
             - SNEX2_DB_PASSWORD=${SNEX2_DB_PASSWORD}
-            - SNEX1_DB_USER=${SNEX1_DB_USER}
-            - SNEX1_DB_PASSWORD=${SNEX1_DB_PASSWORD}
             - SNEX2_DB_BACKEND=postgres
             - LCO_APIKEY=${SNEX2_LCO_APIKEY}
             - SNEXBOT_APIKEY=${SNEX2_SNEXBOT_APIKEY}
@@ -73,15 +71,7 @@ services:
             - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
         volumes:
             - ${SNEX_THUMBNAIL_PATH}:/snex2/data/thumbs/
-            - ${SNEX_FITS_PATH}:/snex2/data/fits/
-            - ${SNEX_0m4_FITS_PATH}:/snex2/data/fits/0m4/
-            - ${SNEX_2m_FITS_PATH}:/snex2/data/fits/fts/
-            - ${SNEX_MUSCAT_FITS_PATH}:/snex2/data/fits/2m0a/
-            - ${SNEX_GW_FITS_PATH}:/snex2/data/fits/gw/
-            - ${SNEX_FLOYDS_PATH}:/snex2/data/floyds/
-            - ${SNEX_FLOYDS_WEB_PATH}:/snex2/data/WEB/floyds/
             - ${SNEX_DATA_UPLOAD}:/snex2/data/WEB/
-            - ${SNEX_EXTDATA}:/snex2/data/fits/extdata/
     snex2-gw-listener:
         image: lcogt/snex2:latest
         container_name: snex2-snex2-gw-listener-1
@@ -100,8 +90,6 @@ services:
             - SNEX2_DB_USER=${SNEX2_DB_USER}
             - SNEX2_DB_PASSWORD=${SNEX2_DB_PASSWORD}
             - SNEX2_DB_BACKEND=postgres
-            - SNEX1_DB_USER=${SNEX1_DB_USER}
-            - SNEX1_DB_PASSWORD=${SNEX1_DB_PASSWORD}
             - SCIMMA_AUTH_USERNAME=${SCIMMA_AUTH_USERNAME}
             - SCIMMA_AUTH_PASSWORD=${SCIMMA_AUTH_PASSWORD}
             - GCN_CLASSIC_CLIENT_ID=${GCN_CLASSIC_CLIENT_ID}

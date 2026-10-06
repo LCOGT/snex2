@@ -17,7 +17,7 @@
   <div class="collapse navbar-collapse" id="targetInfo">
       <ul class="nav mr-auto">
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.name }}</a></li>
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}<br>{{ target.ra|floatformat:4 }} {{ target.dec|floatformat:4 }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}<br>{{ target.ra|floatformat:6 }} {{ target.dec|floatformat:6 }}</a></li>
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.classification }}</a></li>
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">z = {{ target.redshift|strip_trailing_zeros }}</a></li>
       </ul>

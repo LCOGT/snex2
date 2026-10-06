@@ -1,21 +1,20 @@
-import dash_core_components as dcc
+from dash import dcc
 import dash_bootstrap_components as dbc
 from dash import html
 import plotly.graph_objs as go
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output
 import json
 import numpy as np
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import ReducedDatum
-from django.conf import settings
+from tom_dataproducts.models import DataProduct, ReducedDatum
 from django.contrib.auth.models import User
 from tom_targets.models import Target
-from custom_code.models import ReducedDatumExtra, Papers
+from custom_code.models import ReducedDatumExtra
+from custom_code.utils import measured, viewable_dataproducts
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
 from astropy.time import Time
-from dash import no_update
 from guardian.shortcuts import get_objects_for_user
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,6 @@ app = DjangoDash(name='Lightcurve', add_bootstrap_links=True)
 app.css.append_css({'external_url': static('custom_code/css/dash.css')})
 telescopes = ['LCO']
 reducer_groups = []
-papers_used_in = []
 app.layout = html.Div([
     dcc.Graph(
         id='lightcurve-plot',
@@ -84,7 +82,28 @@ app.layout = html.Div([
                                 style={'display': 'none'},
                             ))
                         ], 
-                    width=6),
+                    width=4),
+                    dbc.Col(
+                        [
+                            dbc.Row(html.H4('Magnitude Type')),
+                            dbc.Row(dcc.RadioItems(
+                                id='magnitude-type-radio',
+                                options=[{'label': 'Apparent', 'value': 'Apparent'},
+                                         {'label': 'PSF', 'value': 'PSF'},
+                                         {'label': 'Aperture', 'value': 'Aperture'}
+                                ],
+                                value='Apparent',
+                                inputStyle={"margin-right": "5px", "margin-left": "5px"},
+                            )),
+                            dbc.Row(html.H4('Reduction')),
+                            dbc.Row(dcc.Checklist(
+                                id='final-only-checklist',
+                                options=[{'label': 'Final only', 'value': 'final'}],
+                                value=[],
+                                inputStyle={"margin-right": "5px", "margin-left": "5px"},
+                            ))
+                        ],
+                    width=4),
                     dbc.Col(html.Div(
                         id='subtracted-extras',
                         children=[
@@ -109,66 +128,19 @@ app.layout = html.Div([
                             )
                         ],
                         style={'display': 'none'}
-                    ), width=6)
+                    ), width=4)
                     ], style={'margin-left': '1px'}
             ),
             html.Hr(),
-            dbc.Row(
-                [
-                    dbc.Col(html.H4('Photometry Type'), width=6),
-                    dbc.Col(html.H4('Reduction Type'), width=6)
-                ]
-            ),
-            dbc.Row(
-                [
-                    dbc.Col(dcc.Checklist(
-                        id='photometry-type-checklist',
-                        options=[{'label': 'PSF', 'value': 'PSF'},
-                                 {'label': 'Aperture', 'value': 'Aperture'}
-                        ],
-                        value=['PSF', 'Aperture'],
-                        inputStyle={"margin-right": "5px", "margin-left": "5px"}
-                    ), width=6),
-                    dbc.Col(dcc.RadioItems(
-                        id='reduction-type-radio',
-                        options=[{'label': 'All', 'value': 'all'},
-                                 {'label': 'Only Automatic', 'value': ''},
-                                 {'label': 'Only Manual', 'value': 'manual'}
-                        ],
-                        value='',
-                        inputStyle={"margin-right": "5px", "margin-left": "5px"}
-                    ), width=6)
-                ]
-            ),
+            html.H4('Data from Group'),
             dcc.Checklist(
-                id='final-reduction-checklist',
-                options=[{'label': 'Final Reduction?', 'value': 'Final'}],
-                value='',
+                id='reducer-group-checklist',
+                options=[{'label': 'LCO', 'value': ''}],
+                value=[''],
                 inputStyle={"margin-right": "5px", "margin-left": "5px"}
             ),
             html.Hr(),
-            dbc.Row(
-                [
-                    dbc.Col(html.H4('Data Used In'), width=6),
-                    dbc.Col(html.H4('Data from Group'), width=6)
-                ]
-            ),
-            dbc.Row(
-                [
-                    dbc.Col(dcc.Dropdown(
-                        id='papers-dropdown',
-                        options=[{'label': '', 'value': ''}],
-                        value=None
-                    ), width=6),
-                    dbc.Col(dcc.Checklist(
-                        id='reducer-group-checklist',
-                        options=[{'label': 'LCO', 'value': ''}],
-                        value=[''],
-                        inputStyle={"margin-right": "5px", "margin-left": "5px"}
-                    ), width=6)
-                ]
-            ),
-            html.Hr(),
+            html.P(id='frame-info', children=''),
         ],
     ),
     html.Div(
@@ -186,40 +158,6 @@ def display_options(n_clicks):
     else:
         return {'padding': '0 15px'}
 
-
-#Only show manually reduced data if subtracted is selected
-@app.callback(
-        Output('reduction-type-radio', 'value'),
-        [Input('subtracted-radio', 'value'),
-         State('reduction-type-radio', 'value')])
-def update_reduction_type(selected_subtraction, old_reduction_type):
-    if selected_subtraction == 'Subtracted':
-        return 'manual'
-    elif selected_subtraction == 'Unsubtracted' and old_reduction_type == 'manual':
-        return 'all'
-    return old_reduction_type
-
-#Unselect final reduction if automatically reduced data is selected
-@app.callback(
-        Output('final-reduction-checklist', 'value'),
-        [Input('reduction-type-radio', 'value'),
-         State('final-reduction-checklist', 'value')])
-def update_final_reduction(selected_reduction, old_final_value):
-    if not selected_reduction or selected_reduction == 'all':
-        return ''
-    return old_final_value
-
-#Select unsubtracted data if automatic subtraction is selected
-@app.callback(
-        Output('subtracted-radio', 'value'),
-        [Input('reduction-type-radio', 'value'),
-         State('subtracted-radio', 'value')])
-def update_subtracted_type(selected_reduction, old_subtracted_type):
-    if (not selected_reduction or selected_reduction == 'all') and old_subtracted_type != 'Unsubtracted':
-        return 'Unsubtracted'
-    elif selected_reduction == 'manual' and old_subtracted_type == 'Unsubtracted':
-        return no_update
-    return old_subtracted_type
 
 #Hide subtracted choices if LCO telescope is not selected
 @app.callback(
@@ -261,15 +199,13 @@ def update_template_value(selected_subtraction):
          Input('subtracted-radio', 'value'),
          Input('algorithm-checklist', 'value'),
          Input('template-checklist', 'value'),
-         Input('photometry-type-checklist', 'value'),
-         Input('reduction-type-radio', 'value'),
-         Input('final-reduction-checklist', 'value'),
-         Input('papers-dropdown', 'value'),
          Input('reducer-group-checklist', 'value'),
          Input('target_id', 'value'),
          Input('user_id', 'value'),
-         Input('plot-height', 'value')])
-def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_photometry_type, reduction_type, final_reduction_value, selected_paper, selected_groups, target_id, user_id, height):
+         Input('plot-height', 'value'),
+         Input('magnitude-type-radio', 'value'),
+         Input('final-only-checklist', 'value')])
+def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_groups, target_id, user_id, height, magnitude_type, final_only):
     def get_color(filter_name, filter_translate):
         colors = {'U': 'rgb(59,0,113)',
             'u': 'rgb(59,0,113)',
@@ -300,67 +236,40 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         'zs': 'zs', 'z': 'zs', 'w': 'w',
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2',
         'UVW1': 'UVW1'}
+    magnitude_key, error_key = {'PSF': ('psfmag', 'psfdmag'), 'Aperture': ('apmag', 'dapmag')}.get(magnitude_type, ('magnitude', 'error'))
     photometry_data = {}
     subtracted_photometry_data = {}
     target = Target.objects.get(id=target_id)
     user = User.objects.get(id=user_id)
-    datumextras = get_objects_for_user(user, 'custom_code.view_reduceddatumextra',
-                                       klass=ReducedDatumExtra.objects.filter(
-                                           target=target,key='upload_extras',
-                                           data_type='photometry'))
+    datumextras = ReducedDatumExtra.objects.filter(
+        target=target, key='upload_extras', data_type='photometry',
+        data_product__in=viewable_dataproducts(user, DataProduct.objects.filter(target=target)))
     
     datums = []
-    
-    ### Check if this is a final reduction or not
-    if 'Final' in final_reduction_value:
-        final_reduction = True
-    else:
-        final_reduction = False
-
-    ### Get papers for this target
-    papers_for_target = [p.id for p in Papers.objects.filter(target=target)]
-
-    ### If both 'Aperture' and 'PSF' are selected photometry types,
-    ### add 'Mixed' and 'Unsure' as well
-    if len(selected_photometry_type) > 1:
-        selected_photometry_type += ['Mixed', 'Unsure']
+    final_products = {de.data_product_id for de in datumextras if de.value.get('final_reduction')}
     
     ### Get the data for the selected telescope
-    if not selected_telescope:
-        if settings.TARGET_PERMISSIONS_ONLY:
-            datums.append(ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='filter'))
-        else:
-            datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                               klass=ReducedDatum.objects.filter(
-                                                   target=target, data_type='photometry', 
-                                                   value__has_key='filter')))
-    else:
-        for de in datumextras:
-            de_value = de.value
+    selected_telescope = selected_telescope or []
+    selected_groups = selected_groups or []
+    for de in datumextras:
+        de_value = de.value
 
-            ### Test that this dataproduct meets the chosen criteria:
-            if all([de_value.get('instrument', '') in selected_telescope,
-                    de_value.get('photometry_type', '') in selected_photometry_type,
-                    (not final_reduction or de_value.get('final_reduction', '')==final_reduction),
-                    de_value.get('reducer_group', '') in selected_groups,
-                    (not selected_paper or de_value.get('used_in', '')==selected_paper or de_value.get('used_in', '') in papers_for_target)]):
-                dp_id = de_value.get('data_product_id', '')
-                datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                   klass=ReducedDatum.objects.filter(
-                                                       target=target, data_type='photometry', 
-                                                       data_product_id=dp_id, value__has_key='filter')))
-        
-        ### Finally, get the data that was automatically uploaded from snex1 db
-        if 'LCO' in selected_telescope and not final_reduction:
+        if de_value.get('instrument', '') in selected_telescope and de_value.get('reducer_group', '') in selected_groups:
+            dp_id = de.data_product_id
             datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                                klass=ReducedDatum.objects.filter(
-                                                   target=target, data_type='photometry', 
-                                                   data_product_id__isnull=True, value__has_key='filter')))
+                                                   target=target, data_type='photometry',
+                                                   data_product_id=dp_id, value__has_key='filter')))
+
+    ### Finally, get the data that was uploaded by the pipeline
+    if 'LCO' in selected_telescope and '' in selected_groups:
+        uploaded_products = [de.data_product_id for de in datumextras if de.value.get('instrument')]
+        datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
+                                           klass=ReducedDatum.objects.filter(
+                                               target=target, data_type='photometry',
+                                               value__has_key='filter').exclude(data_product_id__in=uploaded_products)))
     
     ### Plot the data
-    if not datums:
-        return 'No photometry yet'
-    
     spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                 klass=ReducedDatum.objects.filter(
                                     target=target, data_type='spectroscopy'))
@@ -373,30 +282,31 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             if isinstance(value, str):
                 value = json.loads(value)
 
-            ### Check if the value contains a magnitude (may not if the entry is 9999 in snex1)
-            if not value.get('magnitude', ''):
+            if measured(value.get(magnitude_key)) is None:
                 continue
 
-            ### Get subtracted or unsubtracted data
+            if final_only and not (value.get('final_reduction') or rd.data_product_id in final_products):
+                continue
+
             if value.get('background_subtracted', '') == True:
-                if value.get('subtraction_algorithm', '') in selected_algorithm and value.get('template_source', '') in selected_template and reduction_type == 'manual':
+                if value.get('subtraction_algorithm', '') in selected_algorithm and value.get('template_source', '') in selected_template:
                     
                     raw_filter = value.get('filter', '')
                     subtracted_filt = filter_translate.get(raw_filter, raw_filter or 'other')
 
                     subtracted_photometry_data.setdefault(subtracted_filt, {})
                     subtracted_photometry_data[subtracted_filt].setdefault('time', []).append(rd.timestamp)
-                    subtracted_photometry_data[subtracted_filt].setdefault('magnitude', []).append(value.get('magnitude',None))
-                    subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(value.get('error', None))
-            elif value.get('reduction_type', '') == reduction_type or reduction_type == 'all':
+                    subtracted_photometry_data[subtracted_filt].setdefault('magnitude', []).append(value.get(magnitude_key))
+                    subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(measured(value.get(error_key)) or 0)
+            else:
 
                 raw_filter = value.get('filter', '')
                 filt = filter_translate.get(raw_filter, raw_filter or 'other')
 
                 photometry_data.setdefault(filt, {})
                 photometry_data[filt].setdefault('time', []).append(rd.timestamp)
-                photometry_data[filt].setdefault('magnitude', []).append(value.get('magnitude',None))
-                photometry_data[filt].setdefault('error', []).append(value.get('error', None))
+                photometry_data[filt].setdefault('magnitude', []).append(value.get(magnitude_key))
+                photometry_data[filt].setdefault('error', []).append(measured(value.get(error_key)) or 0)
 
     if subtracted_value == 'Unsubtracted':
         selected_photometry = photometry_data

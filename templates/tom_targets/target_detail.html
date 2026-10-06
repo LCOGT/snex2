@@ -22,7 +22,8 @@
   ::placeholder {
     color: white;
   }
-  #tabs .nav-link {
+  #tabs .nav-link,
+  .manage-data-tabs .nav-link {
     color: #174460;
   }
   .htmx-indicator {
@@ -54,7 +55,7 @@
         <span id="zpre">z=</span>
         <input type="text" name="redshift" id="thenewredshift" autocomplete="off"
           value="{{ target.redshift|strip_trailing_zeros|default_if_none:'' }}"
-          placeholder="z"
+          placeholder="None"
           hx-get="{% url 'sync_targetextra' %}"
           hx-trigger="keyup[key=='Enter'], change"
           hx-vals='js:{newdata: JSON.stringify({key: "redshift", value: event.target.value, targetid: {{ target.id }}})}'
@@ -63,7 +64,7 @@
       </span>
     </td>
     <td align="left">
-      <span style="display: inline-block; font-size: 23px;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}</span><br><span style="display: inline-block; font-size: 20px;">{{ target.ra|floatformat:4 }} {{ target.dec|floatformat:4 }}</span>
+      <span style="display: inline-block; font-size: 23px;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}</span><br><span style="display: inline-block; font-size: 20px;">{{ target.ra|floatformat:6 }} {{ target.dec|floatformat:6 }}</span>
     </td>
   </tr>
 </table>
@@ -72,30 +73,33 @@
     <a class="nav-link active" id="observe-tab" href="#observe" role="tab" data-toggle="tab">Overview</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="detail-tab" href="#detail" role="tab" data-toggle="tab"
-      hx-get="{% url 'load-details-tab' target.id %}" hx-target="#detail" hx-trigger="click once" hx-indicator="#spinner-detail">Details
-      <span id="spinner-detail" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
-    </a>
-  </li>
-  <li class="nav-item">
     <a class="nav-link" id="observations-tab" href="#observations" role="tab" data-toggle="tab"
       hx-get="{% url 'load-observations-tab' target.id %}" hx-target="#observations" hx-trigger="click once" hx-indicator="#spinner-observations">Observations
       <span id="spinner-observations" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="manage-data-tab" href="#manage-data" role="tab" data-toggle="tab"
-      hx-get="{% url 'load-manage-data-tab' target.id %}" hx-target="#manage-data" hx-trigger="click once" hx-indicator="#spinner-manage-data">Manage Data
-      <span id="spinner-manage-data" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" id="manage-sharing-tab" href="#manage-sharing" role="tab" data-toggle="tab">Manage Sharing</a>
-  </li>
-  <li class="nav-item">
     <a class="nav-link" id="manage-groups-tab" href="#manage-groups" role="tab" data-toggle="tab"
       hx-get="{% url 'load-observing-runs-tab' target.id %}" hx-target="#manage-groups" hx-trigger="click once" hx-indicator="#spinner-observing-runs">Observing Runs
       <span id="spinner-observing-runs" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" id="detail-tab" href="#detail" role="tab" data-toggle="tab"
+      hx-get="{% url 'load-details-tab' target.id %}" hx-target="#detail" hx-trigger="click once" hx-indicator="#spinner-detail">Details
+      <span id="spinner-detail" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" id="upload-data-tab" href="#upload-data" role="tab" data-toggle="tab"
+      hx-get="{% url 'load-upload-data-tab' target.id %}" hx-target="#upload-data" hx-trigger="click once" hx-indicator="#spinner-upload-data">Upload Data
+      <span id="spinner-upload-data" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" id="manage-data-tab" href="#manage-data" role="tab" data-toggle="tab"
+      hx-get="{% url 'load-manage-data-tab' target.id %}" hx-target="#manage-data" hx-trigger="click once" hx-indicator="#spinner-manage-data">Batch Download
+      <span id="spinner-manage-data" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
     </a>
   </li>
   <li class="nav-item">
@@ -177,11 +181,11 @@
       <div class="tab-pane" id="observations">
         <div class="tab-placeholder">Loading observations...</div>
       </div>
-      <div class="tab-pane" id="manage-data">
-        <div class="tab-placeholder">Loading manage data...</div>
+      <div class="tab-pane" id="upload-data">
+        <div class="tab-placeholder">Loading upload form...</div>
       </div>
-      <div class="tab-pane" id="manage-sharing">
-        <div class="tab-placeholder">Manage Sharing functionality coming soon...</div>
+      <div class="tab-pane" id="manage-data">
+        <div class="tab-placeholder">Loading downloads...</div>
       </div>
       <div class="tab-pane" id="manage-groups">
         <div class="tab-placeholder">Loading observing runs...</div>

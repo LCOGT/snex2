@@ -307,6 +307,31 @@ $(function () {
     );
   });
 
+  $(document).on("htmx:beforeRequest", function(evt) {
+    const detail = evt.detail || evt.originalEvent.detail;
+    const form = detail.elt;
+    if (!form || !form.closest || !form.closest("[id^='obs-form-']")) {
+      return;
+    }
+    const trigger = detail.requestConfig && detail.requestConfig.triggeringEvent;
+    const button = (trigger && trigger.submitter) || form.querySelector("[type='submit']");
+    $(button).after('<span class="obs-form-spinner spinner-border spinner-border-sm ml-2"></span>');
+    $(form).find("[type='submit']").css({"pointer-events": "none", "opacity": 0.65});
+  });
+
+  $(document).on("htmx:afterRequest", function(evt) {
+    const detail = evt.detail || evt.originalEvent.detail;
+    const form = detail.elt;
+    if (!form || !form.closest || !form.closest("[id^='obs-form-']")) {
+      return;
+    }
+    if (detail.xhr && detail.xhr.getResponseHeader("HX-Redirect")) {
+      return;
+    }
+    $(form).find(".obs-form-spinner").remove();
+    $(form).find("[type='submit']").css({"pointer-events": "", "opacity": ""});
+  });
+
   initObsForms(true);
 });
 </script>

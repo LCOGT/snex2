@@ -1,6 +1,8 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+import re
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
 import zipfile
@@ -17,12 +19,12 @@ from django.contrib.auth.models import Group, User
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F, FloatField, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
 from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
-from django.views.decorators.http import require_GET
 from django.views.generic.base import TemplateView, RedirectView
 from django.views.generic.list import ListView
 from django.views.generic.edit import FormView
@@ -40,8 +42,8 @@ from django_comments.models import Comment
 from django_filters.views import FilterView
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
-from guardian.mixins import PermissionListMixin
-from guardian.shortcuts import assign_perm, get_objects_for_user, get_users_with_perms, remove_perm
+from rest_framework.authtoken.models import Token
+from guardian.shortcuts import assign_perm, get_groups_with_perms, get_objects_for_user, get_users_with_perms, remove_perm
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct, ReducedDatum
@@ -51,18 +53,21 @@ from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
 from tom_targets.models import Target, TargetList, TargetName
 from tom_targets.permissions import targets_for_user
-from tom_targets.views import TargetCreateView
+from tom_targets.views import TargetCreateView, TargetListView as TOMTargetListView
 from custom_code.facilities.soar_facility import user_can_access_soar
-from custom_code.filters import BrokerTargetFilter, CustomTargetFilter, TNSTargetFilter
+from custom_code.filters import BrokerTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
-from custom_code.hooks import _get_tns_params, get_standards_from_snex1, get_unreduced_spectra
+from custom_code.hooks import _get_tns_params
 from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from custom_code.templatetags import custom_code_tags
-from custom_code.thumbnails import make_thumb
-from custom_code.utils import _normalize_view_object_name, _format_prefixed_name_for_create, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.thumbnails import cached_frame, make_thumb
+from custom_code.match_managers import TNS_PREFIX_RE
+from tom_tns.forms import TNSClassifyForm
+from tom_tns.views import TNSSubmitView
+from custom_code.utils import datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -129,120 +134,58 @@ class TNSTargets(FilterView):
             target.link = TNS_URL + target.name
         return context
 
-class TargetListView(PermissionListMixin, FilterView):
-    """
-    View for listing targets in the TOM. Only shows targets that the user is authorized to view.     Requires authorization.
-    """
-    template_name = 'tom_targets/target_list.html'
-    paginate_by = 25
-    strict = False
-    model = Target
-    filterset_class = CustomTargetFilter
-    permission_required = 'custom_code.view_target'
-    ordering = ['-id']
+class TargetListView(TOMTargetListView):
 
-    def get_context_data(self, *args, **kwargs):
-        """
-        Adds the number of targets visible, the available ``TargetList`` objects if the user is a    uthenticated, and
-        the query string to the context object.
-
-        :returns: context dictionary
-        :rtype: dict
-        """
-        context = super().get_context_data(*args, **kwargs)
-        context['target_count'] = context['paginator'].count
-        # hide target grouping list if user not logged in
-        context['groupings'] = (TargetList.objects.all()
-                                if self.request.user.is_authenticated
-                                else TargetList.objects.none())
-        context['query_string'] = self.request.META['QUERY_STRING']
-        return context
+    def get_queryset(self, *args, **kwargs):
+        queryset = super().get_queryset(*args, **kwargs)
+        if any(self.request.GET.get(field, '').strip() for field in ('name', 'name_fuzzy', 'query')):
+            return queryset
+        return queryset.exclude(standard=True)
 
 def target_redirect_view(request):
- 
-    search_entry = request.GET['name'] 
+    search_entry = request.GET.get('name', '').strip()
     logger.info('Redirecting search for %s', search_entry)
+    if not search_entry:
+        return redirect('/targets/')
 
-    target_search_coords = None
+    coord = None
     if ':' in search_entry or '.' in search_entry:
-        search_entry = search_entry.replace(',', ' ')
-        target_search_coords = search_entry.split()
+        try:
+            ra, dec = search_entry.replace(',', ' ').split()[:2]
+            coord = SkyCoord(ra, dec, unit=(u.hourangle if ':' in ra else u.deg, u.deg))
+        except ValueError:
+            coord = None
+    if coord is not None:
+        ra, dec = coord.ra.deg, coord.dec.deg
+        radius = 1.0 / 60.0
+        matches = list(Target.matches.match_cone_search(ra, dec, radius * 3600)[:2])
+        if len(matches) == 1:
+            return redirect(f'/targets/{matches[0].id}/')
+        if matches:
+            return redirect(f'/targets/?cone_search={ra}%2C{dec}%2C{radius}')
+        return redirect(f'/create-target/?ra={ra}&dec={dec}')
 
-    if target_search_coords is not None:
-        ra = target_search_coords[0]
-        dec = target_search_coords[1]
-        radius = 1.0/60.0 #1 arcmin search radius
+    canonical = _normalize_view_object_name(search_entry)
+    exact = list(Target.matches.match_name(canonical))
+    if len(exact) == 1:
+        return redirect(f'/targets/{exact[0].id}/')
+    if exact:
+        return redirect('/targets/?name=' + quote_plus(','.join(t.name for t in exact)))
 
-        if ':' in ra and ':' in dec:
-            ra_hms = ra.split(':')
-            ra_hour = float(ra_hms[0])
-            ra_min = float(ra_hms[1])
-            ra_sec = float(ra_hms[2])
-
-            dec_dms = dec.split(':')
-            dec_deg = float(dec_dms[0])
-            dec_min = float(dec_dms[1])
-            dec_sec = float(dec_dms[2])
-
-            # Convert to degree
-            ra = (ra_hour*15) + (ra_min*15/60) + (ra_sec*15/3600)
-            if dec_deg > 0:
-                dec = dec_deg + (dec_min/60) + (dec_sec/3600)
-            else:
-                dec = dec_deg - (dec_min/60) - (dec_sec/3600)
-
-        else:
-            ra = float(ra)
-            dec = float(dec)
-
-        target_match_list = Target.objects.filter(ra__gte=ra-radius, ra__lte=ra+radius, dec__gte=dec-radius, dec__lte=dec+radius)
-
-        if len(target_match_list) == 1:
-            target_id = target_match_list[0].id
-            return(redirect('/targets/{}/'.format(target_id)))
-        
-        elif len(target_match_list) > 1:
-            return(redirect('/targets/?cone_search={ra}%2C{dec}%2C{radius}'.format(ra=ra,dec=dec,radius=radius)))
-        else:
-            return(redirect('/create-target/?ra={ra}&dec={dec}'.format(ra=ra,dec=dec)))
-
-    else:
-        # Name resolution mode
-        original_clean = (search_entry or '').strip()
-        original_compact = original_clean.replace(' ', '')
-
-        canonical = _normalize_view_object_name(search_entry)
-
-        candidates = set()
-        if original_clean:
-            candidates.add(original_clean)
-        if original_compact:
-            candidates.add(original_compact)
-        if canonical:
-            candidates.add(canonical)
-            candidates.add(_format_prefixed_name_for_create(canonical))
-            # Allow matching when user enters just the year+label (e.g. `2024ggi`)
-            if canonical.upper().startswith('SN') or canonical.upper().startswith('AT'):
-                candidates.add(canonical[2:])
-
-        match_q = Q()
+    if not re.fullmatch(r'(AT|SN)\d{4}[A-Za-z]{1,4}', canonical):
+        core = TNS_PREFIX_RE.sub('', canonical)
+        candidates = {c.lower() for c in (search_entry, search_entry.replace(' ', ''), canonical, core) if c}
+        q = Q()
         for c in candidates:
-            if c:
-                match_q |= Q(name__icontains=c) | Q(aliases__name__icontains=c)
+            q |= Q(name__icontains=c) | Q(aliases__name__icontains=c)
+        partial = list(Target.objects.filter(q).distinct()[:2])
+        if len(partial) == 1:
+            return redirect(f'/targets/{partial[0].id}/')
+        if partial:
+            terms = sorted(t for t in candidates if not any(o != t and o in t for o in candidates))
+            return redirect('/targets/?name=' + quote_plus(','.join(terms)))
 
-        target_match_list = Target.objects.filter(match_q).distinct()
-
-        if len(target_match_list) == 1:
-            target_id = target_match_list[0].id
-            return redirect('/targets/{}/'.format(target_id))
-
-        elif len(target_match_list) > 1:
-            # Feed existing target filtering UX with a canonical compact name.
-            return redirect('/targets/?name={}'.format(canonical or original_clean))
-
-        # No match -> create with spaced prefix for better form UX.
-        create_name = _format_prefixed_name_for_create(canonical or original_clean)
-        return redirect('/create-target/?name={}'.format(quote_plus(create_name)))
+    return redirect('/create-target/?name=' + quote_plus(_format_prefixed_name_for_create(canonical)))
 
 
 def view_object_view(request):
@@ -360,11 +303,6 @@ class CustomTargetCreateView(TargetCreateView):
             **dict(self.request.GET.items())
         }
 
-    def get_context_data(self, **kwargs):
-        context = super(CustomTargetCreateView, self).get_context_data(**kwargs)
-        context['type_choices'] = Target.TARGET_TYPES
-        return context
-
 class CustomUserUpdateView(UserUpdateView):
 
     form_class = SNEx2UserCreationForm
@@ -406,9 +344,9 @@ class SNEx2ApprovalRegistrationView(ApprovalRegistrationView):
 class SNEx2UserApprovalView(UserApprovalView):
 
     def form_valid(self, form):
-        response = super().form_valid(form)
-
-        return response
+        if 'send_welcome_email' in self.request.POST:
+            return super().form_valid(form)
+        return super(UserApprovalView, self).form_valid(form)
 
 
 class CustomDataProductUploadView(DataProductUploadView):
@@ -442,7 +380,6 @@ class CustomDataProductUploadView(DataProductUploadView):
                 rdextra_value = {'data_product_id': int(dp.id)}
                 if dp_type == 'photometry':
                     extras = {'reduction_type': 'manual'}
-                    rdextra_value['photometry_type'] = form.cleaned_data['photometry_type']
                     background_subtracted = form.cleaned_data['background_subtracted']
                     if background_subtracted:
                         extras['background_subtracted'] = True
@@ -463,9 +400,6 @@ class CustomDataProductUploadView(DataProductUploadView):
                 elif dp_type == 'photometry' and reducer_group != 'LCO':
                     rdextra_value['reducer_group'] = reducer_group
 
-                used_in = form.cleaned_data['used_in']
-                if used_in:
-                    rdextra_value['used_in'] = int(used_in.id)
                 rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
                 reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value)
 
@@ -501,7 +435,7 @@ class CustomDataProductUploadView(DataProductUploadView):
             except Exception as e:
                 dp.delete()
                 messages.error(self.request, 'There was a problem processing your file: {0}'.format(str(dp)))
-                print(e)
+                logger.exception(f'Could not process uploaded file {dp}')
         if successful_uploads:
             messages.success(
                 self.request,
@@ -510,26 +444,44 @@ class CustomDataProductUploadView(DataProductUploadView):
 
         return redirect(form.cleaned_data.get('referrer', '/'))
 
+@require_http_methods(["POST"])
 def save_dataproduct_groups_view(request):
-    group_names = json.loads(request.GET.get('groups', None))
-    dataproduct_id = request.GET.get('dataproductid', None)
-    dp = DataProduct.objects.get(id=dataproduct_id)
-    data = ReducedDatum.objects.filter(data_product=dp)
-    successful_groups = ''
-    for i in group_names:
-        group = Group.objects.get(name=i)
-        assign_perm('tom_dataproducts.view_dataproduct', group, dp)
-        for datum in data:
-            assign_perm('tom_dataproducts.view_reduceddatum', group, datum)
-        successful_groups += i
-    response_data = {'success': successful_groups}
-    return HttpResponse(json.dumps(response_data), content_type='application/json')
+    if not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can change data product visibility')
+    dp = get_object_or_404(DataProduct, id=request.POST.get('dataproductid'))
+    groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
+    set_dataproduct_view_groups(dp, groups)
+    return JsonResponse({'success': sorted(group.name for group in groups)})
 
 
-class Snex1ConnectionError(Exception):
-    def __init__(self, message="Error syncing with the SNEx1 database"):
-        self.message = message
-        super().__init__(self.message)
+def create_api_token_view(request):
+    if request.method != 'POST' or not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can replace an API token')
+    Token.objects.filter(user=request.user).delete()
+    return JsonResponse({'token': Token.objects.create(user=request.user).key})
+
+
+def set_target_standard_view(request):
+    if request.method != 'POST' or not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can change whether a target is a standard')
+    target = get_object_or_404(Target, id=request.POST.get('target_id'))
+    standard = request.POST.get('standard') == 'true'
+    with transaction.atomic():
+        target.standard = standard
+        if standard:
+            target.classification = 'Standard'
+        elif target.classification == 'Standard':
+            target.classification = ''
+        target.save()
+        old_type, new_type = ('photometry', 'photometric_standard') if standard else ('photometric_standard', 'photometry')
+        datums = ReducedDatum.objects.filter(target=target, data_type=old_type)
+        if standard:
+            set_reduceddatum_view_groups(datums, [])
+            for group in get_groups_with_perms(target):
+                for permission in ('view_target', 'change_target', 'delete_target'):
+                    remove_perm(f'custom_code.{permission}', group, target)
+        datums.update(data_type=new_type)
+    return JsonResponse({'standard': standard})
 
 
 class PaperCreateView(FormView):
@@ -548,7 +500,8 @@ class PaperCreateView(FormView):
                 author_first_name=first_name,
                 author_last_name=last_name,
                 status=status,
-                description=description
+                description=description,
+                created_by=self.request.user
             )
         paper.save()
         
@@ -561,9 +514,14 @@ class PaperUpdateView(FormView):
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
-        self.paper = get_object_or_404(Papers, pk=self.kwargs['pk'])
         kwargs['instance'] = self.paper
         return kwargs
+
+    def dispatch(self, request, *args, **kwargs):
+        self.paper = get_object_or_404(Papers, pk=kwargs['pk'])
+        if not self.paper.can_be_edited_by(request.user):
+            return HttpResponseForbidden('Only the user who added this paper or an admin can edit it')
+        return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
         form.save()
@@ -573,6 +531,8 @@ class PaperUpdateView(FormView):
 class PaperDeleteView(View):
     def post(self, request, pk):
         paper = get_object_or_404(Papers, pk=pk)
+        if not paper.can_be_edited_by(request.user):
+            return HttpResponseForbidden('Only the user who added this paper or an admin can delete it')
         target_id = paper.target.id
         paper.delete()
         return HttpResponseRedirect('/targets/{}/'.format(target_id))
@@ -583,7 +543,7 @@ def delete_comment_view(request):
     comment = get_object_or_404(Comment, id=request.POST.get('comment_id'))
     if comment.user != request.user and not request.user.is_staff:
         return HttpResponseForbidden('Permission denied')
-    comment.delete()  # this triggers the receiver that syncs to snex1
+    comment.delete()
     return HttpResponse('')
 
 def save_comments_view(request):
@@ -1058,8 +1018,9 @@ class CustomObservationCreateView(ObservationCreateView):
                         assign_perm('tom_observations.delete_observationrecord', group, record)
 
         if getattr(self.request, 'htmx', False) and response.status_code in (301, 302):
-            htmx_response = HttpResponse(status=204)
-            htmx_response['HX-Redirect'] = response['Location']
+            htmx_response = render(self.request, 'custom_code/partials/target/observation_submitted.html', {'target': target})
+            htmx_response['HX-Retarget'] = '#ongoing-obs'
+            htmx_response['HX-Reswap'] = 'innerHTML show:top'
             return htmx_response
         return response
 
@@ -1135,6 +1096,33 @@ def load_manage_data_tab_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_data.html')
 
 
+def load_upload_data_tab_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_upload_data.html')
+
+
+def load_manage_photometry_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_photometry.html')
+
+
+def load_manage_standards_view(request, pk):
+    return _render_target_partial(request, pk, 'custom_code/partials/target/tab_manage_standards.html')
+
+
+@require_http_methods(["POST"])
+def update_photometry_groups_view(request):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can change photometry visibility')
+    datums = ReducedDatum.objects.filter(pk__in=json.loads(request.POST.get('datum_ids', '[]')), data_type='photometry')
+    pks = list(datums.values_list('pk', flat=True))
+    groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
+    set_reduceddatum_view_groups(datums, groups)
+    affected = ReducedDatum.objects.filter(
+        Q(pk__in=pks) | Q(data_product__in=datums.exclude(data_product=None).values('data_product')))
+    visible = reduceddatum_view_groups(affected)
+    return JsonResponse({'updated': len(pks),
+                         'visible_to': {pk: visible.get(pk, []) for pk in affected.values_list('pk', flat=True)}})
+
+
 def load_observing_runs_tab_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/tab_observing_runs.html')
 
@@ -1201,10 +1189,14 @@ def fit_lightcurve_view(request):
     target = Target.objects.get(id=target_id)
     user_id = request.GET.get('user_id', None)
     user = User.objects.get(id=user_id)
+    subtracted = request.GET.get('subtracted') == 'true'
+    if request.GET.get('plot_only'):
+        plot = custom_code_tags.lightcurve_with_extras(target, user, subtracted)['plot']
+        return HttpResponse(json.dumps({'lightcurve_plot': plot}), content_type='application/json')
     filt = request.GET.get('filter', None)
     days = float(request.GET.get('days', 20))
 
-    fit = custom_code_tags.lightcurve_fits(target, user, filt, days)
+    fit = custom_code_tags.lightcurve_fits(target, user, filt, days, subtracted)
     lightcurve_plot = fit['plot']
     fitted_max = fit['max']
     max_mag = fit['mag']
@@ -1237,8 +1229,10 @@ def fit_lightcurve_view(request):
 def save_lightcurve_params_view(request):
 
     target_id = request.GET.get('target_id', None)
-    target = Target.objects.get(id=target_id)
+    target = get_object_or_404(targets_for_user(request.user, Target.objects.all(), 'change_target'), id=target_id)
     key = request.GET.get('key', None)
+    if key not in ('target_description', 'last_nondetection', 'first_detection', 'maximum'):
+        return HttpResponseBadRequest('Unknown light curve parameter')
 
     if key == 'target_description':
         value = request.GET.get('value', None)
@@ -1379,16 +1373,6 @@ class BrokerTargetView(FilterView):
         return context
 
 
-def query_swift_observations_view(request):
-    target_id = request.GET['target_id']
-    t = Target.objects.get(id=target_id)
-    ra, dec = t.ra, t.dec
-
-    ### NOT CURRENTLY FUNCTIONAL
-    content_response = {'success': 'No'}
-
-    return HttpResponse(json.dumps(content_response), content_type='application/json')
-
 def query_ztf_observations_view(request):
     target_id = request.GET['target_id']
     target = Target.objects.get(id=target_id)
@@ -1408,14 +1392,20 @@ def query_ztf_observations_view(request):
 
 def make_thumbnail_view(request):
 
-    filename_dict = json.loads(request.GET['filenamedict'])
-    zoom = float(request.GET['zoom'])
-    sigma = float(request.GET['sigma'])
+    try:
+        filename_dict = json.loads(request.GET['filenamedict'])
+        zoom = float(request.GET['zoom'])
+        sigma = float(request.GET['sigma'])
+    except (KeyError, ValueError):
+        return HttpResponseBadRequest('Expected filenamedict, zoom and sigma')
 
-    if filename_dict['psfx'] < 9999 and filename_dict['psfy'] < 9999:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'].lstrip('/'),filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
-    else:
-        f = make_thumb([os.path.join(settings.FITS_DIR,filename_dict['filepath'].lstrip('/'),filename_dict['filename']+'.fits')], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
+    try:
+        if filename_dict['psfx'] < 9999 and filename_dict['psfy'] < 9999:
+            f = make_thumb([filename_dict['filename']], grow=zoom, spansig=sigma, x=filename_dict['psfx'], y=filename_dict['psfy'], ticks=True)
+        else:
+            f = make_thumb([filename_dict['filename']], grow=zoom, spansig=sigma, x=1024, y=1024, ticks=False)
+    except OSError as e:
+        raise Http404(f'Could not make a thumbnail: {e}')
 
     with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:
         b64_image = base64.b64encode(imagefile.read())
@@ -1426,14 +1416,16 @@ def make_thumbnail_view(request):
                         'telescope': filename_dict['tele'],
                         'instrument': filename_dict['instr'],
                         'filter': filename_dict['filter'],
-                        'exptime': filename_dict['exptime']
+                        'exptime': filename_dict['exptime'],
+                        'fwhm': filename_dict.get('fwhm', ''),
+                        'wcs': filename_dict.get('wcs', '')
                     }
 
     return HttpResponse(json.dumps(content_response), content_type='application/json')
 
 def download_data_product_view(request, pk):
     dp = get_object_or_404(DataProduct, pk=pk)
-    if not request.user.has_perm('tom_dataproducts.view_dataproduct', dp):
+    if not viewable_dataproducts(request.user, DataProduct.objects.filter(pk=dp.pk)).exists():
         return HttpResponseForbidden('Not authorized')
     if not dp.data or not os.path.exists(dp.data.path):
         raise Http404('File not found on disk')
@@ -1442,33 +1434,43 @@ def download_data_product_view(request, pk):
                         filename=os.path.basename(dp.data.name))
 
 def download_fits_view(request):
-    token = settings.FACILITIES['LCO']['api_key']
-    url = settings.FACILITIES['LCO']['archive_url']
-    
-    object_basename = json.loads(request.GET.get('filename'))['filename']
+    try:
+        object_basename = json.loads(request.GET['filename'])['filename']
+    except (KeyError, ValueError, TypeError):
+        return HttpResponseBadRequest('Expected a filename')
+    try:
+        path = cached_frame(object_basename)
+    except OSError:
+        raise Http404(f'{object_basename} not found in the LCO archive')
+    return FileResponse(open(path, 'rb'), filename=object_basename+'.fits', as_attachment=True)
 
-    results = requests.get(url,
-                           headers={'Authorization': f'Token {token}'}, 
-                           params={'basename_exact': object_basename, 'include_related_frames': False}).json()["results"]
-    
-    data = requests.get(results[0]["url"]).content
 
-    return FileResponse(BytesIO(data),filename=object_basename+'.fits', as_attachment=True)
+def cache_frame_view(request):
+    try:
+        cached_frame(request.GET.get('basename', ''))
+    except FileNotFoundError:
+        raise Http404('Frame not found in the LCO archive')
+    return HttpResponse(status=204)
+
+
+def download_spectrum_view(request, pk, spectrum_id, file_format):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    product = spectrum.data_product
+    has_file = bool(product and product.data and os.path.exists(product.data.path))
+    if file_format == 'fits':
+        if not has_file:
+            raise Http404('This spectrum has no file')
+        return FileResponse(open(product.data.path, 'rb'), as_attachment=True, filename=product.get_file_name())
+    content = spectrum_ascii(spectrum)
+    if content is None:
+        raise Http404('This spectrum has no data to write')
+    file_name = os.path.splitext(product.get_file_name())[0] + '.ascii' if has_file else spectrum_ascii_name(spectrum)
+    response = HttpResponse(content, content_type='text/plain')
+    response['Content-Disposition'] = f'attachment; filename={file_name}'
+    return response
 
 
 class BulkDownloadView(LoginRequiredMixin, View):
-    def _generate_ascii(self, product):
-        """Build ascii content from ReducedDatum spectrum data. Returns bytes or None."""
-        rd = product.reduceddatum_set.first()
-        if not rd or not isinstance(rd.value, dict):
-            return None
-        wavelength = rd.value.get('wavelength')
-        flux = rd.value.get('flux')
-        if not wavelength or not flux or len(wavelength) != len(flux):
-            return None
-        lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
-        return ('\n'.join(lines)).encode('utf-8')
-
     def post(self, request, *args, **kwargs):
         product_ids = request.POST.getlist('selected_products')
         target_name = request.POST.get('target_name', 'snextarget')
@@ -1476,45 +1478,22 @@ class BulkDownloadView(LoginRequiredMixin, View):
         download_format = request.POST.get('download_format', 'fits')
         if not product_ids:
             return HttpResponse('No items selected.', status=400)
-        allowed = get_objects_for_user(
-            request.user, 'tom_dataproducts.view_dataproduct',
-            klass=DataProduct.objects.filter(id__in=product_ids),
-        )
+        allowed = viewable_dataproducts(request.user, DataProduct.objects.filter(id__in=product_ids))
         zip_buffer = BytesIO()
         written = 0
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             for product in allowed:
-                if not product.data:
-                    continue
-                file_name = product.get_file_name()
-                fits_path = product.data.path
-                ascii_path = os.path.splitext(fits_path)[0] + '.ascii'
+                file_name = product.get_file_name() if product.data else product.product_id
+                fits_path = product.data.path if product.data else None
                 ascii_name = os.path.splitext(file_name)[0] + '.ascii'
 
-                if download_format == 'any':
-                    if os.path.exists(fits_path):
-                        zip_file.write(fits_path, arcname=file_name)
-                        written += 1
-                    elif os.path.exists(ascii_path):
-                        zip_file.write(ascii_path, arcname=ascii_name)
-                        written += 1
-                    else:
-                        content = self._generate_ascii(product)
-                        if content:
-                            zip_file.writestr(ascii_name, content)
-                            written += 1
-                elif download_format == 'ascii':
-                    if os.path.exists(ascii_path):
-                        zip_file.write(ascii_path, arcname=ascii_name)
-                        written += 1
-                    else:
-                        content = self._generate_ascii(product)
-                        if content:
-                            zip_file.writestr(ascii_name, content)
-                            written += 1
-                else:
-                    if os.path.exists(fits_path):
-                        zip_file.write(fits_path, arcname=file_name)
+                if download_format != 'ascii' and fits_path and os.path.exists(fits_path):
+                    zip_file.write(fits_path, arcname=file_name)
+                    written += 1
+                elif download_format != 'fits':
+                    content = spectrum_ascii(product.reduceddatum_set.filter(data_type='spectroscopy').first())
+                    if content:
+                        zip_file.writestr(ascii_name, content)
                         written += 1
         if written == 0:
             return JsonResponse({'error': f'The file with a "{download_format}" extension does not exist.'}, status=404)
@@ -1524,35 +1503,28 @@ class BulkDownloadView(LoginRequiredMixin, View):
         return response
 
 
-@require_GET
+@require_http_methods(["POST"])
 def get_frame_ids_view(request):
-    target_id = request.GET.get('target_id')
-    target = Target.objects.get(id = target_id)
+    basenames = set(json.loads(request.POST.get('basenames', '[]')))
     token = settings.FACILITIES['LCO']['api_key']
     url = settings.FACILITIES['LCO']['archive_url']
-    frame_ids = []
-    for target_name in list(set(target.names)):
-        params = {
-            'reduction_level': 91,
-            'target_name_exact': target_name,
-            'configuration_type': 'EXPOSE',
-            'pagination_style': 'cursor',
-            'limit': 100
-        }
-        next_url = url
-        while next_url:
-            resp = requests.get(
-                next_url,
-                headers = {'Authorization': f'Token {token}'},
-                params = params if next_url == url else None
-            ).json()
-            for r in resp['results']:
-                frame_ids.append(r['id'])
-            next_url = resp['next']
 
-    unique_ids = list(set(frame_ids))
-    logger.info(f'Total unique frame IDs for {target.name}: {len(unique_ids)}')
-    return JsonResponse({'frame_ids': unique_ids, 'count': len(unique_ids)})
+    def lookup(basename):
+        return requests.get(url, headers={'Authorization': f'Token {token}'},
+                            params={'basename_exact': basename, 'include_related_frames': False})
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        responses = list(pool.map(lookup, basenames))
+
+    frame_ids = set()
+    for response in responses:
+        if not response.ok:
+            logger.error(f'LCO archive frame lookup failed: {response.status_code} {response.text[:200]}')
+            return JsonResponse({'error': f'LCO archive returned {response.status_code}: {response.text[:200]}'}, status=502)
+        frame_ids.update(r['id'] for r in response.json()['results'])
+
+    logger.info(f'Found {len(frame_ids)} of {len(basenames)} frames in the LCO archive')
+    return JsonResponse({'frame_ids': list(frame_ids), 'count': len(frame_ids)})
 
 class InterestingTargetsView(ListView):
 
@@ -1639,22 +1611,33 @@ def change_broker_target_status_view(request):
 class SNEx2SpectroscopyTNSSharePassthrough(RedirectView):
 
     def get_redirect_url(self, *args, **kwargs):
-        target_id = kwargs['pk']
-        datum_id = kwargs['datum_pk']
-        print(f"Redirecting to share for target {target_id} and reduced datum {datum_id}")
-        # We need to check if the datum has an associated dataproduct here, and if it does not, we should create it and add it to the TOM
-        datum = ReducedDatum.objects.get(pk=datum_id)
-        if not datum.data_product:
-            print(f"Reduced datum {datum_id} does not have an associated data product - creating it now")
-            target = Target.objects.get(pk=target_id)
-            data_str = ''
-            for datapoint in datum.value.values():
-                data_str += f"{datapoint.get('wavelength')}\t{datapoint.get('flux')}\n"
-            dp_name = f"spectra_{datum_id}_{datum.timestamp.strftime('%Y_%m_%d_%H_%M_%S')}.txt"
-            dp = DataProduct.objects.create(target=target, product_id=dp_name, data_product_type='spectroscopy')
-            dp.data.save(dp_name, ContentFile(data_str))
-            ReducedDatum.objects.filter(pk=datum_id).update(data_product=dp)
-        return reverse('tns:report-tns', kwargs={'pk': target_id, 'datum_pk': datum_id})
+        target, datum = _spectrum_for_user(self.request, kwargs['pk'], kwargs['datum_pk'])
+        return reverse('tns:report-tns', kwargs={'pk': target.pk, 'datum_pk': datum.pk})
+
+
+class SNExTNSClassifySubmitView(TNSSubmitView):
+    form_class = TNSClassifyForm
+
+    def _generated_spectrum(self):
+        value = self.request.POST.get('ascii_file', '')
+        spectrum_id = value[len(GENERATED_ASCII_PREFIX):]
+        if not value.startswith(GENERATED_ASCII_PREFIX) or not spectrum_id.isdigit():
+            return None
+        return _spectrum_for_user(self.request, self.kwargs['pk'], int(spectrum_id))[1]
+
+    def get_initial(self):
+        initial = super().get_initial()
+        spectrum = self._generated_spectrum()
+        if spectrum is not None and spectrum_ascii(spectrum) is not None:
+            initial['ascii_file_choices'] = initial['ascii_file_choices'] + [
+                (self.request.POST['ascii_file'], spectrum_ascii_name(spectrum))]
+        return initial
+
+    def form_valid(self, form):
+        spectrum = self._generated_spectrum()
+        if spectrum is not None and not form.cleaned_data.get('ascii_file_override'):
+            form.cleaned_data['ascii_file_override'] = ContentFile(spectrum_ascii(spectrum), name=spectrum_ascii_name(spectrum))
+        return super().form_valid(form)
 
 
 class FloydsInboxView(TemplateView):
@@ -1662,41 +1645,34 @@ class FloydsInboxView(TemplateView):
     template_name = 'custom_code/floyds_inbox.html'
 
     def get_context_data(self, **kwargs):
-
         context = super().get_context_data(**kwargs)
-
-        pipeline_ids, propids, dateobs, paths, filenames, imgpaths = get_unreduced_spectra()
-
         inbox_rows = []
-        for i in range(len(pipeline_ids)):
-            current_dict = {}
-            t = Target.objects.get(pipeline_id=pipeline_ids[i])
-            current_dict['targetid'] = t.id
-            current_dict['targetnames'] = custom_code_tags.smart_name_list(t)
-            current_dict['propid'] = propids[i]
-            current_dict['dateobs'] = dateobs[i]
-            current_dict['path'] = paths[i]
-            current_dict['filename'] = filenames[i]
-            
-            with open(imgpaths[i], 'rb') as imagefile:
-                b64_image = base64.b64encode(imagefile.read())
-                thumb = b64_image.decode('utf-8')
-            current_dict['img'] = 'data:image/png;base64,{}'.format(thumb) 
-            
-            inbox_rows.append(current_dict)
-
+        raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', reduceddatum__isnull=True,
+                                                 target__in=Target.objects.filter(standard=False))
+        for dp in raw_spectra.select_related('target').order_by('-created'):
+            img = ''
+            try:
+                info = json.loads(dp.extra_data) if dp.extra_data else {}
+                if dp.thumbnail:
+                    with dp.thumbnail.open('rb') as f:
+                        img = 'data:image/png;base64,' + base64.b64encode(f.read()).decode('utf-8')
+            except (ValueError, OSError) as e:
+                logger.warning(f'FLOYDS inbox entry {dp.product_id} is incomplete: {e}')
+                info = {}
+            inbox_rows.append({'targetid': dp.target_id,
+                               'targetnames': custom_code_tags.smart_name_list(dp.target),
+                               'propid': info.get('propid', ''),
+                               'dateobs': info.get('dateobs', ''),
+                               'path': info.get('path', ''),
+                               'filename': info.get('filename') or dp.product_id,
+                               'img': img})
         context['inbox_rows'] = inbox_rows
-
         return context
 
 
 class AuthorshipInformation(TemplateView):
 
     template_name = 'custom_code/authorship.html'
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        return context
 
 
 def download_photometry_view(request, targetid):
@@ -1714,14 +1690,18 @@ def download_photometry_view(request, targetid):
                                         target=target,
                                         data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
 
+    if 'datum_ids' in request.POST:
+        datums = datums.filter(pk__in=json.loads(request.POST['datum_ids']))
+
     datums = datums.order_by('timestamp')
     newfile = StringIO()
 
     newfile.write('mjd mag err filter subtracted?\n')
 
     for d in datums:
-        if all(k in d.value.keys() for k in ['magnitude', 'error', 'filter']):
-            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 2), d.value['magnitude'], d.value['error'], d.value['filter'], d.value.get('background_subtracted', False)))
+        value = datum_value(d)
+        if all(k in value.keys() for k in ['magnitude', 'error', 'filter']) and measured(value['magnitude']) is not None:
+            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 4), value['magnitude'], value['error'], value['filter'], value.get('background_subtracted', False)))
 
     response = HttpResponse(newfile.getvalue(), content_type='text/plain')
     response['Content-Disposition'] = 'attachment; filename={}.txt'.format(target.name.replace(' ',''))
@@ -1729,7 +1709,11 @@ def download_photometry_view(request, targetid):
 
 
 def get_target_standards_view(request):
-    standard_info = get_standards_from_snex1(request.GET.get('pipeline_id', ''))
+    target = get_object_or_404(targets_for_user(request.user, Target.objects.all(), 'view_target'), id=request.GET.get('target_id'))
+    rows = custom_code_tags.photometric_standards_list({'request': request}, target)['rows']
+    standard_info = [{'objname': row['name'], 'filename': row['basename'], 'filter': row['filter'],
+                      'dateobs': row['datum'].timestamp.date(), 'telescope': row['telescope'], 'instrument': row['instrument']}
+                     for row in rows if row['same_telescope']]
     return render(request, 'custom_code/partials/target/get_target_standards.html', {'standards': standard_info})
 
 
@@ -1990,6 +1974,9 @@ class TargetFilteringView(FormView):
                 spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
             )
 
+        if not (cd.get('apply_name_filter') and cd.get('target_name', '').strip()):
+            qs = qs.exclude(standard=True)
+
         # name filter
         if cd.get('apply_name_filter'):
             name = cd.get('target_name','').strip()
@@ -1997,8 +1984,8 @@ class TargetFilteringView(FormView):
                 name_q = (
                     Q(name__icontains=name)
                   | Q(aliases__name__icontains=name)
-                  | Q(name__icontains=name.lower().replace('SN ',''))
-                  | Q(aliases__name__icontains=name.lower().replace('SN ',''))
+                  | Q(name__icontains=name.lower().replace('sn ',''))
+                  | Q(aliases__name__icontains=name.lower().replace('sn ',''))
                 )
                 filters &= name_q
 

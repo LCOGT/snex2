@@ -11,10 +11,6 @@
   padding: 8px;
 }
 </style>
-<h4>Does this Target have Swift Data?</h4>
-<div class="row">
-  <button class="btn" id="swift-data-button" style="background-color: white; color: #174460; border-color: #174460;" onclick="querySwiftData()">Click to Check</button>
-</div>
 <h4>Does this Target have ZTF Data?</h4>
 <div class="row">
     <button class="btn" id="ztf-data-button" 
@@ -87,6 +83,10 @@
   </table>
   <button class="btn" onclick="fit_lc()" style="background-color: white; color: #174460; border-color: #174460;">Fit</button>
   <b>Warning: </b>These fits are estimates and not publication-ready
+</div>
+<div class="row" style="margin-top: 10px;">
+  <label class="mr-3"><input type="radio" name="lc-subtracted" value="false" checked onchange="redraw_lc()"> Unsubtracted</label>
+  <label><input type="radio" name="lc-subtracted" value="true" onchange="redraw_lc()"> Subtracted</label>
 </div>
 <div id="lc-primary" class="row">
   {% lightcurve_with_extras target user %}
@@ -200,6 +200,19 @@ function save_max() {
     }
   })
 }
+function lc_subtracted() {
+  return document.querySelector('input[name="lc-subtracted"]:checked').value;
+}
+function redraw_lc() {
+  $.ajax({
+    url: '{% url "fit-lightcurve" %}',
+    data: {'target_id': {{ target.id }}, 'user_id': {{ user.id }}, 'subtracted': lc_subtracted(), 'plot_only': 1},
+    dataType: 'json',
+    success: function(response) {
+      $('#lc-primary').html(response.lightcurve_plot);
+    }
+  })
+}
 function fit_lc() {
   var targetid = {{ target.id }};
   var userid = {{ user.id }};
@@ -210,6 +223,7 @@ function fit_lc() {
     data: {'target_id': targetid,
 	   'user_id': userid,
 	   'filter': filt,
+	   'subtracted': lc_subtracted(),
     	   'days': daysToFit},
     dataType: 'json',
     success: function(response) {
@@ -237,17 +251,6 @@ function save_tagline() {
       if (response.success === 'Saved') {
         document.getElementById('save-tagline-btn').innerHTML = 'Saved';
       }
-    }
-  })
-}
-function querySwiftData() {
-  var targetid = {{ target.id }};
-  $.ajax({
-    url: '{% url "query-swift-observations" %}',
-    data: {'target_id': targetid},
-    dataType: 'json',
-    success: function(response) {
-      document.getElementById('swift-data-button').innerHTML = response.success;
     }
   })
 }

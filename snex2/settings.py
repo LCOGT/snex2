@@ -22,12 +22,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #only environment variables needed for bare metal install
 DATA_DIR = os.getenv('SNEX2_DATADIR','data/')
-SN_DIR = os.getenv('SUPERNOVA_DIR','/supernova/')
 
 THUMB_DIR = os.path.join(DATA_DIR,'thumbs')
-FITS_DIR = os.path.join(DATA_DIR,'fits')
-LSC_DIR = os.path.join(SN_DIR,'data','lsc')
-FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
 OBS_WINDOW_MINIMUM = 24 # Minimum observation window in hours
 
@@ -41,7 +37,7 @@ SLACK_BOT_TOKEN =  os.getenv('SLACK_BOT_TOKEN', '')
 SECRET_KEY = 'ks#e!w3m*y1g_=)%vmrdcyn*5dt0$)o^mq2f=vtj#myw#&amp;p3%i'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('SNEX2_DEBUG', False)
+DEBUG = os.getenv('SNEX2_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 ALLOWED_HOSTS = ['*']
 
@@ -139,7 +135,7 @@ DATA_SHARING = {
         'DISPLAY_NAME': os.getenv('HERMES_DISPLAY_NAME', 'Hermes'),
         'BASE_URL': os.getenv('HERMES_BASE_URL', 'https://hermes-dev.lco.global/'),
         'HERMES_API_KEY': os.getenv('HERMES_API_KEY', 'yourHermesAPIKeyHere'),
-        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', 'Your Default author list here'),
+        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', ''),
         'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
         'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
@@ -150,7 +146,6 @@ DATA_SHARING = {
             'rp': 'r-P1',
             'ip': 'i-P1'
         },
-        # TODO: Set your proper instrument mapping from datum instrument to TNS instrument
         'INSTRUMENT_MAPPING': {
             'en06': 'FTN - FS02',
             'en12': 'FTN - FS01',
@@ -247,8 +242,6 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 
 USE_I18N = True
-
-USE_L10N = False
 
 USE_TZ = True
 
@@ -353,6 +346,7 @@ FACILITIES = {
 }
 
 TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
+MATCH_MANAGERS = {'Target': 'custom_code.match_managers.SNExTargetMatchManager'}
 
 EXTRA_FIELDS = [
     {'name': 'redshift', 'type': 'number'},
@@ -379,19 +373,17 @@ OPEN_URLS = [
     '/api/*/',
     '/api/',
     '/accounts/register/',
-    '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
 ]
 if DEBUG:
     HOOKS = {
         'cancel_gw_obs': '',
-        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
-        'download_test_image_from_archive': 'custom_code.hooks.download_test_image_from_archive',
+        'find_images': 'custom_code.hooks.find_images',
     }
 else:
     HOOKS = {
         'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
-        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
+        'find_images': 'custom_code.hooks.find_images',
     }
 
 BROKERS = {
@@ -432,16 +424,16 @@ PROPOSAL_ROLLOVERS = [
     {'old_id': 'KEY2023B-002', 'new_id': 'KEY2026B-003', 'semester_start': '2026-08-01'},
 ]
 
-DATA_TYPES = (
-    ('SPECTROSCOPY', 'Spectroscopy'),
-    ('PHOTOMETRY', 'Photometry')
-)
 
 DATA_PRODUCT_TYPES = {
     'photometry': ('photometry', 'Photometry'),
     'fits_file': ('fits_file', 'FITS File'),
     'spectroscopy': ('spectroscopy', 'Spectroscopy'),
-    'image_file': ('image_file', 'Image File')
+    'image_file': ('image_file', 'Image File'),
+    'raw_spectrum': ('raw_spectrum', 'Raw Spectrum'),
+    'photometric_standard': ('photometric_standard', 'Photometric Standard'),
+    'difference_image': ('difference_image', 'Difference Image'),
+    'template_image': ('template_image', 'Template Image'),
 }
 
 DATA_PROCESSORS = {
@@ -451,7 +443,13 @@ DATA_PROCESSORS = {
 }
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
     ],
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
@@ -486,8 +484,24 @@ TOM_REGISTRATION = {
     'REGISTRATION_REDIRECT_PATTERN': 'home',
     'REGISTRATION_STRATEGY': 'approval_required',
     'SEND_APPROVAL_EMAILS': True,  
-    'APPROVAL_SUBJECT': f'Your {TOM_NAME} registration has been approved!',  # Optional subject line of approval email, (Default Shown)
-    'APPROVAL_MESSAGE': f'Your {TOM_NAME} registration has been approved. You can log in <a href="mytom.com/login">here</a>.'  # Optional html-enabled body for approval email, (Default Shown)
+    'APPROVAL_SUBJECT': 'Welcome to the Global Supernova Project!',
+    'APPROVAL_MESSAGE': (
+        '<p>Welcome to the Global Supernova Project!</p>'
+        '<ul>'
+        '<li>Read the <a href="https://docs.google.com/document/d/1lOUEJ4rbvJ_KyI1qPu_Kcz35jRwgRhdeAR2oErtjM3U/edit?usp=sharing">GSP Collaboration Guidelines</a> '
+        'and the <a href="https://docs.google.com/spreadsheets/d/1gn0OsNu7Px8-eBt7W-NNuPymm0kpT8HBRebnxZtiV9c/edit?usp=sharing">GSP Publication Rules</a>. '
+        'These answer a lot of common questions about data/publication policies.</li>'
+        '<li>Join the <a href="mailto:gsp@lco.global">gsp@lco.global</a> mailing list by going to '
+        '<a href="https://groups.google.com/a/lco.global/g/gsp">this page</a> and &ldquo;asking to join the group.&rdquo; '
+        'We typically see news about GSP-related proposals and observing runs here.</li>'
+        '<li>Join the GSP Slack workspace via '
+        '<a href="https://join.slack.com/t/global-supernova/shared_invite/zt-20hwt62ea-7FLJuWOq0HT9rYHMEgewrw">this invite link</a>. '
+        'We typically see discussion about individual supernovae here, as well as support running the GSP photometry pipeline.</li>'
+        '<li>Subscribe to the GSP Google calendar by going to '
+        '<a href="https://calendar.google.com/calendar/u/0?cid=Y19rcHRoaGJ0dXI1cTVsaWNnazNyY2FwODc4c0Bncm91cC5jYWxlbmRhci5nb29nbGUuY29t">this link</a> '
+        'and signing in to the same Google account used to subscribe to this mailing list.</li>'
+        '</ul>'
+    ),
 }
 
 MANAGERS = [("SNe", "sne@lco.global")]
@@ -501,12 +515,6 @@ EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
-SNEX1_DB_HOST = os.getenv('SNEX1_DB_HOST', 'supernova.sci.lco.gtn')
-SNEX1_DB_PORT = os.getenv('SNEX1_DB_PORT', '3306')
-SNEX1_DB_NAME = os.getenv('SNEX1_DB_NAME', 'supernova')
-SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
-SNEX1_DB_PASSWORD = os.getenv('SNEX1_DB_PASSWORD', '')
-SNEX1_DB_URL = f'mysql+pymysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
 
 CACHES = {
     'default': {
@@ -592,7 +600,6 @@ ALERT_STREAMS = [
     }
 ]
 
-DOWNLOAD_TEST_THUMBNAIL = True
 
 if DEBUG:
     INTERNAL_IPS = [

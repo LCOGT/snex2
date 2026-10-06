@@ -15,7 +15,7 @@
                 <tr>
                     <th><div class="form-check">
                     <input type="checkbox" class="form-check-input" id="share-all-phot" onclick="select_all_phot()" value=""/>
-                    <label class="form-check-label" for="share-all-phot">Share</label>
+                    <label class="form-check-label" for="share-all-phot">Select</label>
                     </div></th>
                     <th>TNS Discovery</th>
                     <th>Timestamp</th>
@@ -64,7 +64,7 @@
         {% if not target_share %}
             <div class="card">
                 <div class="card-header">
-                    Share Selected Data
+                    Share Selected Data <span class="text-muted ml-2" id="selected-phot-count">(none selected)</span>
                 </div>
                 {% if sharing_destinations %}
                     <div class="form-row" style="padding-inline:1rem">
@@ -125,12 +125,9 @@
   function check_selected_phot()  {
   var share_boxes = document.querySelectorAll("[name='share-box'][class='phot-row']");
   var submit_btn = document.getElementById('submit_selected_phot');
-    for (const box of share_boxes) {
-        if(box.checked == true) {
-            submit_btn.disabled = false;
-            return;
-        }
-    }
-    submit_btn.disabled = true;
+    var selected = [...share_boxes].filter(box => box.checked).length;
+    var count = document.getElementById('selected-phot-count');
+    if (count) { count.textContent = selected ? '(' + selected + ' selected)' : '(none selected)'; }
+    if (submit_btn) { submit_btn.disabled = selected === 0; }
   }
 </script>
