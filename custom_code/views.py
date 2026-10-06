@@ -1701,7 +1701,7 @@ def download_photometry_view(request, targetid):
     for d in datums:
         value = datum_value(d)
         if all(k in value.keys() for k in ['magnitude', 'error', 'filter']) and measured(value['magnitude']) is not None:
-            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 2), value['magnitude'], value['error'], value['filter'], value.get('background_subtracted', False)))
+            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 4), value['magnitude'], value['error'], value['filter'], value.get('background_subtracted', False)))
 
     response = HttpResponse(newfile.getvalue(), content_type='text/plain')
     response['Content-Disposition'] = 'attachment; filename={}.txt'.format(target.name.replace(' ',''))
