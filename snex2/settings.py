@@ -47,6 +47,7 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = TOMTOOLKIT_INSTALLED_APPS + [
+    'tom_alerts',
     'custom_code',
     'gw',
     'django_plotly_dash.apps.DjangoPlotlyDashConfig',

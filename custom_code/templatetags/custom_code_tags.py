@@ -2234,15 +2234,20 @@ def tns_generated_ascii_choice(context, form):
     spectrum = get_objects_for_user(
         request.user, 'tom_dataproducts.view_spectroscopyreduceddatum',
         klass=SpectroscopyReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'])).first()
-    if spectrum is not None and spectrum_ascii(spectrum) is not None:
+    if spectrum is None:
+        return ''
+    upload = spectrum.data_product.reduceddatumextra_set.first() if spectrum.data_product else None
+    facts = (upload.value or {}) if upload else {}
+    choices = list(form.fields['ascii_file'].choices)
+    if (spectrum.data_product_id in [choice[0] for choice in choices if choice[0]]
+            and facts.get('file_version') in (None, spectrum.reduction_version)):
+        form.initial['ascii_file'] = spectrum.data_product_id
+    elif spectrum_ascii(spectrum) is not None:
         value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'
-        form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + list(form.fields['ascii_file'].choices)
+        form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + choices
         form.initial['ascii_file'] = value
-    if spectrum is not None:
-        upload = spectrum.data_product.reduceddatumextra_set.first() if spectrum.data_product else None
-        facts = (upload.value or {}) if upload else {}
-        form.initial['reducer'] = spectrum.value.get('reducer') or facts.get('reducer') or ''
-        form.initial['observer'] = facts.get('observer') or ''
+    form.initial['reducer'] = spectrum.value.get('reducer') or facts.get('reducer') or ''
+    form.initial['observer'] = facts.get('observer') or ''
     return ''
 
 
