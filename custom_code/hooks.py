@@ -43,9 +43,6 @@ def _get_tns_params(target):
         result = json.dumps(parsed, indent=4)
 
         result = json.loads(result)
-        discoverydate = result['data']['discoverydate']
-        discoverymag = result['data']['discoverymag']
-        discoveryfilt = result['data']['discmagfilter']['name']
 
 
         nondets = {}
