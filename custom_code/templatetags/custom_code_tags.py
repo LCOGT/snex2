@@ -600,9 +600,7 @@ def snex_dataproduct_list(context, target):
 
 @register.inclusion_tag('custom_code/custom_upload_dataproduct.html', takes_context=True)
 def custom_upload_dataproduct(context, obj):
-    user = context['user']
     initial = {}
-    choices = {}
     if isinstance(obj, Target):
         initial['target'] = obj
         initial['referrer'] = reverse('tom_targets:detail', args=(obj.id,))
@@ -729,20 +727,11 @@ def dash_spectra(context, target):
         return {'dash_context': dash_context,
                 'request': request
             }
-    colormap = plt.cm.gist_rainbow
-    colors = [colormap(i) for i in np.linspace(0, 0.99, len(spectral_dataproducts))]
-    rgb_colors = ['rgb({r}, {g}, {b})'.format(
-        r=int(color[0]*255),
-        g=int(color[1]*255),
-        b=int(color[2]*255),
-    ) for color in colors]
-    all_data = []
     max_flux = 0
     min_flux = 0
     for i in range(len(spectral_dataproducts)):
         spectrum = spectral_dataproducts[i]
-        name = str(spectrum.timestamp).split(' ')[0]
-        wavelength, flux = spectrum.wavelength, spectrum.flux
+        flux = spectrum.flux
         if max(flux) > max_flux: max_flux = max(flux)
         if min(flux) < min_flux: min_flux = min(flux)
 

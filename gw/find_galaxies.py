@@ -37,7 +37,6 @@ def generate_galaxy_list(eventlocalization, completeness=None, credzone=None, sk
     nsigmas_in_d = float(config.get('GALAXIES', 'NSIGMAS_IN_D')) # Sigmas to consider in distnace (e.g. 3)
     if not completeness:
         completeness = float(config.get('GALAXIES', 'COMPLETENESSP')) # Mass fraction completeness (e.g. 0.5)
-    minGalaxies = int(config.get('GALAXIES', 'MINGALAXIES')) # Minimum number of galaxies to output (e.g. 100)
     
     minL = float(config.get('GALAXIES', 'MINL')) # Estimated brightest KN luminosity
     maxL = float(config.get('GALAXIES', 'MAXL')) # Estimated faintest KN luminosity
@@ -119,7 +118,6 @@ def generate_galaxy_list(eventlocalization, completeness=None, credzone=None, sk
     inddistance = np.where(np.abs(d-distmu[ipix])<nsigmas_in_d*distsigma[ipix])
     indcredzone = np.where(p>=probcutoff)
 
-    doMassCuttoff = True
 
     # Increase credzone to 99.995% if no galaxies found:
     # If no galaxies found in the credzone and within the right distance range
@@ -132,7 +130,6 @@ def generate_galaxy_list(eventlocalization, completeness=None, credzone=None, sk
             sortedprob = sortedprob[:-1]
         inddistance = np.where(np.abs(d - distmu[ipix]) < 5 * distsigma[ipix])
         indcredzone = np.where(p >= probcutoff)
-        doMassCuttoff = False
 
     ipix = ipix[np.intersect1d(indcredzone, inddistance)]
     p = p[np.intersect1d(indcredzone, inddistance)]
@@ -149,7 +146,6 @@ def generate_galaxy_list(eventlocalization, completeness=None, credzone=None, sk
 
     mass = galaxies['Mstar']
     massNorm = mass / np.sum(mass)
-    massnormalization = np.sum(mass)
     normalization = np.sum(p * massNorm)
 
     #luminosity = mag.L_nu_from_magAB(galaxies['Bmag'] - 5 * np.log10(galaxies['Dist'] * (10 ** 5)))
@@ -202,10 +198,8 @@ def generate_galaxy_list(eventlocalization, completeness=None, credzone=None, sk
     summ = 0
     galaxies50per = 0
     sum_seen = 0
-    enough = True
     while summ<0.5:
         if galaxies50per>= len(ii):
-            enough = False
             break
         summ = summ + (p[ii[galaxies50per]]*massNorm[ii[galaxies50per]])/float(normalization)
         sum_seen = sum_seen + (p[ii[galaxies50per]]*massNorm[ii[galaxies50per]]*distanceFactor[ii[galaxies50per]])/float(normalization)

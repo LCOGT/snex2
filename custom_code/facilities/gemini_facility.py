@@ -106,7 +106,6 @@ class OpticalImagingForm(BaseObservationForm):
         wait = True #On Hold
         coords = SkyCoord(ra=target.ra*u.degree, dec=target.dec*u.degree)
         now = datetime.utcnow()
-        sn_name = target.name
 
         payload = {
             'ready': str(not wait).lower(),
@@ -278,10 +277,8 @@ class OpticalSpectraForm(BaseObservationForm):
         return not errors
 
     def _init_observation_payload(self, target):
-        wait = True #On Hold
         coords = SkyCoord(ra=target.ra*u.degree, dec=target.dec*u.degree)
         now = datetime.utcnow()
-        sn_name = target.name
 
         if self.data['n_or_s'] == 'north':
             prog = os.getenv('GEMINI_NORTH_PROGRAMID')

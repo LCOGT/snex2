@@ -124,9 +124,9 @@ class BasicAlerceQuery(AlerceQuery):
 
     def validate_candidates(self, mag_lower, days_since, *args, **kwargs):
         #print('Starting with candidates {}'.format(self.candidates))
-        mag_cut = self.magnitude_cut(mag_lower)
+        self.magnitude_cut(mag_lower)
         #print('After magnitude cut, left with {}'.format(self.candidates))
-        nondet_cut = self.last_nondetection_cut(days_since)
+        self.last_nondetection_cut(days_since)
         #print('After nondetection cut, left with {}'.format(self.candidates))
 
         return True

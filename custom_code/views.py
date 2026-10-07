@@ -326,7 +326,6 @@ class CustomUserUpdateView(UserUpdateView):
             return super().dispatch(*args, **kwargs)
 
     def form_valid(self, form):
-        old_username = self.get_object().username
         super().form_valid(form)
         return redirect(self.get_success_url())
 
@@ -425,7 +424,7 @@ class CustomDataProductUploadView(DataProductUploadView):
                     self.request,
                     'File format invalid for file {0} -- error was {1}'.format(str(dp), iffe)
                 )
-            except Exception as e:
+            except Exception:
                 dp.delete()
                 messages.error(self.request, 'There was a problem processing your file: {0}'.format(str(dp)))
                 logger.exception(f'Could not process uploaded file {dp}')

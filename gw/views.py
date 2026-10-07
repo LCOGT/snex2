@@ -119,7 +119,6 @@ def submit_galaxy_observations_view(request):
 
     try:
         failed_obs = []
-        all_pointings = []
         with transaction.atomic():
             for galaxy in galaxies:
                 newtarget, created = Target.objects.get_or_create(

@@ -184,8 +184,6 @@ line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in 
 def checked_boxes(*args, **kwargs):
     
     all_rows = [item for item in line_plotting_input if 'standalone-checkbox' in item.component_id]
-    velocity_rows = [item for item in line_plotting_input if 'v-' in item.component_id]
-    redshift_rows = [item for item in line_plotting_input if 'z-' in item.component_id]
     
     checked_rows = []
     for i in range(len(all_rows)):
@@ -336,7 +334,6 @@ def display_output(selected_rows,
             g=int(color[1]*255),
             b=int(color[2]*255),
         ) for color in colors]
-        all_data = []
         for i in range(len(spectral_dataproducts)):
             spectrum = spectral_dataproducts[i]
             name = str(spectrum.timestamp).split(' ')[0]

@@ -226,7 +226,7 @@ class Command(BaseCommand):
         for query in QUERIES:
             if query['name'] == 'Basic Two Day Nondetections':
                 q = BasicAlerceQuery(query['parameters']['days_ago'], query['parameters']['ndet'])
-                valid = q.validate_candidates(19.0, 2.0)
+                q.validate_candidates(19.0, 2.0)
             
             elif query['name'] in ['Young Blue SNe', 'Rapidly Rising SNe']:
                 q = LasairIrisQuery(query['parameters']['stream_name'], query['parameters']['ncandidates'], query['parameters']['days_ago'])

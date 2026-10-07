@@ -123,7 +123,7 @@ def handle_message(message):
 
 def handle_retraction_with_galaxies(message):
 
-    retraction = handle_retraction(message)
+    handle_retraction(message)
     
     if not isinstance(message, bytes):
         bytes_message = message.value()
