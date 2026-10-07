@@ -29,23 +29,12 @@ services:
                 max-file: "3"
                 max-size: "10m"
         environment:
-            - DB_NAME=snex2
             - SNEX2_DB_HOST=snex2-db
             - SNEX2_DB_PORT=5432
-            - SNEX2_USER=${SNEX2_USER}
             - SNEX2_DB_USER=${SNEX2_DB_USER}
             - SNEX2_DB_PASSWORD=${SNEX2_DB_PASSWORD}
             - SNEX2_DB_BACKEND=postgres
             - LCO_APIKEY=${SNEX2_LCO_APIKEY}
-            - SNEXBOT_APIKEY=${SNEX2_SNEXBOT_APIKEY}
-            - AWS_ACCESS_KEY_ID=${SNEX2_AWS_ACCESS_KEY_ID}
-            - AWS_S3_REGION_NAME=${SNEX2_AWS_REGION_NAME}
-            - AWS_SECRET_ACCESS_KEY=${SNEX2_AWS_SECRET_ACCESS_KEY}
-            - AWS_STORAGE_BUCKET_NAME=${SNEX2_AWS_STORAGE_BUCKET_NAME}
-            - TWITTER_APIKEY=${SNEX2_TWITTER_APIKEY}
-            - TWITTER_SECRET=${SNEX2_TWITTER_SECRET}
-            - TWITTER_ACCESSTOKEN=${SNEX2_TWITTER_ACCESSTOKEN}
-            - TWITTER_ACCESSSECRET=${SNEX2_TWITTER_ACCESSSECRET}
             - GEMINI_EMAIL=${SNEX2_GEMINI_EMAIL}
             - GEMINI_SOUTH_PROGRAMID=${SNEX2_GEMINI_SOUTH_PROGRAMID}
             - GEMINI_SOUTH_PASSWORD=${SNEX2_GEMINI_SOUTH_PASSWORD}
@@ -57,16 +46,12 @@ services:
             - TNS_APIKEY=${TNS_APIKEY}
             - TNS_APIID=${TNS_APIID}
             - TNS_BASE_URL=${TNS_BASE_URL}
-            - SWIFT_USERNAME=${SWIFT_USERNAME}
-            - SWIFT_SECRET=${SWIFT_SECRET}
             - LASAIR_IRIS_TOKEN=${LASAIR_IRIS_TOKEN}
             - SCIMMA_AUTH_USERNAME=${SCIMMA_AUTH_USERNAME}
             - SCIMMA_AUTH_PASSWORD=${SCIMMA_AUTH_PASSWORD}
             - HOPSKOTCH_GROUP_ID=${HOPSKOTCH_GROUP_ID}
             - GCN_CLASSIC_CLIENT_ID=${GCN_CLASSIC_CLIENT_ID}
             - GCN_CLASSIC_CLIENT_SECRET=${GCN_CLASSIC_CLIENT_SECRET}
-            - CREDENTIAL_USERNAME=${CREDENTIAL_USERNAME}
-            - CREDENTIAL_PASSWORD=${CREDENTIAL_PASSWORD}
             - TM_TOKEN=${TM_TOKEN}
             - HERMES_BASE_URL=${HERMES_BASE_URL}
             - HERMES_API_KEY=${HERMES_API_KEY}
@@ -86,7 +71,6 @@ services:
         restart: "always"
         entrypoint: [ "bash", "-c", "python manage.py readstreams"]
         environment:
-            - DB_NAME=snex2
             - SNEX2_DB_HOST=snex2-db
             - SNEX2_DB_PORT=5432
             - SNEX2_DB_USER=${SNEX2_DB_USER}

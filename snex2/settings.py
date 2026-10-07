@@ -12,8 +12,6 @@ https://docs.djangoproject.com/en/2.1/ref/settings/
 """
 
 import os
-import logging.config
-import tempfile
 
 from lcogt_logging import LCOGTFormatter
 from tom_common.default_settings import *

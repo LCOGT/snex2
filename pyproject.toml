@@ -41,8 +41,7 @@ dev = [
 
 
 [project.urls]
-"Source" = "https://github.com/lcogt/banzai"
-"Docs" = "https://banzai.readthedocs.io/en/latest/"
+"Source" = "https://github.com/LCOGT/snex2"
 
 [tool.setuptools]
 packages = ["snex2"]

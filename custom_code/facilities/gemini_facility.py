@@ -32,10 +32,6 @@ def proposal_choices():
     return [(proposal, proposal) for proposal in SNEX_GEMINI_SETTINGS['programs']]
 
 
-def get_site_code_from_program(program_id):
-    return program_id.split('-')[0]
-
-
 class OpticalImagingForm(BaseObservationForm):
 
     window_size = forms.FloatField(initial=1.0, min_value=0.0, label='')
