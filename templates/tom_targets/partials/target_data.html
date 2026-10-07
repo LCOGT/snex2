@@ -1,8 +1,8 @@
 {% load tom_common_extras targets_extras custom_code_tags %}
-<div class="text-end">
-  <button type="button" class="btn btn-sm btn-outline-info" title="Update the name, classification, redshift and other names from TNS"
+<dl class="row" style="display: block; margin-top: 1rem;">
+  <button type="button" class="btn" style="background-color: white; color: #174460; border-color: #174460;" title="Update the name, classification, redshift and other names from TNS"
     hx-post="{% url 'update-from-tns' target.id %}" hx-swap="none" hx-disabled-elt="this">Update from TNS</button>
-</div>
+</dl>
 <dl class="row">
   <h4>Known as: </h4>
 </dl>
