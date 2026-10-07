@@ -310,6 +310,9 @@ def display_output(selected_rows,
     #   Fix dataproducts so they're correctly serialized
     #   Correctly display message when there are no spectra
     
+    if not target_id:
+        return {'data': [], 'layout': {}}
+
     user = User.objects.get(id=user_id)
     target = Target.objects.get(id=target_id)
 

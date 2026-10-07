@@ -427,6 +427,8 @@ def display_output(selected_rows,
     #   Fix dataproducts so they're correctly serialized
     #   Correctly display message when there are no spectra
     spectrum_id = value
+    if not spectrum_id:
+        return fig_data
     graph_data = {'data': fig_data['data'],#[],
                   'layout': fig_data['layout']}
 

@@ -227,6 +227,9 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
         except: color = colors['other']
         return color
 
+    if not target_id:
+        return {'data': [], 'layout': {}}
+
     logger.info('Plotting dash lightcurve for target %s', target_id)
 
     filter_translate = {'U': 'U', 'B': 'B', 'V': 'V', 'R': 'R', 'I': 'I',

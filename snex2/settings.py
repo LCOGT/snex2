@@ -445,6 +445,7 @@ CACHES = {
     'default': {
         'BACKEND': os.getenv('CACHE_BACKEND', 'django.core.cache.backends.db.DatabaseCache'),
         'LOCATION': os.getenv('CACHE_LOCATION', 'django_cache'),
+        'OPTIONS': {'MAX_ENTRIES': 100000},
     }
 }
 
