@@ -759,7 +759,7 @@ def photometry_data_list(context, target):
         basename = v.get('basename') or ''
         rows.append({'datum': d, 'groups': visible.get(d.pk, []), 'basename': basename,
                      'brightness': measured(d.brightness),
-                     'subtracted': v.get('background_subtracted') == True,
+                     'subtracted': (v.get('subtraction_algorithm') or 'Y') if v.get('background_subtracted') == True else '',
                      'wcs': v.get('wcs'),
                      'exptime': v.get('exptime'),
                      'fwhm': measured(v.get('fwhm')),

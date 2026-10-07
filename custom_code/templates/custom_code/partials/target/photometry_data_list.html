@@ -24,12 +24,20 @@
       {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
     </select>
   </div>
-  <div class="col-md-2">
+  <div class="col-md-1">
     <label for="phot-type" class="fw-bold">Subtracted:</label>
     <select id="phot-type" class="form-control phot-filter">
       <option value="">-- All --</option>
       <option value="subtracted">Y</option>
       <option value="unsubtracted">N</option>
+    </select>
+  </div>
+  <div class="col-md-1" id="phot-algorithm-group" style="visibility: hidden;">
+    <label for="phot-algorithm" class="fw-bold">Algorithm:</label>
+    <select id="phot-algorithm" class="form-control phot-filter">
+      <option value="">-- All --</option>
+      <option value="Hotpants">Hotpants</option>
+      <option value="PyZOGY">PyZOGY</option>
     </select>
   </div>
   <div class="col-md-1 d-flex align-items-end">
@@ -80,11 +88,11 @@
   <tbody>
   {% for row in rows %}
     <tr class="phot-row" data-id="{{ row.datum.pk }}" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}"
-        data-band="{{ row.datum.bandpass }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}">
+        data-band="{{ row.datum.bandpass }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-algorithm="{{ row.subtracted }}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}">
       <td><input type="checkbox" class="phot-check" checked></td>
       <td>{{ row.datum.timestamp|date:'m/d/y H:i' }}</td>
       <td>{{ row.datum.bandpass }}</td>
-      <td>{% if row.subtracted %}Y{% else %}N{% endif %}</td>
+      <td>{{ row.subtracted|default:'N' }}</td>
       <td>{% if row.brightness is not None %}{{ row.brightness|floatformat:3 }}{% elif row.datum.limit is not None %}&gt;{{ row.datum.limit|floatformat:3 }}{% else %}&mdash;{% endif %}</td>
       <td>{% if row.brightness is not None and row.datum.brightness_error is not None %}{{ row.datum.brightness_error|floatformat:3 }}{% endif %}</td>
       <td>{{ row.datum.telescope }}</td>
@@ -143,18 +151,21 @@
 
   function applyFilters() {
     const start = val('phot-start'), end = val('phot-end'), band = val('phot-band'), inst = val('phot-instrument'), type = val('phot-type');
+    const algorithmGroup = document.getElementById('phot-algorithm-group');
+    algorithmGroup.style.visibility = type === 'subtracted' ? 'visible' : 'hidden';
+    const algorithm = type === 'subtracted' ? val('phot-algorithm') : '';
     rows().forEach(function (r) {
       const d = r.dataset.date;
       const show = (!start || d >= start) && (!end || d <= end) &&
                    (!band || r.dataset.band === band) && (!inst || r.dataset.instrument === inst) &&
-                   (!type || r.dataset.type === type);
+                   (!type || r.dataset.type === type) && (!algorithm || r.dataset.algorithm === algorithm);
       r.style.display = show ? '' : 'none';
     });
   }
   document.querySelectorAll('.phot-filter').forEach((el) => el.addEventListener('change', applyFilters));
   document.getElementById('phot-clear').addEventListener('click', function () {
     ['phot-start', 'phot-end'].forEach((id) => { const el = document.getElementById(id); el.value = el.defaultValue; });
-    ['phot-band', 'phot-instrument', 'phot-type'].forEach((id) => { document.getElementById(id).value = ''; });
+    ['phot-band', 'phot-instrument', 'phot-type', 'phot-algorithm'].forEach((id) => { document.getElementById(id).value = ''; });
     applyFilters();
   });
   document.getElementById('phot-select-all').addEventListener('change', function (ev) {
