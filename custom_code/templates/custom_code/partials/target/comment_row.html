@@ -1,7 +1,7 @@
-<div class="comment-row d-flex align-items-start" id="comment-{{ comment.id }}">
+<div class="comment-row d-flex align-items-start rounded px-1" id="comment-{{ comment.id }}">
   <span class="flex-grow-1" style="word-break: break-word;"><span style="color: #174460;">{{ comment.user.username }}:</span> {{ comment.comment }}</span>
   {% if comment.user == user or user.is_staff %}
-  <button type="button" class="btn btn-link text-danger text-decoration-none p-0 ms-2 lh-1" style="font-size: 1.25rem;" title="Delete comment"
+  <button type="button" class="comment-delete btn btn-link text-danger text-decoration-none p-0 ms-2 lh-1" style="font-size: 1.25rem;" title="Delete comment"
     hx-post="{% url 'delete-comment' %}"
     hx-vals='{"comment_id": {{ comment.id }}}'
     hx-confirm="Are you sure you want to delete this comment?"

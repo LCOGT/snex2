@@ -9,7 +9,7 @@ from django.contrib.auth.models import Group
 from guardian.shortcuts import get_groups_with_perms, get_objects_for_user
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
-from rest_framework.mixins import CreateModelMixin, DestroyModelMixin, ListModelMixin, UpdateModelMixin
+from rest_framework.mixins import CreateModelMixin, DestroyModelMixin, ListModelMixin
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.response import Response
 from tom_dataproducts.api_views import DataProductViewSet, ReducedDatumViewSet
@@ -99,8 +99,14 @@ class SNExPhotometryViewSet(CreateModelMixin, ListModelMixin, AdminDestroyMixin,
                         status=status.HTTP_201_CREATED if serializer.result == 'created' else status.HTTP_200_OK)
 
 
-class SNExReducedDatumViewSet(UpdateModelMixin, AdminDestroyMixin, ReducedDatumViewSet):
+class SNExReducedDatumViewSet(AdminDestroyMixin, ReducedDatumViewSet):
     serializer_class = SNExReducedDatumSerializer
+
+    def _base_queryset_for_model(self, model):
+        queryset = super()._base_queryset_for_model(model)
+        if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
+            return queryset
+        return get_objects_for_user(self.request.user, view_datum_perm(model), klass=queryset)
 
 
 class SNExDataProductViewSet(DataProductViewSet):
