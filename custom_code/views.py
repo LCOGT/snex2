@@ -1700,7 +1700,7 @@ def download_photometry_view(request, targetid):
 
     for d in datums:
         if measured(d.brightness) is not None and d.brightness_error is not None and d.bandpass:
-            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 2), d.brightness, d.brightness_error, d.bandpass, d.value.get('background_subtracted', False)))
+            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 4), d.brightness, d.brightness_error, d.bandpass, d.value.get('background_subtracted', False)))
 
     response = HttpResponse(newfile.getvalue(), content_type='text/plain')
     response['Content-Disposition'] = 'attachment; filename={}.txt'.format(target.name.replace(' ',''))
