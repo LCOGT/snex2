@@ -487,27 +487,6 @@ ALERT_STREAMS = [
             },
         },
     },
-    {
-        'ACTIVE': False,
-        'NAME': 'tom_alertstreams.alertstreams.gcn.GCNClassicAlertStream',
-        # The keys of the OPTIONS dictionary become (lower-case) properties of the AlertStream instance.
-        'OPTIONS': {
-            # see https://github.com/nasa-gcn/gcn-kafka-python#to-use for configuration details.
-            'GCN_CLASSIC_CLIENT_ID': os.getenv('GCN_CLASSIC_CLIENT_ID', None),
-            'GCN_CLASSIC_CLIENT_SECRET': os.getenv('GCN_CLASSIC_CLIENT_SECRET', None),
-            'DOMAIN': 'gcn.nasa.gov',  # optional, defaults to 'gcn.nasa.gov'
-            'CONFIG': {  # optional
-                # 'group.id': 'tom_alertstreams-my-custom-group-id',
-                # 'auto.offset.reset': 'earliest',
-                # 'enable.auto.commit': False
-            },
-            'TOPIC_HANDLERS': {
-                'gcn.classic.text.LVC_INITIAL': 'gw.gw_event_handler.handle_message',#'tom_nonlocalizedevents.alertstream_handlers.gcn_event_handler.handle_message',
-                'gcn.classic.text.LVC_PRELIMINARY': 'gw.gw_event_handler.handle_message',#'tom_nonlocalizedevents.alertstream_handlers.gcn_event_handler.handle_message',
-                'gcn.classic.text.LVC_RETRACTION': 'gw.gw_event_handler.handle_retraction_with_galaxies',#'tom_nonlocalizedevents.alertstream_handlers.gcn_event_handler.handle_retraction',
-            },
-        },
-    }
 ]
 
 
