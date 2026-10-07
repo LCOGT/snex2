@@ -59,7 +59,7 @@
       {% if product.data %}
       {% with extra=product.reduceddatumextra_set.first %}
       <tr class="product-row"
-          data-created="{{ product.created|date:'Y-m-d' }}"
+          data-observed="{{ product.observed|date:'Y-m-d' }}"
           data-telescope="{{ extra.value.telescope|default:'' }}"
           data-instrument="{{ extra.value.instrument|default:'' }}">
         <td>
@@ -112,7 +112,7 @@
     const selTel = (tel.value || '').toLowerCase();
     const selIns = (ins.value || '').toLowerCase();
     document.querySelectorAll('.product-row').forEach(function (row) {
-      const d = row.getAttribute('data-created') || '';
+      const d = row.getAttribute('data-observed') || '';
       const okStart = !startVal || d >= startVal;
       const okEnd = !endVal || d <= endVal;
       const okTel = !selTel || (row.getAttribute('data-telescope') || '').toLowerCase() === selTel;

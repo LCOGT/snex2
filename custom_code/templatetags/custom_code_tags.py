@@ -2,8 +2,8 @@ from plotly import offline
 import plotly.graph_objs as go
 from django import template, forms
 from django.conf import settings
-from django.db.models.functions import Lower
-from django.db.models import Max
+from django.db.models.functions import Coalesce, Lower
+from django.db.models import Max, Min
 from django.shortcuts import reverse
 from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
@@ -577,7 +577,9 @@ def snex_dataproduct_list(context, target):
     dataproduct_context = dataproduct_list_for_target(context, target)
     if not settings.TARGET_PERMISSIONS_ONLY:
         dataproduct_context['products'] = viewable_dataproducts(
-            context['request'].user, target.dataproduct_set.exclude(data_product_type__in=('difference_image', 'template_image'))).order_by('created')
+            context['request'].user, target.dataproduct_set.exclude(data_product_type__in=('difference_image', 'template_image')))
+    dataproduct_context['products'] = dataproduct_context['products'].annotate(
+        observed=Coalesce(Min('spectroscopyreduceddatum__timestamp'), 'created')).order_by('observed')
     telescopes, instruments = set(), set()
     for p in dataproduct_context['products']:
         rde = p.reduceddatumextra_set.first()
@@ -591,7 +593,7 @@ def snex_dataproduct_list(context, target):
     dataproduct_context['is_admin'] = context['request'].user.is_superuser
     dataproduct_context['telescopes'] = sorted(telescopes)
     dataproduct_context['instruments'] = sorted(instruments)
-    dates = [timezone.localtime(p.created).date() for p in dataproduct_context['products'] if p.data]
+    dates = [timezone.localtime(p.observed).date() for p in dataproduct_context['products'] if p.data]
     one_day = datetime.timedelta(days=1)
     dataproduct_context['date_min'] = (min(dates) - one_day).isoformat() if dates else ''
     dataproduct_context['date_max'] = (max(dates) + one_day).isoformat() if dates else ''
