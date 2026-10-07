@@ -1,33 +1,27 @@
-from django.shortcuts import render
-from django.conf import settings
 from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import Group
 from django.views.generic import ListView
-from django.views.generic.base import TemplateView
 from guardian.shortcuts import assign_perm
 import json
 import os
-from astropy.io import fits
-import sep
 from datetime import datetime, timedelta
-from tom_nonlocalizedevents.models import NonLocalizedEvent, EventSequence, EventLocalization
+from tom_nonlocalizedevents.models import EventSequence
 from gw.models import GWFollowupGalaxy
 from gw.forms import GWGalaxyObservationForm
-from gw.treasure_map_utils import build_tm_pointings, submit_tm_pointings
 from tom_common.hooks import run_hook
 from tom_targets.models import Target
 from tom_observations.facility import get_service_class
 from tom_observations.models import ObservationRecord, ObservationGroup, DynamicCadence
-from custom_code.hooks import _return_session, _load_table
-from custom_code.utils import format_form_errors
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum
+from custom_code.thumbnails import cached_frame
+from custom_code.utils import format_form_errors, unsubtracted_q
 import logging
 
 logger = logging.getLogger(__name__)
-
-BASE_DIR = settings.BASE_DIR
 
 
 class GWFollowupGalaxyListView(LoginRequiredMixin, ListView):
@@ -56,7 +50,7 @@ class GWFollowupGalaxyListView(LoginRequiredMixin, ListView):
         return context
 
 
-class EventSequenceGalaxiesTripletView(ListView, LoginRequiredMixin):
+class EventSequenceGalaxiesImagesView(LoginRequiredMixin, ListView):
 
     template_name = 'gw/galaxy_observations.html'
     paginate_by = 5
@@ -73,12 +67,6 @@ class EventSequenceGalaxiesTripletView(ListView, LoginRequiredMixin):
     
     def get_context_data(self, **kwargs):
 
-        db_session = _return_session(settings.SNEX1_DB_URL)
-
-        o4_galaxies = _load_table('o4_galaxies', db_address = settings.SNEX1_DB_URL)
-        photlco = _load_table('photlco', db_address = settings.SNEX1_DB_URL)
-
-
         context = super().get_context_data(**kwargs)
 
         sequence = EventSequence.objects.get(id=self.kwargs['id'])
@@ -89,121 +77,40 @@ class EventSequenceGalaxiesTripletView(ListView, LoginRequiredMixin):
         context['superevent_id'] = sequence.nonlocalizedevent.event_id 
         context['superevent_index'] = sequence.nonlocalizedevent.id
 
-        # Getting all images associated with the GW event
-        # identified by :sequence.nonlocalizedevent.event_id:
-        existing_data_in_photlco = db_session.query(photlco).filter(photlco.targetid==o4_galaxies.targetid).filter(o4_galaxies.event_id == sequence.nonlocalizedevent.event_id)
-
         rows = []
-
         for galaxy in context['object_list']:
-            triplets=[]
-
-            # Filtering only the diff images and templates belonging to :galaxy: a
-            # At this time I don't have a better way than to check if the name is similar
-            this_galaxy_existing_subtractions = existing_data_in_photlco.filter(photlco.filetype==3).filter(photlco.objname.contains(galaxy.catalog_objname.split()[1]))
-            this_galaxy_existing_templates = existing_data_in_photlco.filter(photlco.filetype==4).filter(photlco.objname.contains(galaxy.catalog_objname.split()[1]))
-
-
-            for t in this_galaxy_existing_subtractions:
-
-                # The supernova folder tree is mounted with a different name scheme on the SNEx2 docker
-                diff_path = os.path.join(settings.FITS_DIR,t.filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', ''))
-                diff_file = os.path.join(diff_path, t.filename)
-
-                if not os.path.isfile(diff_file):
-                    diff_file = diff_file+'.fz'
-                    # Grabbing the template file from the header of diff file
-                    # but if it's compressed, the header is in the second extension
-                    temp_file = fits.getheader(diff_file,ext=1)['TEMPLATE']
-                    # The original file will be in the same folder as the difference image
-                    # The diff file will end, for example, like .PS1.diff.fits.fz
-                    orig_file = '.'.join(diff_file.split('.')[:-4])+'.fits'
-                    
-                else:
-                    # Grabbing the template file from the header of diff file
-                    temp_file = fits.getheader(diff_file)['TEMPLATE']
-                    # The original file will be in the same folder as the difference image
-                    # The diff file will end, for example, like .PS1.diff.fits
-                    orig_file = '.'.join(diff_file.split('.')[:-3])+'.fits'
-
-
-                # Looking for :temp_filename: in :existing_observations: and retrieving its corresponding :filepath:
-                temp_filepath = this_galaxy_existing_templates.filter(photlco.filename==temp_file)[0].filepath
-                temp_file = os.path.join(settings.FITS_DIR,temp_filepath.replace(settings.LSC_DIR, '').replace('/supernova/data/', ''), temp_file)
-                
-                if not os.path.isfile(temp_file):
-                    temp_file = temp_file+'.fz'
-
-                if not os.path.isfile(orig_file):
-                    orig_file = orig_file+'.fz'
-
-                triplet={
-                    #'galaxy': galaxy,
-                    'obsdate': t.dateobs,
-                    'filter': t.filter,
-                    'exposure_time': t.exptime,
-                    'original': {'filename': orig_file},
-                    'template': {'filename': temp_file},
-                    'diff': {'filename': diff_file}
-                }
-
-                triplets.append(triplet)
-            
-            if len(triplets) != 0:
-                row = {
-                'galaxy': galaxy,
-                'triplets': triplets
-                }
-                rows.append(row)
-
+            images = []
+            photometry = PhotometryReducedDatum.objects.filter(
+                target__in=Target.objects.filter(Q(gwfollowupgalaxy_id=galaxy.id) | Q(name=galaxy.catalog_objname)),
+                value__has_key='basename')
+            subtractions = {datum.value['basename']: datum.value for datum in photometry.filter(value__background_subtracted=True)}
+            for datum in photometry.filter(unsubtracted_q()).order_by('timestamp'):
+                try:
+                    filenames = [cached_frame(datum.value['basename'])]
+                except OSError:
+                    continue
+                subtraction = subtractions.get(datum.value['basename'], {})
+                for key in ('template_image', 'difference_image'):
+                    if not subtraction.get(key):
+                        continue
+                    product = DataProduct.objects.filter(
+                        product_id=os.path.basename(subtraction[key]).split('.fits')[0], data_product_type=key).first()
+                    if product and product.data and os.path.isfile(product.data.path):
+                        filenames.append(product.data.path)
+                images.append({
+                    'obsdate': datum.timestamp.date(),
+                    'filter': datum.bandpass,
+                    'exposure_time': datum.value.get('exptime'),
+                    'filenames': filenames,
+                })
+            if images:
+                rows.append({'galaxy': galaxy, 'images': images})
 
         context['rows'] = rows
 
         return context
 
-#this is not yet implemented
-class GWFollowupGalaxyTripletView(TemplateView, LoginRequiredMixin):
-
-    template_name = 'gw/galaxy_observations_individual.html'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-
-        galaxy = GWFollowupGalaxy.objects.get(id=self.kwargs['id'])
-        context['galaxy'] = galaxy
-
-        loc = galaxy.eventlocalization
-        context['superevent_id'] = loc.nonlocalizedevent.event_id 
-        context['superevent_index'] = loc.nonlocalizedevent.id
-
-        rows = []
-
-        #TODO: Populate this dynamically
-
-        triplets = [{
-            'obsdate': '2023-04-19',
-            'filter': 'g',
-            'exposure_time': 200,
-            'original': {'filename': os.path.join(BASE_DIR, settings.FITS_DIR,'gw','obs.fits')},
-            'template': {'filename': os.path.join(BASE_DIR, settings.FITS_DIR,'gw','ref.fits')},
-            'diff': {'filename': os.path.join(BASE_DIR, settings.FITS_DIR,'gw','sub.fits')}
-        }]
-
-        ### Run SExtractor to get sources to plot
-        for triplet in triplets:
-            hdu = fits.open(triplet['diff']['filename'])
-            img = hdu[0].data
-            hdu.close()
-
-            bkg = sep.Background(img.byteswap().newbyteorder())
-            sources = sep.extract(img-bkg, 5.0, err=bkg.globalrms)
-            triplet['sources'] = sources
-
-        context['triplets'] = triplets
-
-        return context
-
-
+@login_required
 def submit_galaxy_observations_view(request):
 
     ### Get list of GWFollowupGalaxy ids from the request and create Targets
@@ -211,9 +118,7 @@ def submit_galaxy_observations_view(request):
     galaxies = GWFollowupGalaxy.objects.filter(id__in=galaxy_ids)
 
     try:
-        db_session = _return_session()
         failed_obs = []
-        all_pointings = []
         with transaction.atomic():
             for galaxy in galaxies:
                 newtarget, created = Target.objects.get_or_create(
@@ -290,14 +195,12 @@ def submit_galaxy_observations_view(request):
                         failed_obs.append(newtarget.name)
                         continue
                         #response_data = {'failure': 'Unable to submit observation for {}'.format(newtarget.name)}
-                        #raise Snex1ConnectionError(message='Observation portal returned errors {}'.format(observation_errors))
 
                 else:
                     logger.error(msg=f'Unable to submit observation for {newtarget.name}: {format_form_errors(form.errors)}')
                     failed_obs.append(newtarget.name)
                     continue
                     #response_data = {'failure': 'Unable to submit observation'}
-                    #raise Snex1ConnectionError(message='Observation portal returned errors {}'.format(form.errors))
 
                 new_observations = []
                 # Create Observation record
@@ -333,17 +236,6 @@ def submit_galaxy_observations_view(request):
                     assign_perm('tom_observations.change_observationrecord', groups, record)
                     assign_perm('tom_observations.delete_observationrecord', groups, record)
 
-                ## Add the sequence to SNEx1
-                snex_id = 1
-
-                if len(new_observations) > 1 or form_data.get('cadence'):
-                    observation_group.name = str(snex_id)
-                    observation_group.save()
-
-                    for record in new_observations:
-                        record.parameters['name'] = snex_id
-                        record.save()
-
                 ### Submit pointing to TreasureMap
                 #pointings = build_tm_pointings(newtarget, observing_parameters)
 
@@ -353,46 +245,33 @@ def submit_galaxy_observations_view(request):
             #if not submitted:
             #    logger.error('Submitting to Treasure Map failed for these observations')
 
-            #raise Snex1ConnectionError(message="We got to the end but raise an error to roll back the db")
         if not failed_obs:
             failed_obs_str = 'All observations submitted successfully'
         else:
             failed_obs_str = 'Observations failed to submit for the following galaxies: ' + ','.join(failed_obs)
         response_data = {'success': 'Submitted',
                          'failed_obs': failed_obs_str}
-        db_session.commit()
 
     except Exception as e:
         logger.error('Creating galaxy Target objects and scheduling observations failed with error: {}'.format(e))
         response_data = {'failure': 'Creating galaxy Target objects and scheduling observations failed'}
-        db_session.rollback()
-
-    finally:
-        print('Done')
-        db_session.close()
 
     return HttpResponse(json.dumps(response_data), content_type='application/json')
 
 
+@login_required
 def cancel_galaxy_observations_view(request):
 
     ### Get list of GWFollowupGalaxy ids from the request and create Targets
     try:
-        db_session = _return_session()
-
         galaxy_ids = json.loads(request.GET['galaxy_ids'])
         with transaction.atomic():
-            run_hook('cancel_gw_obs', galaxy_ids=galaxy_ids, wrapped_session=db_session)
+            run_hook('cancel_gw_obs', galaxy_ids=galaxy_ids)
 
         response_data = {'success': 'Canceled'}
-        db_session.commit()
 
     except Exception as e:
         logger.error('Canceling follow-up observations failed with error: {}'.format(e))
         response_data = {'failure': 'Could not cancel follow-up observations for these galaxies'}
-        db_session.rollback()
-
-    finally:
-        db_session.close()
 
     return HttpResponse(json.dumps(response_data), content_type='application/json')

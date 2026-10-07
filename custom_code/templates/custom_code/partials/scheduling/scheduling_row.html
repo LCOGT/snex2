@@ -4,7 +4,7 @@
   <div class="card-header d-flex align-items-center flex-wrap">
     <div style="flex: 1 1 0; min-width: 0;">
       <a href="{% url 'tom_targets:detail' parameter.target.id %}" target="_blank" class="h5 mb-0">{{ parameter.names|join:", " }}</a>
-      <span class="text-muted ml-2">{{ parameter.target.classification }}{% if parameter.target.redshift %} &middot; z={{ parameter.target.redshift|strip_trailing_zeros }}{% endif %}</span>
+      <span class="text-muted ms-2">{{ parameter.target.classification }}{% if parameter.target.redshift %} &middot; z={{ parameter.target.redshift|strip_trailing_zeros }}{% endif %}</span>
     </div>
     <div class="text-center px-3" style="font-size: 1.3rem; font-weight: 500;">
       <span>{{ parameter.observation_type }}</span>
@@ -13,7 +13,7 @@
       <span class="text-muted mx-1">&middot;</span>
       <span>{{ parameter.cadence_strategy }}</span>
     </div>
-    <div class="text-right" style="flex: 1 1 0;">
+    <div class="text-end" style="flex: 1 1 0;">
       <a class="btn btn-outline-success" style="font-size: 1rem;" href="{% url 'custom_code:observationgroup-detail' parameter.obsgroup_id %}" target="_blank">Details</a>
     </div>
   </div>

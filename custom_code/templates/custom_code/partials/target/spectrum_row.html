@@ -1,52 +1,71 @@
-{% load bootstrap4 custom_code_tags comments %}
+{% load django_bootstrap5 custom_code_tags comments %}
 
 <tr valign="top" id="spectrum-row-{{ entry.spectrum.id }}">
-  <td width=200>
-    <div class="row">
-      <input type="checkbox" class="spectrum-row" id="share-box-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
-      <label class="form-check-label" for="share-box-{{ entry.spectrum.id }}">Share</label>
+  <td width=270 class="py-1">
+    <div class="form-check" style="margin-bottom: .25rem;">
+      <input type="checkbox" class="form-check-input spectrum-row" id="share-box-{{ entry.spectrum.id }}" name="share-box" value="{{ entry.spectrum.id }}" onchange="check_selected_spectra()">
+      <label class="form-check-label" for="share-box-{{ entry.spectrum.id }}">Select</label>
     </div>
-        <div class="row"><b>{{ entry.time }}</b></div>
-    <div class="row">Telescope: {{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</div>
-    <div class="row">Instrument: {{ entry.spec_extras.instrument }}</div>
-    <div class="row">Exposure Time: {{ entry.spec_extras.exptime|floatformat:0 }}s</div>
-    <div class="row">Slit: {{ entry.spec_extras.slit }}"</div>
-    <div class="row">Airmass: {{ entry.spec_extras.airmass|floatformat:2 }}</div>
-    <div class="row">Reduced by: {{ entry.spec_extras.reducer }}</div>
+    <table class="table table-borderless" style="line-height: 1.3; margin-bottom: .25rem;">
+      <tbody>
+        <tr><th class="p-0 pe-2 fw-normal text-muted">Date</th><td class="p-0">{{ entry.spectrum.timestamp|date:'Y-m-d H:i' }}</td></tr>
+        {% if entry.spec_extras.telescope %}<tr><th class="p-0 pe-2 fw-normal text-muted">Telescope</th><td class="p-0">{{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</td></tr>{% endif %}
+        {% if entry.spec_extras.instrument %}<tr><th class="p-0 pe-2 fw-normal text-muted">Instrument</th><td class="p-0">{{ entry.spec_extras.instrument }}</td></tr>{% endif %}
+        {% if entry.spec_extras.exptime %}<tr><th class="p-0 pe-2 fw-normal text-muted">Exposure</th><td class="p-0">{{ entry.spec_extras.exptime|floatformat:0 }}s</td></tr>{% endif %}
+        {% if entry.spec_extras.slit %}<tr><th class="p-0 pe-2 fw-normal text-muted">Slit</th><td class="p-0">{{ entry.spec_extras.slit }}"</td></tr>{% endif %}
+        {% if entry.spec_extras.airmass %}<tr><th class="p-0 pe-2 fw-normal text-muted">Airmass</th><td class="p-0">{{ entry.spec_extras.airmass|floatformat:2 }}</td></tr>{% endif %}
+        {% if entry.spec_extras.reducer %}<tr><th class="p-0 pe-2 fw-normal text-muted">Reducer</th><td class="p-0">{{ entry.spec_extras.reducer }}</td></tr>{% endif %}
+      </tbody>
+    </table>
+    {% if entry.versions|length > 1 %}
+    <select class="form-select form-select-sm" style="margin-bottom: .25rem;" title="Reduction version"
+      onchange="htmx.ajax('GET', '{% url 'load-single-spectrum' entry.spectrum.target.id 0 %}'.replace('/0/', '/' + this.value + '/'), {target: '#spectrum-row-{{ entry.spectrum.id }}', swap: 'outerHTML'})">
+      {% for version in entry.versions %}
+      <option value="{{ version.id }}"{% if version.id == entry.spectrum.id %} selected{% endif %}>v{{ forloop.revcounter }}{% if version.final %} (final){% endif %} &middot; {{ version.uploaded }} &middot; {{ version.reducer }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
     {% for comment in entry.spec_extras.comments %}
     {% include 'custom_code/partials/target/comment_row.html' %}
     {% endfor %}
-    <div class="row">
-      <input id="comment-{{ entry.spectrum.id }}" type="text" name="comment" title="Press Enter to submit" placeholder="Add a comment"
-        hx-get="{% url 'save-comment' %}"
-        hx-vals='{"object_id": {{ entry.spectrum.id }}, "tablename": "spec"}'
-        hx-trigger="keyup[key=='Enter'&&target.value!='']"
-        hx-target="closest .row"
-        hx-swap="beforebegin"
-        hx-on::after-request="if(event.detail.successful) this.value=''">
+    <input id="comment-{{ entry.spectrum.id }}" type="text" name="comment" class="form-control form-control-sm" style="margin-bottom: .25rem;" title="Press Enter to submit" placeholder="Add a comment"
+      onkeydown="if (event.key === 'Enter') { event.preventDefault(); }"
+      hx-get="{% url 'save-comment' %}"
+      hx-vals='{"object_id": {{ entry.comment_object_id }}, "tablename": "{{ entry.comment_table }}"}'
+      hx-trigger="keyup[key=='Enter'&&target.value!='']"
+      hx-target="this"
+      hx-swap="beforebegin"
+      hx-on::after-request="if(event.detail.successful) this.value=''">
+    <div class="d-flex" style="gap: .25rem; margin-bottom: .25rem;">
+      <button type="button" class="btn btn-sm btn-outline-primary"{% if not entry.has_fits %} disabled title="The FITS file is kept for the most recently uploaded version only"{% else %} title="Download FITS"{% endif %} onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" title="Download ASCII" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
+      <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title="Submit TNS classification" class="btn btn-sm btn-outline-info flex-grow-1">Classify on TNS</a>
     </div>
-    <div class="row mt-2">
-      <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title=TNS class="btn  btn-info">Submit TNS Classification</a>
+    {% if entry.static_plot %}
+    <button type="button" class="btn btn-sm btn-outline-info w-100" style="margin-bottom: .25rem;"
+        hx-get="{% url 'load-spectrum-interactive' entry.spectrum.target.id entry.spectrum.id %}"
+        hx-target="#spectrum-plot-{{ entry.spectrum.id }}"
+        hx-swap="innerHTML"
+        hx-trigger="click once"
+        hx-on::before-request="this.classList.add('d-none')">Interactive tools</button>
+    {% endif %}
+    {% if entry.can_delete %}
+    <div class="text-center">
+      <button type="button" class="btn btn-sm btn-outline-danger" title="{% if entry.versions|length > 1 %}Delete this version{% else %}Delete this spectrum{% endif %}"
+        hx-post="{% url 'delete-spectrum-version' entry.spectrum.target.id entry.spectrum.id %}"
+        hx-confirm="Delete this version of the spectrum?"
+        hx-target="#spectrum-row-{{ entry.spectrum.id }}"
+        hx-swap="outerHTML">Delete</button>
     </div>
+    {% endif %}
   </td>
-  <td width=1000>
+  <td class="py-1">
     <div id="spectrum-plot-{{ entry.spectrum.id }}">
       {% if entry.static_plot %}
         {{ entry.static_plot|safe }}
-        <div class="text-right">
-          <button type="button" class="btn btn-sm btn-outline-info"
-            hx-get="{% url 'load-spectrum-interactive' entry.spectrum.target.id entry.spectrum.id %}"
-            hx-target="#spectrum-plot-{{ entry.spectrum.id }}"
-            hx-swap="innerHTML"
-            hx-trigger="click once"
-            hx-disabled-elt="this">Interactive tools
-            <span class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
-          </button>
-        </div>
       {% else %}
         <div style="padding: 30px; color: #999;">No plottable data for this spectrum.</div>
       {% endif %}
     </div>
   </td>
 </tr>
-

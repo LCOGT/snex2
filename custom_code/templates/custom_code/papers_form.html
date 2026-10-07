@@ -1,7 +1,7 @@
-{% load bootstrap4 custom_code_tags %}
+{% load django_bootstrap5 custom_code_tags %}
 <button type="button" title="Add paper information for this target" class="btn"
         style="background-color: white; color: #174460; border-color: #174460;"
-        data-toggle="modal" data-target="#addPaperModal">
+        data-bs-toggle="modal" data-bs-target="#addPaperModal">
   Add Paper
 </button>
 
@@ -10,18 +10,16 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Add Paper</h5>
-        <button type="button" class="close" data-dismiss="modal">
-          <span>&times;</span>
-        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <form class="form" action="{% url 'custom_code:create-paper' %}" method="post">
           {% csrf_token %}
           {% bootstrap_form form %}
-          {% buttons %}
+          <div class="mb-3">
           <button type="submit" class="btn btn-primary">Submit</button>
-          <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-          {% endbuttons %}
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          </div>
         </form>
       </div>
     </div>

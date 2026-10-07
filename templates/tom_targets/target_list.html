@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 targets_extras dataproduct_extras static custom_code_tags%}
+{% load django_bootstrap5 targets_extras dataproduct_extras static custom_code_tags%}
 {% block title %}Targets{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -17,17 +17,16 @@
   <div class="col-md-10">
     <div class="row">
       <div class="col-md-12">
-        <span class="float-right">
+        <span class="float-end">
         {{ target_count }} Targets &nbsp;
-        <button class="btn btn-primary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        <button class="btn btn-primary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
           Create Targets
         </button>
         <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
           <a class="dropdown-item" href="{% url "create-target" %}" title="Create a Target">Create a Target</a>
           <a class="dropdown-item" href="{% url 'targets:import' %}" title="Import Targets">Import Targets</a>
-          <a class="dropdown-item" href="{% url 'tom_catalogs:query' %}" title="Catalog Search">Catalog Search</a>
+          <a class="dropdown-item" href="{% url 'dataservices:query_list' %}" title="Catalog Search">Catalog Search</a>
         </div>
-	{% update_broker_data_button %}
         <button onclick="document.getElementById('invisible-export-button').click()" class="btn btn-primary">Export Filtered Targets</button>
          <!-- use an invisible button, because the key "Enter" event will triggered the first submit button and we want the default action to be applying filter -->
       </span>
@@ -40,17 +39,17 @@
     <button id="optionSelectAll" type="button" class="btn btn-link" onClick="select_all({{ target_count }})"></button>
     <form id="grouping-form" action="{% url 'targets:add-remove-grouping' %}" method="POST">
       {% csrf_token %}
-      <div class="form-group d-flex justify-content-end align-items-baseline">
+      <div class="mb-3 d-flex justify-content-end align-items-baseline">
         <label>Add/Remove from grouping</label>
-        <select name="grouping" class="form-control w-25 ml-1">
+        <select name="grouping" class="form-control w-25 ms-1">
           {% for grouping in groupings %}
           <option value="{{ grouping.id }}">{{ grouping.name }}</option>
           {% endfor %}
         </select>
         <input type="hidden" value="{{ query_string }}" name="query_string">
         <input type="hidden" value="False" id="isSelectAll" name="isSelectAll">
-        <button type="submit" class="btn btn-outline-primary ml-1" name="add">Add</button>
-        <button type="submit" class="btn btn-outline-danger ml-1" name="remove">Remove</button>
+        <button type="submit" class="btn btn-outline-primary ms-1" name="add">Add</button>
+        <button type="submit" class="btn btn-outline-danger ms-1" name="remove">Remove</button>
       </div>
     </form>
     <table class="table table-hover">
@@ -69,7 +68,7 @@
         <tr>
           <td><input type="checkbox" name="selected-target" value="{{ target.id }}" onClick="single_select()"/></td>
           <td rowspan=2>
-      	    <button class="btn btn-primary" data-toggle="collapse" data-target="#show-both-{{target.name|cut:" "}}" aria-expanded="true">+</button>
+      	    <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#show-both-{{target.name|cut:" "}}" aria-expanded="true">+</button>
 	    {% with target|smart_name_list as target_names %}
             <a href="{% url 'targets:detail' target.id %}" title="{{ target|get_best_name }}">{{ target_names|join:", " }}</a>
 	    {% endwith %}
@@ -93,7 +92,7 @@
           <td colspan="5">
             {% if target_count == 0 %}
             No targets yet. You might want to <a href="{% url 'tom_targets:create' %}">create a target manually</a>
-            or <a href="{% url 'tom_alerts:list' %}">import one from an alert broker</a>.
+            or <a href="{% url 'dataservices:query_list' %}">import one from an alert broker</a>.
             {% else %}
             No targets match those filters.
             {% endif %}
@@ -108,13 +107,13 @@
   <div class="col-md-2">
     <form action="" method="get" class="form">
       {% bootstrap_form filter.form exclude='tweet,reference,observing_run_priority,last_nondetection,first_detection,maximum,target_description' %}
-      {% buttons %}
+      <div class="mb-3">
         <button type="submit" class="btn btn-primary">
           Filter
         </button>
         <a href="{% url 'targets:list' %}" class="btn btn-secondary" title="Reset">Reset</a>
         <button type="submit" formaction="{% url 'targets:export' %}" id="invisible-export-button" style="display:none"></button>
-      {% endbuttons %}
+      </div>
     </form>
   </div>
 </div>

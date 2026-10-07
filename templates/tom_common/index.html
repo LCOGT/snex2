@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load static targets_extras observation_extras dataproduct_extras tom_common_extras bootstrap4 %}
+{% load static targets_extras observation_extras dataproduct_extras tom_common_extras django_bootstrap5 custom_code_tags %}
 {% block title %}Home{% endblock %}
 {% block content %}
 <div class="row">
@@ -53,7 +53,7 @@
       <div class="card-header">
         Latest Targets
       </div>
-      {% recent_targets %}
+      {% snex_recent_targets %}
 
   </div>
 

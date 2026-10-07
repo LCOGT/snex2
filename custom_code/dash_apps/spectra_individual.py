@@ -1,8 +1,7 @@
-import dash
 from dash.dependencies import Input, Output, State
 import dash_bootstrap_components as dbc
-import dash_core_components as dcc
-import dash_html_components as html
+from dash import dcc
+from dash import html
 import plotly.graph_objs as go
 import numpy as np
 import json
@@ -12,9 +11,9 @@ from statistics import median
 ### Jamie: "lots of help from https://community.plot.ly/t/django-and-dash-eads-method/7717"
 
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import ReducedDatum
+from tom_dataproducts.models import SpectroscopyReducedDatum
 from tom_targets.models import Target
-from custom_code.templatetags.custom_code_tags import bin_spectra, extract_spectrum_arrays
+from custom_code.templatetags.custom_code_tags import bin_spectra
 from django.contrib.auth.models import User
 from django.db.models import Q
 from guardian.shortcuts import get_objects_for_user
@@ -24,7 +23,6 @@ from custom_code.dash_apps.spectra_utils import elements, calculate_flux_range
 
 logger = logging.getLogger(__name__)
 
-external_stylesheets = [dbc.themes.BOOTSTRAP]
 
 app = DjangoDash(name='Spectra_Individual', add_bootstrap_links=True, suppress_callback_exceptions=True)   # replaces dash.Dash
 app.css.append_css({'external_url': static('custom_code/css/dash.css')})
@@ -62,8 +60,10 @@ app.layout = html.Div([
         dcc.Input(id='target_redshift', type='hidden', value=0),
         dcc.Input(id='min-flux', type='hidden', value=0),
         dcc.Input(id='max-flux', type='hidden', value=0),
-        html.Div('Binning Factor: ', style={'color': 'black', 'fontSize': 18}),
-        dcc.Input(id='bin-factor', type='number', value=5, size=2),
+        html.Div([
+            html.Div('Binning Factor: ', style={'color': 'black', 'fontSize': 18}),
+            dcc.Input(id='bin-factor', type='number', value=5, size=2, style={'width': '5rem'}),
+        ], style={'display': 'flex', 'alignItems': 'center', 'gap': '8px'}),
         dcc.Checklist(
             id='line-plotting-checklist',
             options=[{'label': 'Show line plotting interface', 'value': 'display'}],
@@ -158,7 +158,7 @@ def get_target_list(value, existing, *args, **kwargs):
     [Input('line-plotting-checklist', 'value')])
 def show_table(value, *args, **kwargs):
     if 'display' in value:
-        return {'display': 'block'}
+        return {'display': 'block', 'maxHeight': '300px', 'overflowY': 'auto'}
     else:
         return {'display': 'none'}
 
@@ -171,6 +171,14 @@ def show_compare(value, *args, **kwargs):
         return {'display': 'block'}
     else:
         return {'display': 'none'}
+
+
+@app.callback(
+    Output('spectra-compare-dropdown', 'value'),
+    [Input('compare-spectra-checklist', 'value'),
+     State('spectra-compare-dropdown', 'value')])
+def clear_compare(value, existing, *args, **kwargs):
+    return existing if 'display' in value else ''
 
 
 line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('standalone-checkbox-custom-wavelength-1', 'value'), Input('standalone-checkbox-custom-wavelength-2', 'value')]
@@ -419,6 +427,8 @@ def display_output(selected_rows,
     #   Fix dataproducts so they're correctly serialized
     #   Correctly display message when there are no spectra
     spectrum_id = value
+    if not spectrum_id:
+        return fig_data
     graph_data = {'data': fig_data['data'],#[],
                   'layout': fig_data['layout']}
 
@@ -437,7 +447,7 @@ def display_output(selected_rows,
             min_flux = 0
             max_flux = 0
 
-            spectrum = ReducedDatum.objects.get(id=spectrum_id)
+            spectrum = SpectroscopyReducedDatum.objects.get(id=spectrum_id)
             target_first = Target.objects.get(pk=spectrum.target_id)
             object_z = target_first.redshift or 0
 
@@ -445,7 +455,7 @@ def display_output(selected_rows,
                 return 'No spectra yet'
                 
             name = str(spectrum.timestamp).split(' ')[0]
-            wavelength, flux = extract_spectrum_arrays(spectrum)
+            wavelength, flux = spectrum.wavelength, spectrum.flux
                     
             if not flux:
                 logger.warning('No flux values for spectrum %s, skipping comparison', spectrum_id)
@@ -476,20 +486,20 @@ def display_output(selected_rows,
                 return graph_data
             compare_z = target_compare.redshift or 0
 
-            spectral_dataproducts = ReducedDatum.objects.filter(
-                target=target_compare, data_type='spectroscopy').order_by('-timestamp')
+            spectral_dataproducts = SpectroscopyReducedDatum.objects.filter(
+                target=target_compare).order_by('-timestamp')
             if user_id:
                 compare_user = User.objects.filter(id=user_id).first()
                 if compare_user:
                     spectral_dataproducts = get_objects_for_user(
-                        compare_user, 'tom_dataproducts.view_reduceddatum',
+                        compare_user, 'tom_dataproducts.view_spectroscopyreduceddatum',
                         klass=spectral_dataproducts)
             if not spectral_dataproducts:
                 logger.info('No viewable spectra for compare target %s', target_compare)
                 return graph_data
             for spectrum in spectral_dataproducts:
                 name = target_compare.name + ' --- ' +  str(spectrum.timestamp).split(' ')[0]
-                wavelength, flux = extract_spectrum_arrays(spectrum)
+                wavelength, flux = spectrum.wavelength, spectrum.flux
                 if not flux:
                     continue
                 shifted_wavelength = [w * (1+object_z) / (1+compare_z) for w in wavelength]
@@ -522,13 +532,13 @@ def display_output(selected_rows,
     # If the page just loaded, plot all the spectra
     if not graph_data['data']:
         logger.info('Plotting dash spectrum for reduceddatum %s', spectrum_id)
-        spectrum = ReducedDatum.objects.get(id=spectrum_id)
+        spectrum = SpectroscopyReducedDatum.objects.get(id=spectrum_id)
  
         if not spectrum:
             return 'No spectra yet'
             
         name = str(spectrum.timestamp).split(' ')[0]
-        wavelength, flux = extract_spectrum_arrays(spectrum)
+        wavelength, flux = spectrum.wavelength, spectrum.flux
         
         if not bin_factor:
             bin_factor = 1
@@ -548,17 +558,17 @@ def display_output(selected_rows,
             if d['name'] not in elements.keys():
                 graph_data['data'].remove(d)
 
-        spectrum = ReducedDatum.objects.get(id=spectrum_id)
+        spectrum = SpectroscopyReducedDatum.objects.get(id=spectrum_id)
 
         if not spectrum:
             return 'No spectra yet'
 
         name = str(spectrum.timestamp).split(' ')[0]
-        wavelength, flux = extract_spectrum_arrays(spectrum)
+        wavelength, flux = spectrum.wavelength, spectrum.flux
 
         if 'mask' in mask_value:
             t = Target.objects.get(pk=spectrum.target_id)
-            object_z = t.redshift
+            object_z = t.redshift or 0
 
             pfit = np.poly1d(np.polyfit(wavelength, flux, 4))
             for galaxy_wave in elements['Galaxy']['waves']:

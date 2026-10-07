@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 static cache %}
+{% load django_bootstrap5 static cache %}
 {% block title %} Data Product List {% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -32,7 +32,7 @@
       <tbody>
         {% for product in object_list %}
         <tr>
-          <td><a href="{{ product.data.url }}">{{ product.get_file_name|truncatechars:40 }}</a></th>
+          <td>{% if product.data %}<a href="{{ product.data.url }}">{{ product.get_file_name|truncatechars:40 }}</a>{% else %}{{ product.product_id|truncatechars:40 }}{% endif %}</td>
           <td><a href="{% url 'tom_targets:detail' product.target.id %}">{{ product.target.name|truncatechars:40 }}</a></td>
           {% if product.observation_record.id %}
           <td><a href="{% url 'tom_observations:detail' product.observation_record.id %}">{{ product.observation_record|truncatechars:40 }}</a></td>
@@ -75,12 +75,12 @@
   <div class="col-md-2">
     <form action="" method="get" class="form">
       {% bootstrap_form filter.form %}
-      {% buttons %}
+      <div class="mb-3">
         <button type="submit" class="btn btn-primary">
           Filter
         </button>
         <a href="{% url 'tom_dataproducts:list' %}" class="btn btn-secondary" title="Reset">Reset</a>
-      {% endbuttons %}
+      </div>
     </form>
     <h5>Data Groups</h5>
     {% for group in product_groups %}

@@ -5,9 +5,8 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from django.conf import settings
 from django import forms
-from dateutil.parser import parse
 from crispy_forms.layout import Layout, Div, HTML
-from crispy_forms.bootstrap import PrependedAppendedText, PrependedText, InlineRadios
+from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
 from tom_observations.facility import BaseObservationForm
 from tom_observations.facility import BaseRoboticObservationFacility
@@ -31,10 +30,6 @@ SITES = gemini.SITES
 
 def proposal_choices():
     return [(proposal, proposal) for proposal in SNEX_GEMINI_SETTINGS['programs']]
-
-
-def get_site_code_from_program(program_id):
-    return program_id.split('-')[0]
 
 
 class OpticalImagingForm(BaseObservationForm):
@@ -111,7 +106,6 @@ class OpticalImagingForm(BaseObservationForm):
         wait = True #On Hold
         coords = SkyCoord(ra=target.ra*u.degree, dec=target.dec*u.degree)
         now = datetime.utcnow()
-        sn_name = target.name
 
         payload = {
             'ready': str(not wait).lower(),
@@ -283,10 +277,8 @@ class OpticalSpectraForm(BaseObservationForm):
         return not errors
 
     def _init_observation_payload(self, target):
-        wait = True #On Hold
         coords = SkyCoord(ra=target.ra*u.degree, dec=target.dec*u.degree)
         now = datetime.utcnow()
-        sn_name = target.name
 
         if self.data['n_or_s'] == 'north':
             prog = os.getenv('GEMINI_NORTH_PROGRAMID')
@@ -438,15 +430,13 @@ class GeminiFacility(BaseRoboticObservationFacility):
             url = server + '/too'
             params = observation_payloads[payload]
             response = requests.post(url, verify=False, params=params)
-            print(response.url)
             try:
                 response.raise_for_status()
                 newobsid = response.text
                 new_observation_ids.append(newobsid)
-                print(newobsid + ' created and set On Hold')
+                logger.info(newobsid + ' created and set On Hold')
             except requests.exceptions.HTTPError as exc:
-                print('Request failed: ')
-                print(response.content)
+                logger.error(f'Gemini request failed: {response.content}')
                 raise exc
         
         return new_observation_ids

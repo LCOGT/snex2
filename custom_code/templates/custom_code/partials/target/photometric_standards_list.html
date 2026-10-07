@@ -1,0 +1,131 @@
+{% load static %}
+<script src="{% static 'custom_code/archive_download.js' %}"></script>
+<h4>Photometric Standards</h4>
+<p class="text-muted">Standard star frames from the same night and filter as this target's photometry, on the same telescope and instrument, or on any telescope of the same class and instrument type at the same site.</p>
+<div class="row mb-3 bg-light p-3 rounded">
+  <div class="col-md-2">
+    <label for="std-start" class="fw-bold">Start Date:</label>
+    <input type="date" id="std-start" class="form-control std-filter" value="{{ date_min }}" min="{{ date_min }}" max="{{ date_max }}">
+  </div>
+  <div class="col-md-2">
+    <label for="std-end" class="fw-bold">End Date:</label>
+    <input type="date" id="std-end" class="form-control std-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
+  </div>
+  <div class="col-md-2">
+    <label for="std-band" class="fw-bold">Filter:</label>
+    <select id="std-band" class="form-control std-filter">
+      <option value="">-- All --</option>
+      {% for f in filters %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label for="std-instrument" class="fw-bold">Instrument:</label>
+    <select id="std-instrument" class="form-control std-filter">
+      <option value="">-- All --</option>
+      {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2 d-flex align-items-end">
+    <div class="form-check mb-2">
+      <input type="checkbox" class="form-check-input std-filter" id="std-same-telescope" checked>
+      <label class="form-check-label" for="std-same-telescope">Same telescope only</label>
+    </div>
+  </div>
+  <div class="col-md-1 d-flex align-items-end">
+    <button type="button" id="std-clear" class="btn btn-secondary w-100">Clear</button>
+  </div>
+</div>
+<div class="mb-3">
+  <select id="std-format" class="form-control d-inline-block w-auto">
+    <option value="fits">fits</option>
+    <option value="ascii">ascii</option>
+  </select>
+  <button type="button" id="std-download" class="btn btn-success">Download</button>
+  <span class="text-muted ms-2" id="std-status">fits: LCO frames of the selected rows. ascii: the selected rows as a .txt file</span>
+</div>
+<table class="table table-striped table-sm" id="std-table">
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="std-select-all" checked></th>
+      <th>Date</th>
+      <th>Standard</th>
+      <th>Filter</th>
+      <th>Telescope</th>
+      <th>Instrument</th>
+      <th>Frame</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+    <tr class="std-row" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}" data-band="{{ row.datum.bandpass }}"
+        data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}" data-same-telescope="{{ row.same_telescope|yesno:'1,0' }}">
+      <td><input type="checkbox" class="std-check" checked></td>
+      <td>{{ row.datum.timestamp|date:'Y-m-d H:i' }}</td>
+      <td>{% if is_admin %}<a href="{% url 'targets:detail' row.datum.target_id %}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+      <td>{{ row.datum.bandpass }}</td>
+      <td>{{ row.datum.telescope }}</td>
+      <td>{{ row.instrument }}</td>
+      <td>{{ row.basename }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7">No standards found for this target.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<script>
+(function () {
+  const table = document.getElementById('std-table');
+  const status = document.getElementById('std-status');
+  const val = (id) => document.getElementById(id).value;
+  const rows = () => Array.from(table.querySelectorAll('.std-row'));
+  const selected = () => rows().filter((r) => r.style.display !== 'none' && r.querySelector('.std-check').checked);
+  const csrf = () => (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1];
+
+  function applyFilters() {
+    const start = val('std-start'), end = val('std-end'), band = val('std-band'), inst = val('std-instrument');
+    const sameTelescope = document.getElementById('std-same-telescope').checked;
+    rows().forEach(function (r) {
+      const d = r.dataset.date;
+      const show = (!start || d >= start) && (!end || d <= end) &&
+                   (!band || r.dataset.band === band) && (!inst || r.dataset.instrument === inst) &&
+                   (!sameTelescope || r.dataset.sameTelescope === '1');
+      r.style.display = show ? '' : 'none';
+    });
+  }
+  document.querySelectorAll('.std-filter').forEach((el) => el.addEventListener('change', applyFilters));
+  document.getElementById('std-clear').addEventListener('click', function () {
+    ['std-start', 'std-end'].forEach((id) => { const el = document.getElementById(id); el.value = el.defaultValue; });
+    ['std-band', 'std-instrument'].forEach((id) => { document.getElementById(id).value = ''; });
+    document.getElementById('std-same-telescope').checked = true;
+    applyFilters();
+  });
+  applyFilters();
+  document.getElementById('std-select-all').addEventListener('change', function (ev) {
+    rows().filter((r) => r.style.display !== 'none').forEach((r) => { r.querySelector('.std-check').checked = ev.target.checked; });
+  });
+
+  document.getElementById('std-download').addEventListener('click', async function () {
+    const sel = selected();
+    if (!sel.length) { alert('No rows selected.'); return; }
+    if (val('std-format') === 'ascii') {
+      const lines = ['date standard filter telescope instrument frame'].concat(sel.map(function (r) {
+        return Array.from(r.querySelectorAll('td')).slice(1).map((td) => td.textContent.trim().replace(/\s+/g, '_')).join(' ');
+      }));
+      const url = URL.createObjectURL(new Blob([lines.join('\n') + '\n'], { type: 'text/plain' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = '{{ target.name|cut:" " }}_standards.txt';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      return;
+    }
+    const basenames = Array.from(new Set(sel.map((r) => r.dataset.basename)));
+    status.textContent = 'Finding ' + basenames.length + ' frames in the LCO archive...';
+    const body = new FormData();
+    body.append('basenames', JSON.stringify(basenames));
+    const resp = await fetch('{% url "get-frame-ids" %}', { method: 'POST', body: body, headers: { 'X-CSRFToken': csrf() } });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) { status.textContent = 'Could not look up frames: ' + (data.error || resp.status); return; }
+    status.textContent = 'Found ' + data.count + ' of ' + basenames.length + ' frames. Downloads open in new tab(s); enable pop-ups.';
+    if (data.count) { await downloadZip(data.frame_ids, false, '{{ archive_root }}', '{{ archive_token }}'); }
+  });
+})();
+</script>

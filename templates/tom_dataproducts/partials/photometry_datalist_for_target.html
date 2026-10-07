@@ -1,4 +1,4 @@
-{% load bootstrap4 %}
+{% load django_bootstrap5 %}
 {% load tom_common_extras %}
 
 <form method="POST" action="{% url 'tom_dataproducts:share_all' tg_pk=target.id %}" enctype="multipart/form-data" id="photometry-data-share-form">
@@ -15,7 +15,7 @@
                 <tr>
                     <th><div class="form-check">
                     <input type="checkbox" class="form-check-input" id="share-all-phot" onclick="select_all_phot()" value=""/>
-                    <label class="form-check-label" for="share-all-phot">Share</label>
+                    <label class="form-check-label" for="share-all-phot">Select</label>
                     </div></th>
                     <th>TNS Discovery</th>
                     <th>Timestamp</th>
@@ -24,7 +24,6 @@
                     <th>Magnitude</th>
                     <th>Error</th>
                     <th>Source</th>
-                    <th>Log</th>
                 </tr>
             </thead>
             <tbody>
@@ -32,7 +31,7 @@
             <tr>
                 <td><input type="checkbox" class="phot-row" id="phot-row-{{ datum.id }}" name="share-box" value="{{ datum.id }}" onchange="check_selected_phot()"></td>
                 <td>
-                  <a href="{% url 'tns:report-tns' pk=target.id datum_pk=datum.id %}" title="Submit to TNS" class="btn  btn-info">Submit</a>
+                  <a href="{% url 'tns:report-tns' pk=target.id %}" title="Submit to TNS" class="btn  btn-info">Submit</a>
                 </td>
                 <td>{{ datum.timestamp }}</td>
                 <td>{{ datum.telescope }}</td>
@@ -48,11 +47,6 @@
                     <td>{{ datum.magnitude_error|floatformat:4 }}</td>
                 {% endif %}
                 <td>{{ datum.source }}</td>
-                <td>
-                  {% for message in datum.messages %}
-                    {{ message }} <br>
-                  {% endfor %}
-                </td>
             </tr>
             {% empty %}
             <tr>
@@ -64,34 +58,26 @@
         {% if not target_share %}
             <div class="card">
                 <div class="card-header">
-                    Share Selected Data
+                    Share Selected Data <span class="text-muted ms-2" id="selected-phot-count">(none selected)</span>
                 </div>
                 {% if sharing_destinations %}
-                    <div class="form-row" style="padding-inline:1rem">
+                    <div class="row g-2" style="padding-inline:1rem">
                         <div class="col-sm-12">
                             {% bootstrap_field target_data_share_form.share_title %}
                         </div>
                     </div>
-                    <div class="form-row" style="padding-inline:1rem">
+                    <div class="row g-2" style="padding-inline:1rem">
                         <div class="col-sm-12">
                             {% bootstrap_field target_data_share_form.share_message %}
                         </div>
                     </div>
-                    <div class="form-row" style="padding-inline:1rem">
+                    <div class="row g-2" style="padding-inline:1rem">
                         <div class="col-sm-4">
                             {% bootstrap_field target_data_share_form.share_destination %}
                         </div>
                         <div class="col-sm-2 offset-sm-1">
                             <input type="submit" class="btn btn-primary" id="submit_selected_phot" value="Submit" name="share_targetdata_form" style="position:absolute; bottom:1rem" disabled onclick="setTargetOnPhotometryForm('')">
                         </div>
-                        {% if hermes_sharing %}
-                        <div class="col-sm-1">
-                            <b style="position:absolute; bottom:1.2rem">or</b>
-                        </div>
-                        <div class="col-sm-4">
-                            <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnPhotometryForm('_blank')" style="position:absolute; bottom:1rem">Open in Hermes &#x1F5D7;</button>
-                        </div>
-                        {% endif %}
                     </div>
                 {% else %}
                     <em style="padding-inline:1rem">Not Configured. See
@@ -125,12 +111,9 @@
   function check_selected_phot()  {
   var share_boxes = document.querySelectorAll("[name='share-box'][class='phot-row']");
   var submit_btn = document.getElementById('submit_selected_phot');
-    for (const box of share_boxes) {
-        if(box.checked == true) {
-            submit_btn.disabled = false;
-            return;
-        }
-    }
-    submit_btn.disabled = true;
+    var selected = [...share_boxes].filter(box => box.checked).length;
+    var count = document.getElementById('selected-phot-count');
+    if (count) { count.textContent = selected ? '(' + selected + ' selected)' : '(none selected)'; }
+    if (submit_btn) { submit_btn.disabled = selected === 0; }
   }
 </script>

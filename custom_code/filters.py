@@ -1,18 +1,21 @@
-from custom_code.models import TNSTarget, ScienceTags, TargetTags, BrokerTarget
-from tom_targets.models import Target, TargetList
-from tom_targets.filters import filter_for_field, TargetFilterSet
-from django.conf import settings
+from custom_code.models import TNSTarget, BrokerTarget
+from tom_dataproducts.models import PhotometryReducedDatum
 import django_filters
-from django.db.models import ExpressionWrapper, FloatField, Q
-from math import radians
-from django.db.models.functions.math import ACos, Cos, Radians, Pi, Sin
-from django.db.models.functions import Lower
+from django.db.models import Q
 from astropy.time import Time
 from datetime import datetime
 from django import forms
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Submit, Layout, Div, HTML
+from crispy_forms.layout import Submit, Layout, Div
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
+
+class SNExPhotometryFilter(django_filters.rest_framework.FilterSet):
+    basename = django_filters.CharFilter(field_name='value__basename')
+
+    class Meta:
+        model = PhotometryReducedDatum
+        fields = ['target__id', 'source_name', 'bandpass', 'reduction_version']
+
 
 class TNSTargetForm(forms.Form): 
     def __init__(self, *args, **kwargs):
@@ -24,14 +27,14 @@ class TNSTargetForm(forms.Form):
                 Div(PrependedText('name', 'Name like'), css_class='col-md-4'),
                 Div(PrependedText('source_group', 'Discovered by'), css_class='col-md-4'),
                 Div('in_tess', css_class='col-md-4'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
             Div(
                 Div(PrependedText('disc_mag', 'Discovery mag brighter than',
                     placeholder='19', style='color: black;'), css_class='col-md-6'),
                 Div(PrependedAppendedText('lnd_jd', 'Last non-detection within the last',
                     'days', placeholder='5', style='color: black;'), css_class='col-md-6'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
         )
 
@@ -58,7 +61,6 @@ class TNSTargetFilter(django_filters.FilterSet):
         )
 
     def filter_TESS(self, queryset, name, value):
-            print(value, type(value))
             if value == 'y':      bool_value = True
             elif value == 'n':    bool_value = False
             return queryset.filter(
@@ -70,29 +72,6 @@ class TNSTargetFilter(django_filters.FilterSet):
         fields = []
         form = TNSTargetForm
 
-class CustomTargetFilter(TargetFilterSet):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for field in settings.EXTRA_FIELDS:
-            new_filter = filter_for_field(field)
-            new_filter.parent = self
-            self.filters[field['name']] = new_filter
-        self.filters['sciencetags'].field.label_from_instance = lambda obj: obj.tag
-
-    key = None
-    value = None
-
-    sciencetags = django_filters.ModelChoiceFilter(queryset=ScienceTags.objects.all().order_by(Lower('tag')), label="Science Tag", method='filter_sciencetags')
-
-    def filter_sciencetags(self, queryset, name, value):
-        return queryset.filter(targettags__tag=value).distinct()
-
-    class Meta:
-        model = Target
-        fields = ['name', 'cone_search', 'targetlist__name', 'sciencetags']
-
-
 class BrokerTargetForm(forms.Form): 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -103,7 +82,7 @@ class BrokerTargetForm(forms.Form):
                 Div(PrependedText('name', 'Name like'), css_class='col-md-4'),
                 Div(PrependedText('stream_name', 'Name of Stream'), css_class='col-md-4'),
                 Div(PrependedText('status', 'Status'), css_class='col-md-4'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
         )
 

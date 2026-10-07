@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load comments bootstrap4 tom_common_extras targets_extras observation_extras dataproduct_extras static cache %}
+{% load comments django_bootstrap5 tom_common_extras targets_extras observation_extras dataproduct_extras static cache %}
 {% load custom_code_tags %}
 {% block title %}Target {{ object|get_best_name }}{% endblock %}
 {% block additional_css %}
@@ -15,14 +15,15 @@
     font-weight: bold;
     font-size: 14px;
   }
-  .mr-1 {
+  .me-1 {
     font-size: 14px;
     margin-bottom: 0rem;
   }
   ::placeholder {
     color: white;
   }
-  #tabs .nav-link {
+  #tabs .nav-link,
+  .manage-data-tabs .nav-link {
     color: #174460;
   }
   .htmx-indicator {
@@ -36,6 +37,15 @@
     text-align: center;
     padding: 50px;
     color: #666;
+  }
+  #aladin-lite-div .aladin-cooFrame,
+  #aladin-lite-div .aladin-location,
+  #aladin-lite-div .aladin-fov,
+  #aladin-lite-div .aladin-projection-control,
+  #aladin-lite-div .aladin-status-bar,
+  #aladin-lite-div .aladin-logo-container,
+  #aladin-lite-div:has(.aladin-imageCanvas) #aladin-spinner {
+    display: none !important;
   }
 </style>
 {% endblock %}
@@ -51,10 +61,10 @@
     </td>
     <td align="left">
       <span style="font-size: 20px;">
-        <span id="zpre">z=</span>
+        <span id="zpre">z =</span>
         <input type="text" name="redshift" id="thenewredshift" autocomplete="off"
           value="{{ target.redshift|strip_trailing_zeros|default_if_none:'' }}"
-          placeholder="z"
+          placeholder="None"
           hx-get="{% url 'sync_targetextra' %}"
           hx-trigger="keyup[key=='Enter'], change"
           hx-vals='js:{newdata: JSON.stringify({key: "redshift", value: event.target.value, targetid: {{ target.id }}})}'
@@ -63,57 +73,60 @@
       </span>
     </td>
     <td align="left">
-      <span style="display: inline-block; font-size: 23px;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}</span><br><span style="display: inline-block; font-size: 20px;">{{ target.ra|floatformat:4 }} {{ target.dec|floatformat:4 }}</span>
+      <span style="display: inline-block; font-size: 23px;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}</span><br><span style="display: inline-block; font-size: 20px;">{{ target.ra|floatformat:6 }} {{ target.dec|floatformat:6 }}</span>
     </td>
   </tr>
 </table>
 <ul class="nav nav-tabs" role="tablist" id="tabs">
   <li class="nav-item">
-    <a class="nav-link active" id="observe-tab" href="#observe" role="tab" data-toggle="tab">Overview</a>
+    <a class="nav-link active" id="observe-tab" href="#observe" role="tab" data-bs-toggle="tab">Overview</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="detail-tab" href="#detail" role="tab" data-toggle="tab"
-      hx-get="{% url 'load-details-tab' target.id %}" hx-target="#detail" hx-trigger="click once" hx-indicator="#spinner-detail">Details
-      <span id="spinner-detail" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" id="observations-tab" href="#observations" role="tab" data-toggle="tab"
+    <a class="nav-link" id="observations-tab" href="#observations" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-observations-tab' target.id %}" hx-target="#observations" hx-trigger="click once" hx-indicator="#spinner-observations">Observations
-      <span id="spinner-observations" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-observations" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="manage-data-tab" href="#manage-data" role="tab" data-toggle="tab"
-      hx-get="{% url 'load-manage-data-tab' target.id %}" hx-target="#manage-data" hx-trigger="click once" hx-indicator="#spinner-manage-data">Manage Data
-      <span id="spinner-manage-data" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" id="manage-sharing-tab" href="#manage-sharing" role="tab" data-toggle="tab">Manage Sharing</a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link" id="manage-groups-tab" href="#manage-groups" role="tab" data-toggle="tab"
+    <a class="nav-link" id="manage-groups-tab" href="#manage-groups" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-observing-runs-tab' target.id %}" hx-target="#manage-groups" hx-trigger="click once" hx-indicator="#spinner-observing-runs">Observing Runs
-      <span id="spinner-observing-runs" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-observing-runs" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="images-tab" href="#images" role="tab" data-toggle="tab"
+    <a class="nav-link" id="detail-tab" href="#detail" role="tab" data-bs-toggle="tab"
+      hx-get="{% url 'load-details-tab' target.id %}" hx-target="#detail" hx-trigger="click once" hx-indicator="#spinner-detail">Details
+      <span id="spinner-detail" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" id="upload-data-tab" href="#upload-data" role="tab" data-bs-toggle="tab"
+      hx-get="{% url 'load-upload-data-tab' target.id %}" hx-target="#upload-data" hx-trigger="click once" hx-indicator="#spinner-upload-data">Upload Data
+      <span id="spinner-upload-data" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" id="manage-data-tab" href="#manage-data" role="tab" data-bs-toggle="tab"
+      hx-get="{% url 'load-manage-data-tab' target.id %}" hx-target="#manage-data" hx-trigger="click once" hx-indicator="#spinner-manage-data">Batch Download
+      <span id="spinner-manage-data" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" id="images-tab" href="#images" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-images-tab' target.id %}" hx-target="#images" hx-trigger="click once" hx-indicator="#spinner-images">Images
-      <span id="spinner-images" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-images" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="photometry-tab" href="#photometry" role="tab" data-toggle="tab"
+    <a class="nav-link" id="photometry-tab" href="#photometry" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-photometry-tab' target.id %}" hx-target="#photometry" hx-trigger="click once" hx-indicator="#spinner-photometry">Photometry
-      <span id="spinner-photometry" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-photometry" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
   <li class="nav-item">
-    <a class="nav-link" id="spectroscopy-tab" href="#spectroscopy" role="tab" data-toggle="tab"
+    <a class="nav-link" id="spectroscopy-tab" href="#spectroscopy" role="tab" data-bs-toggle="tab"
       hx-get="{% url 'load-spectroscopy-tab' target.id %}" hx-target="#spectroscopy" hx-trigger="click once" hx-indicator="#spinner-spectroscopy">Spectroscopy
-      <span id="spinner-spectroscopy" class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+      <span id="spinner-spectroscopy" class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
     </a>
   </li>
 </ul>
@@ -145,11 +158,11 @@
         </div>
         <hr/>
         <div class="row">
-          <div class="col-md-3" style="overflow: hidden;">
+          <div class="col-md-auto">
             <h4>Aladin Viewer</h4>
             {% aladin_finderchart object %}
           </div>
-          <div class="col-md-9">
+          <div class="col-md">
             <div hx-get="{% url 'load-thumbnail' target.id %}" hx-trigger="load" hx-swap="outerHTML">
               <div class="tab-placeholder">Loading thumbnail...</div>
             </div>
@@ -177,11 +190,11 @@
       <div class="tab-pane" id="observations">
         <div class="tab-placeholder">Loading observations...</div>
       </div>
-      <div class="tab-pane" id="manage-data">
-        <div class="tab-placeholder">Loading manage data...</div>
+      <div class="tab-pane" id="upload-data">
+        <div class="tab-placeholder">Loading upload form...</div>
       </div>
-      <div class="tab-pane" id="manage-sharing">
-        <div class="tab-placeholder">Manage Sharing functionality coming soon...</div>
+      <div class="tab-pane" id="manage-data">
+        <div class="tab-placeholder">Loading downloads...</div>
       </div>
       <div class="tab-pane" id="manage-groups">
         <div class="tab-placeholder">Loading observing runs...</div>
@@ -198,4 +211,8 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block extra_javascript %}
+<script src="//aladin.cds.unistra.fr/AladinLite/api/v3/3.8.2/aladin.js" charset="utf-8" defer></script>
+<script src="{% static 'tom_targets/js/aladin_finderchart.js' %}" defer></script>
 {% endblock %}

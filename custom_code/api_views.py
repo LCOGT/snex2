@@ -1,229 +1,215 @@
-from django.conf import settings
-from django.contrib.auth.models import User, Group
-from guardian.shortcuts import assign_perm
-from tom_dataproducts.api_views import DataProductViewSet
-from tom_observations.api_views import ObservationRecordViewSet
-from rest_framework import status
-from rest_framework.response import Response
-from rest_framework.mixins import CreateModelMixin
-from tom_dataproducts.models import DataProduct, ReducedDatum
-from tom_targets.models import Target, TargetName
-from tom_targets.api_views import TargetViewSet
-from custom_code.models import ReducedDatumExtra, Papers
-from custom_code.serializers import SNExTargetSerializer
-from custom_code.utils import format_form_errors, sync_group_permissions_to_target
-from .processors.data_processor import run_custom_data_processor
 import json
-
-from tom_dataproducts.serializers import DataProductSerializer
-from django_filters import rest_framework as drf_filters
-from tom_dataproducts.filters import DataProductFilter
-from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import AllowAny
-
-from tom_observations.facility import get_service_class
-from tom_observations.cadence import get_cadence_strategy
-from tom_observations.models import ObservationGroup, DynamicCadence
-from rest_framework.exceptions import ValidationError
-from django.db import transaction
-from rest_framework.authentication import SessionAuthentication, BasicAuthentication
-
 import logging
+
+from django.conf import settings
+from django.db import IntegrityError, transaction
+from django.db.models import Q
+from django_filters import rest_framework as drf_filters
+from django.contrib.auth.models import Group
+from guardian.shortcuts import get_groups_with_perms, get_objects_for_user
+from rest_framework import status
+from rest_framework.exceptions import ValidationError
+from rest_framework.mixins import CreateModelMixin, DestroyModelMixin, ListModelMixin
+from rest_framework.viewsets import GenericViewSet
+from rest_framework.response import Response
+from tom_dataproducts.api_views import DataProductViewSet, ReducedDatumViewSet
+from tom_dataproducts.exceptions import InvalidFileFormatException
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, SpectroscopyReducedDatum
+from tom_targets.api_views import TargetViewSet
+from tom_targets.models import Target, TargetName
+from tom_targets.permissions import targets_for_user
+
+from custom_code.filters import SNExPhotometryFilter
+from custom_code.models import ReducedDatumExtra
+from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
+from custom_code.processors.spectroscopy_processor import SpecProcessor
+from custom_code.scheduling import save_comments
+from custom_code.serializers import (SNExDataProductSerializer, SNExPhotometrySerializer, SNExReducedDatumSerializer,
+                                     SNExTargetSerializer)
+from custom_code.utils import dataproduct_datums, dataproduct_view_groups, file_version, groups_from_payload, set_dataproduct_view_groups, view_datum_perm
+
 logger = logging.getLogger(__name__)
+
 
 class SNExTargetViewSet(TargetViewSet):
     serializer_class = SNExTargetSerializer
 
-class CustomDataProductViewSet(DataProductViewSet):
+    def get_serializer(self, *args, **kwargs):
+        self._serializer = super().get_serializer(*args, **kwargs)
+        return self._serializer
 
-    queryset = DataProduct.objects.all()
-    serializer_class = DataProductSerializer
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            if response.status_code == status.HTTP_201_CREATED and request.data.get('comment'):
+                save_comments(str(request.data['comment']), response.data['id'], request.user, model_name='targets')
+            return response
+        except ValidationError:
+            duplicate = getattr(self._serializer, 'duplicate', None) or Target.matches.find_duplicate(
+                str(request.data.get('name') or ''), request.data.get('ra'), request.data.get('dec'),
+                standard=bool(request.data.get('standard', False)))
+            if duplicate is None:
+                raise
+        except IntegrityError:
+            return Response({'name': ['A target with this name or alias already exists with a different standard flag.']},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        target, matched_by = duplicate
+        can_view = targets_for_user(request.user, Target.objects.filter(pk=target.pk), 'view_target').exists()
+        can_change = targets_for_user(request.user, Target.objects.filter(pk=target.pk), 'change_target').exists()
+        if not can_view and not target.standard:
+            return Response({'detail': 'A matching target exists but you do not have access to it.'},
+                            status=status.HTTP_403_FORBIDDEN)
+        alias_added = None
+        new_name = str(request.data.get('name') or '').strip()
+        if matched_by == 'position' and new_name and can_change:
+            TargetName.objects.get_or_create(target=target, name=new_name)
+            alias_added = new_name
+            logger.info(f'Added alias {new_name} to target {target.id} ({target.name}) via API position match')
+
+        return Response({'id': target.id, 'name': target.name, 'standard': target.standard, 'matched_by': matched_by,
+                         'alias_added': alias_added, 'created': False,
+                         'message': 'Target already exists.'},
+                        status=status.HTTP_200_OK)
+
+class AdminDestroyMixin(DestroyModelMixin):
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response({'detail': 'Only admins can delete reduced datums.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
+
+class SNExPhotometryViewSet(CreateModelMixin, ListModelMixin, AdminDestroyMixin, GenericViewSet):
+    serializer_class = SNExPhotometrySerializer
     filter_backends = (drf_filters.DjangoFilterBackend,)
-    filterset_class = DataProductFilter
-    #permission_required = 'tom_dataproducts.view_dataproduct'
-    permission_classes = [AllowAny]
-    parser_classes = [MultiPartParser]
+    filterset_class = SNExPhotometryFilter
+
+    def get_queryset(self):
+        queryset = PhotometryReducedDatum.objects.order_by('pk')
+        if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
+            return queryset
+        viewable = get_objects_for_user(self.request.user, view_datum_perm(PhotometryReducedDatum), klass=queryset)
+        return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(target__in=Target.objects.filter(standard=True)))
 
     def create(self, request, *args, **kwargs):
-        # Test if the username exists
-        username = request.data['username']
-        if not User.objects.filter(username=username).exists():
-            return Response({'User does not exist'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        upload_extras = json.loads(request.data['upload_extras'])
-        dp_type = request.data['data_product_type']
-        
-        request.data['data'] = request.FILES['file']
-        
-        # Add the SNEx2 targetid of the target to request
-        targetname = request.data['targetname']
-        targetquery = Target.objects.filter(name=targetname)
-        if not targetquery:
-            targetquery = TargetName.objects.filter(name=targetname)
-            targetid = targetquery.first().target_id
-        else:
-            targetid = targetquery.first().id
-        request.data['target'] = targetid
-
-        # Sort the extras keywords into the appropriate dictionaries
-        extras = {}
-        extras['reduction_type'] = upload_extras.pop('reduction_type', '')
-        background_subtracted = upload_extras.pop('background_subtracted', '')
-        if background_subtracted:
-            extras['background_subtracted'] = background_subtracted
-            extras['subtraction_algorithm'] = upload_extras.pop('subtraction_algorithm', '')
-            extras['template_source'] = upload_extras.pop('template_source', '')
-        
-        used_in = upload_extras.pop('used_in', '')
-        if used_in:
-            if ',' in used_in:
-                last_name = used_in.split(',')[0]
-                first_name = used_in.split(', ')[1]
-                paper_query = Papers.objects.filter(
-                    target_id=targetid,
-                    author_last_name=last_name,
-                    author_first_name=first_name)
-                if len(paper_query) != 0:
-                    paper_id = int(paper_query.first().id)
-                    upload_extras['used_in'] = paper_id
-            else:
-                paper_query = Papers.objects.filter(target_id=targetid, author_last_name=used_in)
-                if len(paper_query) != 0:
-                    paper_id = int(paper_query.first().id)
-                    upload_extras['used_in'] = paper_id
-
-        response = CreateModelMixin.create(self, request, *args, **kwargs)
-        if response.status_code == status.HTTP_201_CREATED:
-            dp = DataProduct.objects.get(pk=response.data['id'])
-            try:
-                reduced_data, extras = run_custom_data_processor(dp, extras)
-                if not settings.TARGET_PERMISSIONS_ONLY:
-                    for group_name in settings.DEFAULT_GROUPS:#response.data['group']:
-                        group = Group.objects.get(name=group_name)
-                        assign_perm('tom_dataproducts.view_dataproduct', group, dp)
-                        assign_perm('tom_dataproducts.delete_dataproduct', group, dp)
-                        assign_perm('tom_dataproducts.view_reduceddatum', group, reduced_data)
-                # Make the ReducedDatumExtra row corresponding to this dp
-                upload_extras['data_product_id'] = dp.id
-                reduced_datum_extra = ReducedDatumExtra(
-                    target_id = targetid,
-                    data_product = dp,
-                    data_type = dp_type,
-                    key = 'upload_extras',
-                    value = upload_extras
-                )
-                reduced_datum_extra.save()
-            except Exception:
-                ReducedDatum.objects.filter(data_product=dp).delete()
-                dp.delete()
-                return Response({'Data processing error': '''There was an error in processing your DataProduct into \
-                                                             individual ReducedDatum objects.'''},
-                                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        return response
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({**serializer.data, 'result': serializer.result},
+                        status=status.HTTP_201_CREATED if serializer.result == 'created' else status.HTTP_200_OK)
 
 
-class CustomObservationRecordViewSet(ObservationRecordViewSet):
+class SNExReducedDatumViewSet(AdminDestroyMixin, ReducedDatumViewSet):
+    serializer_class = SNExReducedDatumSerializer
 
-    permission_classes = [AllowAny]
-    authentication_classes = [SessionAuthentication, BasicAuthentication]
+    def _base_queryset_for_model(self, model):
+        queryset = super()._base_queryset_for_model(model)
+        if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
+            return queryset
+        return get_objects_for_user(self.request.user, view_datum_perm(model), klass=queryset)
 
+
+class SNExDataProductViewSet(DataProductViewSet):
+    serializer_class = SNExDataProductSerializer
 
     def create(self, request, *args, **kwargs):
-        """
-        Endpoint for submitting a new observation with syncing with SNEx1.
-        """
+        data = request.data.dict() if hasattr(request.data, 'dict') else dict(request.data)
+        image = data.get('data_product_type') in ('difference_image', 'template_image')
+        raw = data.get('data_product_type') == 'raw_spectrum' or image
+        file, thumbnail = request.FILES.get('file'), request.FILES.get('thumbnail')
+        if file:
+            data['data'] = file
+        elif not raw or image:
+            return Response({'file': 'This field is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        inherit_groups = 'groups' not in data
+        groups = data.pop('groups', [])
+        try:
+            groups = groups_from_payload(json.loads(groups) if isinstance(groups, str) else groups)
+        except (ValueError, AttributeError, TypeError):
+            return Response({'groups': ['Expected a list of {"name": ...} objects.']}, status=status.HTTP_400_BAD_REQUEST)
+        if str(data.get('target')).isdigit() and Target.objects.filter(pk=data.get('target'), standard=True).exists() and data.get('data_product_type') in (
+                'raw_spectrum', 'spectroscopy'):
+            return Response({'target': ['Spectra of standards are not stored in SNEx.']}, status=status.HTTP_400_BAD_REQUEST)
+
+        posted = {key: data[key] for key in SpecProcessor.field_keywords if data.get(key)}
+        try:
+            posted.update({key: float(posted[key]) for key in ('exptime', 'slit', 'airmass') if key in posted})
+        except ValueError as e:
+            return Response({'extras': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        product_id = data.get('product_id')
+        existing = DataProduct.objects.filter(product_id=product_id).first() if product_id else None
+        if existing and str(existing.target_id) != str(data.get('target')):
+            return Response({'product_id': f'{product_id} already belongs to target {existing.target_id}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if existing and not targets_for_user(request.user, Target.objects.filter(pk=existing.target_id), 'change_target').exists():
+            return Response({'product_id': f'You do not have access to {product_id}.'}, status=status.HTTP_403_FORBIDDEN)
+        if raw and existing:
+            return Response({'id': existing.id, 'product_id': product_id, 'already_posted': True,
+                             'already_reduced': any(datums.exists() for datums in dataproduct_datums(existing))}, status=status.HTTP_200_OK)
+
+        spectrum = data.get('data_product_type') == 'spectroscopy'
+        versions = SpectroscopyReducedDatum.objects.filter(data_product=existing) if existing else None
+        if existing and spectrum and file and versions.filter(reduction_version=file_version(file)).exists():
+            return Response({'id': existing.id, 'product_id': product_id, 'unchanged': True, 'versions': versions.count()},
+                            status=status.HTTP_200_OK)
+
+        if inherit_groups and existing:
+            groups = list(Group.objects.filter(name__in=dataproduct_view_groups(existing)))
+        elif inherit_groups:
+            target = Target.objects.filter(pk=data['target'], standard=False).first() if str(data.get('target')).isdigit() else None
+            groups = list(get_groups_with_perms(target)) if target else []
+
         with transaction.atomic():
-            # Initialize the observation form, validate the form data, and submit to the observatory
-            observation_ids = []
-            try:
-                facility = get_service_class(self.request.data['facility'])()
-                observation_form_class = facility.observation_forms[self.request.data['observation_type']]
-                target = Target.objects.get(pk=self.request.data['target_id'])
-                observing_parameters = json.loads(self.request.data['observing_parameters'])
-                print(self.request.data)
-            except KeyError as ke:
-                raise ValidationError(f'Missing required field {ke}.')
-            except Exception as e:
-                raise ValidationError(e)
-
-            observing_parameters.update(
-                {k: v for k, v in self.request.data.items() if k in ['name', 'target_id', 'facility']}
-            )
-            observation_form = observation_form_class(observing_parameters)
-            if observation_form.is_valid():
-                observation_ids = facility.submit_observation(observation_form.observation_payload())
+            if existing:
+                dp = existing
+                replaced = not spectrum and any(datums.exists() for datums in dataproduct_datums(dp))
+                if not spectrum:
+                    for datums in dataproduct_datums(dp):
+                        datums.delete()
+                ReducedDatumExtra.objects.filter(data_product=dp).delete()
+                dp.data_product_type = data['data_product_type']
+                if file:
+                    dp.data = file
+                if data.get('extra_data'):
+                    dp.extra_data = data['extra_data']
+                dp.save()
             else:
-                logger.warning(f'Unable to submit observation due to errors: {format_form_errors(observation_form.errors)}')
-                raise ValidationError(observation_form.errors)
-
-            # Normally related objects would be created in the serializer--however, because the ObservationRecordSerializer
-            # may need to create multiple objects that are related to the same ObservationGroup and DynamicCadence, we are
-            # creating the related objects in the ViewSet.
-            cadence = self.request.data.get('cadence')
-            observation_group = None
-
-            if len(observation_ids) > 1 or cadence:
-                # Create the observation group and assign permissions
-                observation_group_name = observation_form.cleaned_data.get('name', f'{target.name} at {facility.name}')
-                observation_group = ObservationGroup.objects.create(name=observation_group_name)
-                assign_perm('tom_observations.view_observationgroup', self.request.user, observation_group)
-                assign_perm('tom_observations.change_observationgroup', self.request.user, observation_group)
-                assign_perm('tom_observations.delete_observationgroup', self.request.user, observation_group)
-
-                cadence_parameters = json.loads(cadence)
-                if cadence_parameters is not None:
-                    # Cadence strategy is not used for the cadence form
-                    cadence_strategy = cadence_parameters.pop('cadence_strategy', None)
-                    if cadence_strategy is None:
-                        raise ValidationError('cadence_strategy must be included to initiate a DynamicCadence.')
-                    else:
-                        # Validate the cadence parameters against the cadence strategy that gets passed in
-                        cadence_form_class = get_cadence_strategy(cadence_strategy).form
-                        cadence_form = cadence_form_class(cadence_parameters)
-                        if cadence_form.is_valid():
-                            dynamic_cadence = DynamicCadence.objects.create(
-                                observation_group=observation_group,
-                                cadence_strategy=cadence_strategy,
-                                cadence_parameters=cadence_parameters,
-                                active=True
-                            )
-                        else:
-                            observation_group.delete()
-                            raise ValidationError(cadence_form.errors)
-
-            # Create the serializer data used to create the observation records
-            serializer_data = []
-
-            for obsr_id in observation_ids:
-                obsr_data = {  # TODO: at present, submitted fields have to be added to this dict manually, maybe fix?
-                    'name': self.request.data.get('name', ''),
-                    'target': target.id,
-                    'user': self.request.user.id,
-                    'facility': facility.name,
-                    'groups': json.loads(self.request.data.get('groups', [])),
-                    'parameters': observation_form.serialize_parameters(),
-                    'observation_id': obsr_id,
-                }
-                serializer_data.append(obsr_data)
-
-            serializer = self.get_serializer(data=serializer_data, many=True)
-            try:
-                # Validate the serializer data, create the observation records, and add them to the group, if necessary
+                replaced = False
+                serializer = self.get_serializer(data=data)
                 serializer.is_valid(raise_exception=True)
-                self.perform_create(serializer)
-                if observation_group is not None:
-                    observation_group.observation_records.add(*serializer.instance)
-            except ValidationError as ve:
-                if observation_group is not None:
-                    observation_group.delete()
-                logger.error(f'Failed to create ObservationRecord due to exception {ve}')
-                raise ValidationError(f'''Observation submission successful, but failed to create a corresponding
-                                          ObservationRecord due to exception {ve}.''')
+                dp = serializer.save()
+            if thumbnail:
+                dp.thumbnail.save(thumbnail.name, thumbnail)
 
-            try:
-                sync_group_permissions_to_target(observation_group, serializer.instance, target)
-            except Exception as e:
-                logger.error(f'Failed to sync permissions to target for new observation records: {e}', exc_info=True)
-                
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            reduceddatums, rd_extras = [], {}
+            if not raw:
+                try:
+                    reduced_data, rd_extras = run_custom_data_processor(
+                        dp, {}, {'data_product_id': dp.id, **posted}, uploaded_by=request.user.username)
+                    uploaded = dp
+                    if not existing:
+                        dp, reduced_data = merge_into_observation(dp, reduced_data)
+                except Exception as e:
+                    transaction.set_rollback(True)
+                    if isinstance(e, InvalidFileFormatException):
+                        return Response({'file': f'Invalid file format: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+                    logger.exception(f'Processing failed for uploaded data product {dp.data.name}')
+                    return Response({'file': f'Could not process file: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                reduceddatums = list(reduced_data.values_list('id', flat=True))
+                if dp == uploaded:
+                    ReducedDatumExtra.objects.create(target_id=dp.target_id, data_product=dp, data_type=dp.data_product_type,
+                                                     key='upload_extras', value=rd_extras)
+                else:
+                    groups = list(Group.objects.filter(name__in=dataproduct_view_groups(dp)))
+                if dp.data_product_type == 'spectroscopy':
+                    DataProduct.objects.filter(pk=dp.pk).update(created=reduced_data.first().timestamp)
+            if not settings.TARGET_PERMISSIONS_ONLY:
+                set_dataproduct_view_groups(dp, groups)
+
+        return Response({'id': dp.id, 'product_id': dp.product_id, 'target': dp.target_id,
+                         'data': dp.data.name or None, 'thumbnail': dp.thumbnail.name or None,
+                         'reduceddatums': reduceddatums, 'extras': rd_extras,
+                         'groups': sorted(g.name for g in groups), 'replaced': replaced,
+                         'versions': SpectroscopyReducedDatum.objects.filter(data_product=dp).count()},
+                        status=status.HTTP_200_OK if existing else status.HTTP_201_CREATED)

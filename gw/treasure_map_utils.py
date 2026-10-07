@@ -1,31 +1,51 @@
+import logging
 import os
 import requests
 
+logger = logging.getLogger(__name__)
 
 TM_TOKEN = os.getenv('TM_TOKEN', '')
-TM_POINTING_URL = 'http://treasuremap.space/api/v0/pointings'
-INSTRUMENT_DICT = {'2M0-SCICAM-SPECTRAL': 56, '1M0-SCICAM-SINISTRO': 9} #TODO: Check these
+TM_API_URL = 'https://treasuremap.space/api/v1'
+INSTRUMENT_NAMES = {'0M4-SCICAM-QHY600': 'QHY',
+                    '1M0-SCICAM-SINISTRO': 'Sinistro',
+                    '2M0-SCICAM-MUSCAT': 'MuSCAT',
+                    '2M0-SCICAM-SPECTRAL': 'Spectral'}
+BAND_DICT = {'U': 'U', 'B': 'B', 'V': 'V', 'R': 'R', 'I': 'I',
+             'up': 'u', 'gp': 'g', 'rp': 'r', 'ip': 'i', 'zs': 'z', 'w': 'other'}
+
+
+def tm_request(method, path, **kwargs):
+    response = requests.request(method, TM_API_URL + path, headers={'api_token': TM_TOKEN}, **kwargs)
+    response.raise_for_status()
+    return response.json()
+
+
+def get_tm_instrument_id(instrument_type):
+    instruments = tm_request('GET', '/instruments', params={'name': INSTRUMENT_NAMES[instrument_type]})
+    if len(instruments) != 1:
+        names = [instrument['instrument_name'] for instrument in instruments]
+        raise ValueError(f'Expected one Treasure Map instrument for {instrument_type}, found {names}')
+    return instruments[0]['id']
 
 
 def build_tm_pointings(target, observation_parameters):
-    
+
     pointings = []
 
-    planned_pointing = {'instrument_id': INSTRUMENT_DICT[observation_parameters['instrument_type']],
+    planned_pointing = {'ra': float(target.ra),
+                        'dec': float(target.dec),
+                        'instrumentid': get_tm_instrument_id(observation_parameters['instrument_type']),
+                        'time': observation_parameters['start'],
+                        'status': 'planned',
                         'depth': 20.0,
                         'depth_unit': 'ab_mag',
-                        'pos_angle': '0.0',
-                        'status': 'planned',
-                        'ra': str(target.ra),
-                        'dec': str(target.dec),
-                        'time': observation_parameters['start']
+                        'pos_angle': 0.0
     }
 
-    filters = ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w']
-    for filt in filters:
+    for filt, band in BAND_DICT.items():
         if filt in observation_parameters.keys():
-            copy_planned_pointing = planned_pointing
-            copy_planned_pointing['band'] = filt
+            copy_planned_pointing = dict(planned_pointing)
+            copy_planned_pointing['band'] = band
             pointings.append(copy_planned_pointing)
 
     return pointings
@@ -34,24 +54,18 @@ def build_tm_pointings(target, observation_parameters):
 def submit_tm_pointings(sequence, pointings):
 
     tm_planned_report = {'graceid': sequence.nonlocalizedevent.event_id,
-                         'api_token': TM_TOKEN,
                          'pointings': pointings
     }
 
-    response = requests.post(TM_POINTING_URL, json=tm_planned_report)
-    
-    return response.ok
+    try:
+        result = tm_request('POST', '/pointings', json=tm_planned_report)
+    except requests.RequestException as e:
+        logger.error(f'Submitting pointings to Treasure Map failed: {e}')
+        return False
 
+    if result.get('ERRORS'):
+        logger.error(f'Treasure Map rejected pointings: {result["ERRORS"]}')
+    if result.get('WARNINGS'):
+        logger.warning(f'Treasure Map warnings: {result["WARNINGS"]}')
 
-def query_tm_pointings(sequence, status, wl_low=1000, wl_high=20000, wl_unit='angstrom'):
-
-    json_params = {'api_token': TM_TOKEN, 
-                   'status': status, 
-                   'graceid': squence.nonlocalizedevent.event_id, 
-                   'wavelength_regime': str([wl_low, wl_high]), 
-                   'wavelength_unit': wl_unit
-    }
-
-    response = requests.get(TM_POINTING_URL, json=json_params)
-
-    ### Do something with the response
+    return not result.get('ERRORS')

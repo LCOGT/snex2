@@ -1,7 +1,7 @@
 from django.db import models
 from tom_targets.models import Target
 from custom_code.target_models import SNExTarget
-from tom_dataproducts.models import ReducedDatum, DataProduct
+from tom_dataproducts.models import DataProduct
 from django.contrib.auth.models import User
 
 STATUS_CHOICES = (
@@ -201,6 +201,11 @@ class Papers(models.Model):
     )
 
     created = models.DateTimeField(auto_now_add=True)
+
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+
+    def can_be_edited_by(self, user):
+        return user.is_superuser or (self.created_by_id is not None and self.created_by_id == user.id)
 
     def __str__(self):
         return f'{self.author_last_name} et al. ({self.status})'

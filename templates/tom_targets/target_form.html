@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 targets_extras static %}
+{% load django_bootstrap5 targets_extras static %}
 {% block title %}New target{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -22,14 +22,14 @@
     <h3>Create a New Target</h3>
   </div>
 </nav>
-<a href="{% url 'tom_catalogs:query' %}" class="btn btn-primary float-right">Search online sources</a>
+<a href="{% url 'dataservices:query_list' %}" class="btn btn-primary float-end">Search online sources</a>
 {% endif %}
   {% if object %}
   <nav class="navbar navbar-expand-md fixed-top fixed-top-2">
     <div class="collapse navbar-collapse" id="targetInfo">
-      <ul class="nav mr-auto">
+      <ul class="nav me-auto">
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.name }}</a></li>
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}<br>{{ target.ra|floatformat:4 }} {{ target.dec|floatformat:4 }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}<br>{{ target.ra|floatformat:6 }} {{ target.dec|floatformat:6 }}</a></li>
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.classification }}</a></li>
         <li style="float: left;"><a style="display: inline-block; list-style-type: none;">z = {{ target.redshift }}</a></li>
     </div>
@@ -55,8 +55,8 @@
       {% bootstrap_formset extra_form %} 
   </div>
   {% csrf_token %}
-  {% buttons %}
+  <div class="mb-3">
   <button type="submit" formaction="" method="POST" class="btn btn-primary">Submit</button>
-  {% endbuttons %}
+  </div>
   </form>
 {% endblock %}

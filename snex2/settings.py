@@ -12,22 +12,17 @@ https://docs.djangoproject.com/en/2.1/ref/settings/
 """
 
 import os
-import logging.config
-import tempfile
 
 from lcogt_logging import LCOGTFormatter
+from tom_common.default_settings import *
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #only environment variables needed for bare metal install
 DATA_DIR = os.getenv('SNEX2_DATADIR','data/')
-SN_DIR = os.getenv('SUPERNOVA_DIR','/supernova/')
 
 THUMB_DIR = os.path.join(DATA_DIR,'thumbs')
-FITS_DIR = os.path.join(DATA_DIR,'fits')
-LSC_DIR = os.path.join(SN_DIR,'data','lsc')
-FLOYDS_DIR = os.path.join(SN_DIR,'data','floyds')
 
 OBS_WINDOW_MINIMUM = 24 # Minimum observation window in hours
 
@@ -41,7 +36,7 @@ SLACK_BOT_TOKEN =  os.getenv('SLACK_BOT_TOKEN', '')
 SECRET_KEY = 'ks#e!w3m*y1g_=)%vmrdcyn*5dt0$)o^mq2f=vtj#myw#&amp;p3%i'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('SNEX2_DEBUG', False)
+DEBUG = os.getenv('SNEX2_DEBUG', '').lower() in ('1', 'true', 'yes')
 
 ALLOWED_HOSTS = ['*']
 
@@ -49,39 +44,13 @@ ALLOWED_HOSTS = ['*']
 
 # Application definition
 
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'django.contrib.sites',
-    'django_extensions',
-    'django_htmx',
-    'guardian',
-    'tom_common',
-    'django_comments',
-    'bootstrap4',
-    'crispy_forms',
-    'crispy_bootstrap4',
-    'django_filters',
-    'django_gravatar',
-    'tom_targets',
+INSTALLED_APPS = TOMTOOLKIT_INSTALLED_APPS + [
     'tom_alerts',
-    'tom_catalogs',
-    'tom_observations',
-    'tom_dataproducts',
     'custom_code',
     'gw',
-    'rest_framework',
-    'rest_framework.authtoken',
     'django_plotly_dash.apps.DjangoPlotlyDashConfig',
-    'tom_registration',
-    'tom_scimma',
     'tom_nonlocalizedevents',
     'tom_alertstreams',
-    'webpack_loader',
     'tom_tns'
 ]
 
@@ -92,24 +61,11 @@ if DEBUG:
 
 SITE_ID = 2
 
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django_htmx.middleware.HtmxMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+MIDDLEWARE = TOMTOOLKIT_MIDDLEWARE + [
     'django_plotly_dash.middleware.BaseMiddleware',
     'django_plotly_dash.middleware.ExternalRedirectionMiddleware',
-    'tom_common.middleware.Raise403Middleware',
-    'tom_common.middleware.ExternalServiceMiddleware',
-    'tom_common.middleware.AuthStrategyMiddleware',
-    'tom_registration.middleware.RedirectAuthenticatedUsersFromRegisterMiddleware',
-
 ]
+MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 
 if DEBUG:
     MIDDLEWARE.append('debug_toolbar.middleware.DebugToolbarMiddleware')
@@ -137,9 +93,9 @@ TEMPLATES = [
 DATA_SHARING = {
     'hermes': {
         'DISPLAY_NAME': os.getenv('HERMES_DISPLAY_NAME', 'Hermes'),
-        'BASE_URL': os.getenv('HERMES_BASE_URL', 'https://hermes-dev.lco.global/'),
+        'BASE_URL': os.getenv('HERMES_BASE_URL', ''),
         'HERMES_API_KEY': os.getenv('HERMES_API_KEY', 'yourHermesAPIKeyHere'),
-        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', 'Your Default author list here'),
+        'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', ''),
         'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
         'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
@@ -150,7 +106,6 @@ DATA_SHARING = {
             'rp': 'r-P1',
             'ip': 'i-P1'
         },
-        # TODO: Set your proper instrument mapping from datum instrument to TNS instrument
         'INSTRUMENT_MAPPING': {
             'en06': 'FTN - FS02',
             'en12': 'FTN - FS01',
@@ -166,11 +121,6 @@ DATA_SHARING = {
         },
         'ENABLE_TNS': True
     },
-    'tom-demo-dev': {
-        'BASE_URL': os.getenv('TOM_DEMO_BASE_URL', 'http://tom-demo-dev.lco.gtn/'),
-        'USERNAME': os.getenv('TOM_DEMO_USERNAME', 'set TOM_DEMO_USERNAME value in environment'),
-        'PASSWORD': os.getenv('TOM_DEMO_PASSWORD', 'set TOM_DEMO_PASSWORD value in environment'),
-    },
     'localhost-tom': {
         # for testing; share with yourself
         'BASE_URL': os.getenv('LOCALHOST_TOM_BASE_URL', 'http://127.0.0.1:8000/'),
@@ -180,7 +130,7 @@ DATA_SHARING = {
 }
 
 
-CRISPY_TEMPLATE_PACK = 'bootstrap4'
+CRISPY_TEMPLATE_PACK = 'bootstrap5'
 
 WSGI_APPLICATION = 'snex2.wsgi.application'
 
@@ -234,11 +184,6 @@ LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
-AUTHENTICATION_BACKENDS = (
-    'django.contrib.auth.backends.AllowAllUsersModelBackend',
-    'guardian.backends.ObjectPermissionBackend',
-)
-
 # Internationalization
 # https://docs.djangoproject.com/en/2.1/topics/i18n/
 
@@ -247,8 +192,6 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 
 USE_I18N = True
-
-USE_L10N = False
 
 USE_TZ = True
 
@@ -353,6 +296,7 @@ FACILITIES = {
 }
 
 TARGET_MODEL_CLASS = 'custom_code.target_models.SNExTarget'
+MATCH_MANAGERS = {'Target': 'custom_code.match_managers.SNExTargetMatchManager'}
 
 EXTRA_FIELDS = [
     {'name': 'redshift', 'type': 'number'},
@@ -378,33 +322,31 @@ OPEN_URLS = [
     '/accounts/reset/*/',
     '/api/*/',
     '/api/',
-    '/accounts/register/',
-    '/pipeline-upload/photometry-upload/',
     '/static/tom_common/css/main_snexclone.css',
 ]
 if DEBUG:
     HOOKS = {
         'cancel_gw_obs': '',
-        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
-        'download_test_image_from_archive': 'custom_code.hooks.download_test_image_from_archive',
+        'find_images': 'custom_code.hooks.find_images',
     }
 else:
     HOOKS = {
         'cancel_gw_obs': 'gw.hooks.cancel_gw_obs',
-        'find_images_from_snex1': 'custom_code.hooks.find_images_from_snex1',
+        'find_images': 'custom_code.hooks.find_images',
     }
 
-BROKERS = {
-    'TNS': {'api_key': os.getenv('TNS_APIKEY', '')}
+DATA_SERVICES = {
+    'TNS': {
+        'api_key': os.getenv('TNS_APIKEY', ''),
+        'bot_id': os.getenv('TNS_APIID', ''),
+        'bot_name': 'SNEx_Bot1',
+        'base_url': os.getenv('TNS_BASE_URL', ''),
+        'group_names': DATA_SHARING['hermes']['GROUP_NAMES'],
+        'default_authors': DATA_SHARING['hermes']['DEFAULT_AUTHORS'],
+        'filter_mapping': DATA_SHARING['hermes']['FILTER_MAPPING'],
+        'instrument_mapping': DATA_SHARING['hermes']['INSTRUMENT_MAPPING'],
+    },
 }
-
-TOM_ALERT_CLASSES = [
-    'tom_alerts.brokers.lasair.LasairBroker',
-    'tom_alerts.brokers.gaia.GaiaBroker',
-    'tom_alerts.brokers.tns.TNSBroker',
-    'tom_alerts.brokers.alerce.ALeRCEBroker',
-    'tom_scimma.scimma.SCIMMABroker',
-]
 
 TOM_FACILITY_CLASSES = [
     'custom_code.facilities.gemini_facility.GeminiFacility',
@@ -412,12 +354,6 @@ TOM_FACILITY_CLASSES = [
     'custom_code.facilities.lco_facility.SnexLCOFacility',
     'custom_code.facilities.soar_facility.SOARFacility',
     #'tom_observations.facilities.soar.SOARFacility'
-]
-
-TOM_HARVESTER_CLASSES = [
-    'custom_code.harvesters.tns_harvester.TNSHarvester',
-    'tom_catalogs.harvesters.simbad.SimbadHarvester',
-    'tom_catalogs.harvesters.ned.NEDHarvester',
 ]
 
 TOM_CADENCE_STRATEGIES = [
@@ -432,16 +368,15 @@ PROPOSAL_ROLLOVERS = [
     {'old_id': 'KEY2023B-002', 'new_id': 'KEY2026B-003', 'semester_start': '2026-08-01'},
 ]
 
-DATA_TYPES = (
-    ('SPECTROSCOPY', 'Spectroscopy'),
-    ('PHOTOMETRY', 'Photometry')
-)
 
 DATA_PRODUCT_TYPES = {
     'photometry': ('photometry', 'Photometry'),
     'fits_file': ('fits_file', 'FITS File'),
     'spectroscopy': ('spectroscopy', 'Spectroscopy'),
-    'image_file': ('image_file', 'Image File')
+    'image_file': ('image_file', 'Image File'),
+    'raw_spectrum': ('raw_spectrum', 'Raw Spectrum'),
+    'difference_image': ('difference_image', 'Difference Image'),
+    'template_image': ('template_image', 'Template Image'),
 }
 
 DATA_PROCESSORS = {
@@ -451,7 +386,13 @@ DATA_PROCESSORS = {
 }
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
     ],
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
@@ -459,7 +400,7 @@ REST_FRAMEWORK = {
 }
 
 TARGET_CLASSIFICATIONS = [
-    'Afterglow', 'Afterglow?', 'AGN', 'AGN?', 'Ca-rich', 'Ca-rich?', 'CV', 'CV?', 'FBOT', 'Galaxy', 'ILRN', 'ILRN?', 'Junk', 'Kilonova', 'Kilonova?', 'LBV', 'LBV?', 'Nova', 'Nova?', 'SLSN-I', 'SLSN-I?', 'SLSN-II', 'SLSN-II?', 'SLSN-R', 'SLSN-R?', 'SN', 'SN I-faint', 'SN I-faint?', 'SN Ia', 'SN Ia 02cx-like', 'SN Ia 02cx-like?', 'SN Ia 02es-like', 'SN Ia 02es-like?', 'SN Ia 02ic-like', 'SN Ia 02ic-like?', 'SN Ia 91bg-like', 'SN Ia 91bg-like?', 'SN Ia 91T-like', 'SN Ia 91T-like?', 'SN Ia pec', 'SN Ia pec?', 'SN Ia?', 'SN Ib', 'SN Ib/c', 'SN Ib/c?', 'SN Ib?', 'SN Ibn', 'SN Ibn?', 'SN Ic', 'SN Ic-BL', 'SN Ic-BL?', 'SN Ic?', 'SN Icn', 'SN II', 'SN II?', 'SN IIb', 'SN IIb?', 'SN IIL', 'SN IIL?', 'SN IIn', 'SN IIn?', 'SN IIP', 'SN IIP?', 'SN?', 'Standard', 'TDE', 'TDE?', 'Unknown', 'Varstar', 'Varstar?'
+    'Afterglow', 'Afterglow?', 'AGN', 'AGN?', 'Ca-rich', 'Ca-rich?', 'CV', 'CV?', 'FBOT', 'Galaxy', 'ILRN', 'ILRN?', 'ILRT', 'ILRT?', 'Junk', 'Kilonova', 'Kilonova?', 'LBV', 'LBV?', 'LRN', 'LRN?', 'Nova', 'Nova?', 'SLSN-I', 'SLSN-I?', 'SLSN-II', 'SLSN-II?', 'SLSN-R', 'SLSN-R?', 'SN', 'SN I-faint', 'SN I-faint?', 'SN Ia', 'SN Iax[02cx-like]', 'SN Iax[02cx-like]?', 'SN Ia 02es-like', 'SN Ia 02es-like?', 'SN Ia-CSM', 'SN Ia-CSM?', 'SN Ia-91bg-like', 'SN Ia-91bg-like?', 'SN Ia-91T-like', 'SN Ia-91T-like?', 'SN Ia-pec', 'SN Ia-pec?', 'SN Ia?', 'SN Ib', 'SN Ib/c', 'SN Ib/c?', 'SN Ib?', 'SN Ibn', 'SN Ibn?', 'SN Ic', 'SN Ic-BL', 'SN Ic-BL?', 'SN Ic?', 'SN Icn', 'SN II', 'SN II?', 'SN IIb', 'SN IIb?', 'SN IIL', 'SN IIL?', 'SN IIn', 'SN IIn?', 'SN IIP', 'SN IIP?', 'SN?', 'Standard', 'TDE', 'TDE?', 'Unknown', 'Varstar', 'Varstar?'
 ]
 
 DEFAULT_GROUPS = [
@@ -481,14 +422,10 @@ PASSWORD_HASHERS = [
 
 CSRF_TRUSTED_ORIGINS = ['https://supernova.exchange']
 
-TOM_REGISTRATION = {
-    'REGISTRATION_AUTHENTICATION_BACKEND': 'django.contrib.auth.backends.AllowAllUsersModelBackend',
-    'REGISTRATION_REDIRECT_PATTERN': 'home',
-    'REGISTRATION_STRATEGY': 'approval_required',
-    'SEND_APPROVAL_EMAILS': True,  
-    'APPROVAL_SUBJECT': f'Your {TOM_NAME} registration has been approved!',  # Optional subject line of approval email, (Default Shown)
-    'APPROVAL_MESSAGE': f'Your {TOM_NAME} registration has been approved. You can log in <a href="mytom.com/login">here</a>.'  # Optional html-enabled body for approval email, (Default Shown)
-}
+TOM_REGISTRATION_STRATEGY = 'approval_required'
+ACCOUNT_SIGNUP_FORM_CLASS = 'custom_code.forms.SNExSignupForm'
+TOM_PASSWORD_RESET_ENABLED = True
+DEFAULT_FROM_EMAIL = 'snex@lco.global'
 
 MANAGERS = [("SNe", "sne@lco.global")]
 EMAIL_SUBJECT_PREFIX = f'[{TOM_NAME}]'
@@ -501,17 +438,12 @@ EMAIL_HOST_PASSWORD = str(os.getenv('SNEX_EMAIL_PASSWORD', ''))
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 7000000
-SNEX1_DB_HOST = os.getenv('SNEX1_DB_HOST', 'supernova.sci.lco.gtn')
-SNEX1_DB_PORT = os.getenv('SNEX1_DB_PORT', '3306')
-SNEX1_DB_NAME = os.getenv('SNEX1_DB_NAME', 'supernova')
-SNEX1_DB_USER = os.getenv('SNEX1_DB_USER', '')
-SNEX1_DB_PASSWORD = os.getenv('SNEX1_DB_PASSWORD', '')
-SNEX1_DB_URL = f'mysql+pymysql://{SNEX1_DB_USER}:{SNEX1_DB_PASSWORD}@{SNEX1_DB_HOST}:{SNEX1_DB_PORT}/{SNEX1_DB_NAME}?charset=utf8&use_unicode=1'
 
 CACHES = {
     'default': {
         'BACKEND': os.getenv('CACHE_BACKEND', 'django.core.cache.backends.db.DatabaseCache'),
         'LOCATION': os.getenv('CACHE_LOCATION', 'django_cache'),
+        'OPTIONS': {'MAX_ENTRIES': 100000},
     }
 }
 
@@ -533,20 +465,6 @@ PLOTLY_COMPONENTS = [
     'dash_bootstrap_components',
 ]
 
-VUE_FRONTEND_DIR_TOM_NONLOCAL = os.path.join(STATIC_ROOT, 'tom_nonlocalizedevents/vue')
-WEBPACK_LOADER = {
-    'TOM_NONLOCALIZEDEVENTS': {
-        'CACHE': not DEBUG,
-        'BUNDLE_DIR_NAME': 'tom_nonlocalizedevents/vue/',  # must end with slash
-        'STATS_FILE': os.path.join(BASE_DIR, 'static/tom_nonlocalizedevents/vue/webpack-stats.json'),
-        #'STATS_FILE': os.path.join(VUE_FRONTEND_DIR_TOM_NONLOCAL, 'webpack-stats.json'),
-        'POLL_INTERVAL': 0.1,
-        'TIMEOUT': None,
-        'IGNORE': [r'.+\.hot-update.js', r'.+\.map']
-    }
-}
-
-TOM_API_URL = os.getenv('TOM_API_URL', 'http://127.0.0.1:8000')
 HERMES_API_URL = os.getenv('HERMES_API_URL', 'https://hermes.lco.global')
 
 SAVE_TEST_ALERTS = False
@@ -560,7 +478,7 @@ ALERT_STREAMS = [
             'USERNAME': os.getenv('SCIMMA_AUTH_USERNAME', ''),
             'PASSWORD': os.getenv('SCIMMA_AUTH_PASSWORD', ''),
             # Group ID must be prefixed with SCiMMA SCRAM credential username to open the SCiMMA kafka stream
-            'GROUP_ID': os.getenv('SCIMMA_AUTH_USERNAME', '') + '-' + os.getenv('HOPSKOTCH_GROUP_ID', 'hermes-dev'),
+            'GROUP_ID': os.getenv('SCIMMA_AUTH_USERNAME', '') + '-' + os.getenv('HOPSKOTCH_GROUP_ID', ''),
             'TOPIC_HANDLERS': {
                 'hermes.*': 'custom_code.alertstreams.hopskotch.alert_logger',
                 'tomtoolkit.test': 'custom_code.alertstreams.hopskotch.alert_logger',
@@ -569,30 +487,8 @@ ALERT_STREAMS = [
             },
         },
     },
-    {
-        'ACTIVE': False,
-        'NAME': 'tom_alertstreams.alertstreams.gcn.GCNClassicAlertStream',
-        # The keys of the OPTIONS dictionary become (lower-case) properties of the AlertStream instance.
-        'OPTIONS': {
-            # see https://github.com/nasa-gcn/gcn-kafka-python#to-use for configuration details.
-            'GCN_CLASSIC_CLIENT_ID': os.getenv('GCN_CLASSIC_CLIENT_ID', None),
-            'GCN_CLASSIC_CLIENT_SECRET': os.getenv('GCN_CLASSIC_CLIENT_SECRET', None),
-            'DOMAIN': 'gcn.nasa.gov',  # optional, defaults to 'gcn.nasa.gov'
-            'CONFIG': {  # optional
-                # 'group.id': 'tom_alertstreams-my-custom-group-id',
-                # 'auto.offset.reset': 'earliest',
-                # 'enable.auto.commit': False
-            },
-            'TOPIC_HANDLERS': {
-                'gcn.classic.text.LVC_INITIAL': 'gw.gw_event_handler.handle_message',#'tom_nonlocalizedevents.alertstream_handlers.gcn_event_handler.handle_message',
-                'gcn.classic.text.LVC_PRELIMINARY': 'gw.gw_event_handler.handle_message',#'tom_nonlocalizedevents.alertstream_handlers.gcn_event_handler.handle_message',
-                'gcn.classic.text.LVC_RETRACTION': 'gw.gw_event_handler.handle_retraction_with_galaxies',#'tom_nonlocalizedevents.alertstream_handlers.gcn_event_handler.handle_retraction',
-            },
-        },
-    }
 ]
 
-DOWNLOAD_TEST_THUMBNAIL = True
 
 if DEBUG:
     INTERNAL_IPS = [

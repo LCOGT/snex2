@@ -1,4 +1,8 @@
 {% load tom_common_extras targets_extras custom_code_tags %}
+<dl class="row" style="display: block; margin-top: 1rem;">
+  <button type="button" class="btn" style="background-color: white; color: #174460; border-color: #174460;" title="Update the name, classification, redshift and other names from TNS"
+    hx-post="{% url 'update-from-tns' target.id %}" hx-swap="none" hx-disabled-elt="this">Update from TNS</button>
+</dl>
 <dl class="row">
   <h4>Known as: </h4>
 </dl>
@@ -77,6 +81,32 @@
   <h5>Reference Status:</h5>
 </dl>
 {% reference_status target %}
+{% if user.is_superuser %}
+<dl class="row">
+  <h5>Standard:</h5>
+</dl>
+<dl class="row" style="margin-left: -15px;">
+  <select id="standard-select" data-current="{{ target.standard|yesno:'true,false' }}">
+    <option value="false"{% if not target.standard %} selected{% endif %}>No</option>
+    <option value="true"{% if target.standard %} selected{% endif %}>Yes</option>
+  </select>
+  <script>
+  $('#standard-select').on('change', function() {
+    var select = $(this);
+    var message = select.val() === 'true'
+      ? 'Make this target a standard? It will only be visible to admins and its photometry will move to the standards table.'
+      : 'Make this target a regular target again? Its standard photometry will become regular photometry.';
+    if (!confirm(message)) {
+      select.val(select.data('current').toString());
+      return;
+    }
+    $.post('{% url "set-target-standard" %}', {target_id: {{ target.id }}, standard: select.val(), csrfmiddlewaretoken: '{{ csrf_token }}'})
+      .done(function() { location.reload(); })
+      .fail(function(e) { alert(e.responseText); select.val(select.data('current').toString()); });
+  });
+  </script>
+</dl>
+{% endif %}
 <dl class="row">
   <h5>Known to:</h5>
 </dl>

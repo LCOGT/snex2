@@ -1,15 +1,13 @@
 import copy
-import json
 import logging
 from datetime import timedelta, datetime
 
-import requests
 from crispy_forms.bootstrap import PrependedText
 from crispy_forms.layout import Column, Div, HTML, Layout, Row
 from django import forms
 from django.conf import settings
-from tom_common.exceptions import ImproperCredentialsException
 from tom_observations.facilities.soar import (
+    make_request,
     SOARFacility as BaseSOARFacility,
     SOARSpectroscopyObservationForm,
 )
@@ -29,13 +27,6 @@ PORTAL_URL = SOAR_SETTINGS['portal_url']
 SOAR_GROUP_NAME = SOAR_SETTINGS.get('access_group_name', 'PASSTA')
 logger = logging.getLogger(__name__)
 
-
-def make_request(*args, **kwargs):
-    response = requests.request(*args, **kwargs)
-    if 400 <= response.status_code < 500:
-        raise ImproperCredentialsException('SOAR: ' + str(response.content))
-    response.raise_for_status()
-    return response
 
 def user_can_access_soar(user):
     return bool(

@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 import logging
 from hop.models import JSONBlob
 from hop.io import Metadata
@@ -131,33 +130,6 @@ class CustomHopskotchAlertStream(AlertStream):
                 logger.error(f'HopskotchAlertStream.listen: {ex}')
 
 
-def alert_handler(alert: JSONBlob, metadata: Metadata):
-    
-    logger.info(f'Alert received on topic {metadata.topic}: {alert};  metatdata: {metadata}')
-
-    ### Retrieve target information and check if target exists; if not, add it
-
-    ### Check if this message has already been ingested; if not, add it
-
-    ### Parse data in SNEx2-readable format, and save
-    if alert.content['data'].get('photometry_data', ''):
-        rds = []
-        for datum in alert.content['data']['photometry_data']:
-            rd = ReducedDatum(target_id=target_id, data_type='photometry', 
-                    timestamp=datetime.utcnow(), 
-                    value={'magnitude': datum['brightness'], 'filter': datum['band'],
-                           'error': datum['brightnessError']
-                    },
-                    message=message #TODO: Add above
-            )
-            rd.save()                                
-            rds.append(rd)
-
-    ### Save any ReducedDatumExtra rows, if needed
-
-    #logger.info('Data saved successfully')
-
-
 def alert_logger(alert: JSONBlob, metadata: Metadata):
     """Example alert handler. The method signsture is specific to Hopskotch alerts.
     """
@@ -170,16 +142,3 @@ def alert_logger(alert: JSONBlob, metadata: Metadata):
         # in this case the alert was probably published with hop-client<0.8.0
         alert_uuid = None
     logger.info(f'Alert (uuid={alert_uuid}) received on topic {metadata.topic}: {alert};  metatdata: {metadata}')
-
-
-def heartbeat_handler(heartbeat: JSONBlob, metadata: Metadata):
-    """Example alert handler for HopskotchAlertStream sys.heartbeat topic.
-    Note that HopskotchAlertStream.listen() method knows that Hopskotch alerts come with
-    both alert and metadata. So, the alert_handler methods have a signiture (taking both
-    as arguments) specific to this stream.
-    """
-    content: dict = heartbeat.content  # see hop_client reatthedocs
-    timestamp = datetime.fromtimestamp(content["timestamp"] / 1e6, tz=timezone.utc)
-    if heartbeat.content['count'] % 10 == 0:
-        # mod 300 just for convenience so as not to flood logger
-        logging.info(f'{timestamp.isoformat()} heartbeat.content dict: {heartbeat.content}. metadata: {metadata}')
