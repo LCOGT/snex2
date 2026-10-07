@@ -577,7 +577,7 @@ def snex_dataproduct_list(context, target):
     dataproduct_context = dataproduct_list_for_target(context, target)
     if not settings.TARGET_PERMISSIONS_ONLY:
         dataproduct_context['products'] = viewable_dataproducts(
-            context['request'].user, target.dataproduct_set.exclude(data_product_type__in=('difference_image', 'template_image')))
+            context['request'].user, target.dataproduct_set.exclude(data_product_type__in=('difference_image', 'template_image'))).order_by('created')
     telescopes, instruments = set(), set()
     for p in dataproduct_context['products']:
         rde = p.reduceddatumextra_set.first()
@@ -750,7 +750,7 @@ def photometry_data_list(context, target):
     user = context['request'].user
     datums = photometry_datums(target, user)
     visible = reduceddatum_view_groups(datums) if user.is_superuser else {}
-    datums = list(datums.order_by('-timestamp'))
+    datums = list(datums.order_by('timestamp'))
     rows = []
     for d in datums:
         v = d.value
@@ -812,7 +812,7 @@ def photometric_standards_list(context, target):
     if site_setups:
         standards = PhotometryReducedDatum.objects.filter(target__in=Target.objects.filter(standard=True), value__has_key='basename',
                                                           timestamp__gte=min(times) - one_day, timestamp__lte=max(times) + one_day)
-        for rd in standards.select_related('target').order_by('-timestamp'):
+        for rd in standards.select_related('target').order_by('timestamp'):
             basename = rd.value['basename']
             exact, site = _frame_setups(basename, rd.bandpass)
             if site in site_setups:
