@@ -407,3 +407,49 @@ def photometry_reduction_version(value, data_product_id=None):
     if not value.get('background_subtracted'):
         return 'unsubtracted'
     return '{}-{}'.format(value.get('subtraction_algorithm') or 'subtracted', value.get('template_source') or '')
+
+
+def update_target_from_tns(target):
+    from tom_dataservices.data_services.tns import TNSDataService
+    from tom_targets.models import Target, TargetName
+
+    def tns_object(name):
+        name = name.replace(' ', '')
+        return TNS_PREFIX_RE.sub('', name).lower() if TNS_PREFIX_RE.match(name) else None
+
+    objname = next((tns_object(name) for name in target.names if tns_object(name)), None)
+    if objname is None:
+        raise ValueError('this target has no AT or SN name to look up')
+    service = TNSDataService()
+    tns = service.query_service(service.build_query_parameters({'objname': objname}), url=service.get_urls('object_url'))
+    if not tns.get('objname') or not tns.get('name_prefix'):
+        raise ValueError(f'TNS has no object named {objname}')
+
+    tns_name = tns['name_prefix'] + tns['objname']
+    if Target.objects.filter(name__iexact=tns_name).exclude(pk=target.pk).exists():
+        raise ValueError(f'another target is already named {tns_name}')
+    changes = []
+    other_names = [name for name in target.names if tns_object(name) != objname]
+    target.aliases.exclude(name__in=other_names).delete()
+    if target.name != tns_name:
+        changes.append(f'name {target.name} to {tns_name}')
+        target.name = tns_name
+    classification = (tns.get('object_type') or {}).get('name')
+    if classification and classification != target.classification:
+        changes.append(f'classification to {classification}')
+        target.classification = classification
+    if tns.get('redshift') is not None and float(tns['redshift']) != target.redshift:
+        changes.append(f'redshift to {tns["redshift"]}')
+        target.redshift = float(tns['redshift'])
+    target.save()
+
+    known = {name.lower() for name in target.names}
+    internal_names = [name.strip() for name in (tns.get('internal_names') or '').split(',')
+                      if name.strip() and tns_object(name) != objname]
+    for name in other_names + internal_names:
+        taken = Target.objects.filter(name__iexact=name).exists() or TargetName.objects.filter(name__iexact=name).exists()
+        if name.lower() not in known and not taken:
+            TargetName.objects.create(target=target, name=name)
+            known.add(name.lower())
+            changes.append(f'added name {name}')
+    return changes

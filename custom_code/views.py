@@ -62,7 +62,7 @@ from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSFormView, TNSSubmitView
-from custom_code.utils import can_delete_spectrum, default_version, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import can_delete_spectrum, default_version, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -1059,6 +1059,17 @@ def _target_for_user(request, pk):
     if target is None:
         raise Http404('Target not found or not visible to this user')
     return target
+
+
+@require_http_methods(['POST'])
+def update_from_tns_view(request, pk):
+    target = get_object_or_404(targets_for_user(request.user, Target.objects.filter(pk=pk), 'change_target'))
+    try:
+        changes = update_target_from_tns(target)
+        messages.success(request, 'Updated from TNS: ' + ', '.join(changes) if changes else 'Already up to date with TNS.')
+    except (ValueError, KeyError, requests.RequestException) as e:
+        messages.error(request, f'Could not update from TNS: {e}')
+    return HttpResponse(status=204, headers={'HX-Refresh': 'true'})
 
 
 def _render_target_partial(request, pk, template):

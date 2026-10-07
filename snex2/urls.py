@@ -50,6 +50,7 @@ urlpatterns = [
     path('remove-target-from-group/', remove_target_from_group_view, name='remove-target-from-group'),
     path('change-observing-priority/', change_observing_priority_view, name='change-observing-priority'),
     path('make-tns-request/', make_tns_request_view, name='make-tns-request'),
+    path('targets/<int:pk>/update-from-tns/', update_from_tns_view, name='update-from-tns'),
     path('fit-lightcurve/', fit_lightcurve_view, name='fit-lightcurve'),
     path('save-lightcurve-params/', save_lightcurve_params_view, name='save-lightcurve-params'),
     path('scheduling/', CustomObservationListView.as_view(), name='scheduling'),
