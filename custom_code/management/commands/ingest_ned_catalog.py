@@ -2,7 +2,6 @@ from custom_code.models import NEDLVSCatalog
 from django.core.management.base import BaseCommand
 from astropy.io import fits
 from astropy.table import Table, Column
-import numpy as np
 
 
 class Command(BaseCommand):
