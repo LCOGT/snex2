@@ -36,7 +36,7 @@ services:
             - SNEX2_DB_USER=${SNEX2_DB_USER}
             - SNEX2_DB_PASSWORD=${SNEX2_DB_PASSWORD}
             - SNEX2_DB_BACKEND=postgres
-            - LCO_APIKEY=${SNEX2_LCO_APIKEY}
+            - LCO_API_KEY=${LCO_API_KEY}
             - SNEXBOT_APIKEY=${SNEX2_SNEXBOT_APIKEY}
             - AWS_ACCESS_KEY_ID=${SNEX2_AWS_ACCESS_KEY_ID}
             - AWS_S3_REGION_NAME=${SNEX2_AWS_REGION_NAME}
