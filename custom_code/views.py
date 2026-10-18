@@ -1290,7 +1290,7 @@ class ObservationGroupDetailView(DetailView):
                  'end': obs.parameters.get('end', ''),
                  'status': obs.status,
                  'obs_id': obs.observation_id,
-                 'cadence': obs.parameters['cadence_frequency_days'],
+                 'cadence': obs.parameters.get('cadence_frequency_days',''),
                  'site': obs.parameters.get('site', ''),
                  'instrument': obs.parameters['instrument_type'],
                  'proposal': obs.parameters['proposal'],
