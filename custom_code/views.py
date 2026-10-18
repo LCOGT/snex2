@@ -1290,7 +1290,7 @@ class ObservationGroupDetailView(DetailView):
                  'end': obs.parameters.get('end', ''),
                  'status': obs.status,
                  'obs_id': obs.observation_id,
-                 'cadence': obs.parameters.get('cadence_frequency_days',''),
+                 'cadence': obs.parameters.get('cadence_frequency_days', ''),
                  'site': obs.parameters.get('site', ''),
                  'instrument': obs.parameters['instrument_type'],
                  'proposal': obs.parameters['proposal'],
@@ -1301,7 +1301,7 @@ class ObservationGroupDetailView(DetailView):
             other_filts = []
             acq_radius = []
             if obs.parameters['observation_type'] == 'SPECTRA':
-                acq_radius = obs.parameters['acquisition_radius']
+                acq_radius = obs.parameters.get('acquisition_radius', 0)
                 p['acq_radius'] = acq_radius
             for f in ['U', 'B', 'V', 'R', 'I', 'up', 'gp', 'rp', 'ip', 'zs', 'w', 'muscat_filter']:
                 if f in obs.parameters.keys() and not obs.parameters[f]:
