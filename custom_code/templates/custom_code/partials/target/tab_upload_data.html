@@ -1,2 +1,8 @@
-{% load custom_code_tags %}
+{% load custom_code_tags dataproduct_extras dataservices_extras %}
 {% custom_upload_dataproduct target %}
+{% if user.is_authenticated %}
+<hr>
+{% query_single_target_data_service target %}
+<hr>
+{% update_data_from_dataservice %}
+{% endif %}

@@ -24,18 +24,21 @@
 </nav>
 <a href="{% url 'dataservices:query_list' %}" class="btn btn-primary float-end">Search online sources</a>
 {% endif %}
+  {% bootstrap_form_errors form type='non_fields' %}
+  {% bootstrap_formset_errors names_form %}
+  {% bootstrap_formset_errors extra_form %}
   {% if object %}
   <nav class="navbar navbar-expand-md fixed-top fixed-top-2">
     <div class="collapse navbar-collapse" id="targetInfo">
       <ul class="nav me-auto">
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.name }}</a></li>
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}<br>{{ target.ra|floatformat:6 }} {{ target.dec|floatformat:6 }}</a></li>
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.classification }}</a></li>
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">z = {{ target.redshift }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ object.name }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ object.ra|deg_to_sexigesimal:"hms" }} {{ object.dec|deg_to_sexigesimal:"dms" }}<br>{{ object.ra|floatformat:6 }} {{ object.dec|floatformat:6 }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ object.classification }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">z = {{ object.redshift }}</a></li>
     </div>
   </nav>
   <form action="{% url 'targets:update' pk=object.id %}" method="post" class="form">
-  {% bootstrap_form form exclude='tweet,epoch,pm_ra,pm_dec,galactic_lng,galactic_lat,distance,distance_err' %}
+  {% bootstrap_form form exclude='tweet,epoch,pm_ra,pm_dec,galactic_lng,galactic_lat,distance,distance_err,shared_by,shared_from' %}
   {% else %}
   <form action="" method="POST" class="form">
   {% bootstrap_form form exclude='tweet,redshift,classification,epoch,pm_ra,pm_dec,galactic_lng,galactic_lat,distance,distance_err,groups,sciencetags,reference,observing_run_priority,last_nondetection,first_detection,maximum,target_description' %}

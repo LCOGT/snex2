@@ -1,7 +1,10 @@
 {% load tom_common_extras targets_extras custom_code_tags %}
 <dl class="row" style="display: block; margin-top: 1rem;">
-  <button type="button" class="btn" style="background-color: white; color: #174460; border-color: #174460;" title="Update the name, classification, redshift and other names from TNS"
+  <button type="button" class="btn btn-primary" title="Update the name, classification, redshift and other names from TNS"
     hx-post="{% url 'update-from-tns' target.id %}" hx-swap="none" hx-disabled-elt="this">Update from TNS</button>
+  {% if sharing %}
+  <a href="{% url 'tom_targets:share' pk=target.id %}" title="Share target" class="btn btn-info">Share</a>
+  {% endif %}
 </dl>
 <dl class="row">
   <h4>Known as: </h4>
@@ -111,3 +114,8 @@
   <h5>Known to:</h5>
 </dl>
 {% display_group_list target %}
+{% if user.is_superuser %}
+<dl class="row" style="margin-top: 3rem;">
+  <a href="{% url 'tom_targets:delete' pk=target.id %}" title="Delete target" class="btn btn-warning">Delete</a>
+</dl>
+{% endif %}

@@ -531,7 +531,8 @@ def target_data_with_user(context, target):
     user = context['request'].user
     return {
         'target': target,
-        'user': user
+        'user': user,
+        'sharing': getattr(settings, 'DATA_SHARING', None)
     }
 
 

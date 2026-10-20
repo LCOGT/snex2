@@ -13,8 +13,19 @@
 
 body {
   font-family: 'Open Sans', sans-serif;
-  padding-top: 0;
+  padding-top: 0 !important;
   overflow-x: hidden;
+}
+
+.time-usage-bars,
+.time-usage-bars table,
+.time-usage-bars thead,
+.time-usage-bars tbody,
+.time-usage-bars tr,
+.time-usage-bars td {
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
 }
 
 .nav-link {

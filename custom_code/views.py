@@ -16,7 +16,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import Group, User
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.files.base import ContentFile
 from django.core.cache import cache
 from django.db import transaction
@@ -48,7 +48,8 @@ from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_common.accounts.views import UserApprovalView
 from tom_targets.models import Target, TargetList, TargetName
 from tom_targets.permissions import targets_for_user
-from tom_targets.views import TargetCreateView, TargetListView as TOMTargetListView
+from tom_targets.tables import TargetTable
+from tom_targets.views import TargetCreateView, TargetDeleteView, TargetListView as TOMTargetListView, TargetMergeView
 from custom_code.facilities.soar_facility import user_can_access_soar
 from custom_code.filters import BrokerTargetFilter, TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2UserCreationForm, SpecSchedulingForm
@@ -129,7 +130,25 @@ class TNSTargets(FilterView):
             target.link = TNS_URL + target.name
         return context
 
+class AdminOnlyMixin(UserPassesTestMixin):
+    def test_func(self):
+        return self.request.user.is_superuser
+
+
+class SNExTargetMergeView(AdminOnlyMixin, TargetMergeView):
+    pass
+
+
+class SNExTargetDeleteView(AdminOnlyMixin, TargetDeleteView):
+    pass
+
+
+class SNExTargetTable(TargetTable):
+    partial_template_name = 'custom_code/partials/target_list_table.html'
+
+
 class TargetListView(TOMTargetListView):
+    table_class = SNExTargetTable
 
     def get_queryset(self, *args, **kwargs):
         queryset = super().get_queryset(*args, **kwargs)
