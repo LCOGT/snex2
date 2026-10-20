@@ -266,7 +266,7 @@ def download_archive_frame(basename):
     results = response.json().get('results', [])
     if not results:
         return None
-    download = requests.get(results[0]['url'], timeout=(30, 300))
+    download = requests.get(results[0]['url'], timeout=(30, None))
     if not download.ok:
         logger.error(f'LCO archive download of {basename} failed: {download.status_code}')
         return None
