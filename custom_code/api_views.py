@@ -56,15 +56,18 @@ class SNExTargetViewSet(TargetViewSet):
         if not can_view and not target.standard:
             return Response({'detail': 'A matching target exists but you do not have access to it.'},
                             status=status.HTTP_403_FORBIDDEN)
-        alias_added = None
-        new_name = str(request.data.get('name') or '').strip()
-        if matched_by == 'position' and new_name and can_change:
-            TargetName.objects.get_or_create(target=target, name=new_name)
-            alias_added = new_name
-            logger.info(f'Added alias {new_name} to target {target.id} ({target.name}) via API position match')
+        aliases_added = []
+        names = [request.data.get('name')] + [alias.get('name') for alias in request.data.get('aliases') or []
+                                              if isinstance(alias, dict)]
+        for new_name in names:
+            new_name = str(new_name or '').strip()
+            if new_name and can_change and not Target.matches.match_name(new_name).exists():
+                TargetName.objects.create(target=target, name=new_name)
+                aliases_added.append(new_name)
+                logger.info(f'Added alias {new_name} to target {target.id} ({target.name}) via API {matched_by} match')
 
         return Response({'id': target.id, 'name': target.name, 'standard': target.standard, 'matched_by': matched_by,
-                         'alias_added': alias_added, 'created': False,
+                         'aliases_added': aliases_added, 'created': False,
                          'message': 'Target already exists.'},
                         status=status.HTTP_200_OK)
 
