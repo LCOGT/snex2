@@ -1482,7 +1482,7 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
                       'reducer': version.value.get('reducer') or 'Unknown reducer',
                       'uploaded': (version.value.get('uploaded') or '')[:10],
                       'hash': version.reduction_version[:7]} for version in versions],
-        'can_delete': can_delete_spectrum(user, spectrum) if user else False,
+        'can_delete': can_delete_spectrum(user) if user else False,
         'has_fits': spec_extras.get('file_version') in (None, spectrum.reduction_version),
         'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
     }

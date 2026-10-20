@@ -159,8 +159,8 @@ def spectrum_comment_object(spectrum):
     return spectrum.data_product or spectrum
 
 
-def can_delete_spectrum(user, spectrum):
-    return user.is_superuser or (user.is_authenticated and spectrum.value.get('uploaded_by') == user.username)
+def can_delete_spectrum(user):
+    return user.is_superuser
 
 
 def viewable_dataproducts(user, queryset):

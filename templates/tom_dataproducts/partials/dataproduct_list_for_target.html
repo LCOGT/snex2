@@ -51,7 +51,7 @@
         <th>Type</th>
         <th>Date</th>
         {% if is_admin %}<th>Update</th>{% endif %}
-        <th>Delete</th>
+        {% if is_admin %}<th>Delete</th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -88,7 +88,7 @@
           {% endwith %}
         </td>
         {% if is_admin %}<td>{% dataproduct_update product %}</td>{% endif %}
-        <td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>
+        {% if is_admin %}<td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>{% endif %}
       </tr>
       {% endwith %}
       {% endif %}

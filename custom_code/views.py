@@ -42,7 +42,7 @@ from guardian.shortcuts import assign_perm, get_groups_with_perms, get_objects_f
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum, SpectroscopyReducedDatum
-from tom_dataproducts.views import DataProductUploadView
+from tom_dataproducts.views import DataProductDeleteView, DataProductUploadView
 from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
 from tom_observations.views import ObservationCreateView, ObservationListView
 from tom_common.accounts.views import UserApprovalView
@@ -140,6 +140,10 @@ class SNExTargetMergeView(AdminOnlyMixin, TargetMergeView):
 
 
 class SNExTargetDeleteView(AdminOnlyMixin, TargetDeleteView):
+    pass
+
+
+class SNExDataProductDeleteView(AdminOnlyMixin, DataProductDeleteView):
     pass
 
 
@@ -1473,10 +1477,18 @@ def cache_frame_view(request):
     return HttpResponse(status=204)
 
 
+@require_http_methods(['POST'])
+def delete_photometry_view(request, pk, datum_id):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can delete photometry')
+    get_object_or_404(PhotometryReducedDatum, pk=datum_id, target_id=pk).delete()
+    return HttpResponse('')
+
+
 def delete_spectrum_version_view(request, pk, spectrum_id):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
-    if request.method != 'POST' or not can_delete_spectrum(request.user, spectrum):
-        return HttpResponseForbidden('Only admins and the uploader can delete this version')
+    if request.method != 'POST' or not can_delete_spectrum(request.user):
+        return HttpResponseForbidden('Only admins can delete this version')
     product = spectrum.data_product
     spectrum.delete()
     remaining = SpectroscopyReducedDatum.objects.filter(data_product=product) if product else []
