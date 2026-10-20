@@ -298,6 +298,9 @@ class CustomTargetCreateView(TargetCreateView):
             **dict(self.request.GET.items())
         }
 
+    def get_success_url(self):
+        return f'{super().get_success_url()}?new=1'
+
 class CustomUserUpdateView(UserUpdateView):
 
     form_class = SNEx2UserCreationForm

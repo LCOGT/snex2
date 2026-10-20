@@ -51,6 +51,26 @@
 {% endblock %}
 {% block content %}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+{% if request.GET.new %}
+<div class="modal fade" id="new-target-tips" tabindex="-1" aria-labelledby="new-target-tips-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="new-target-tips-title">Tips for your new target</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong>1. Leave a brief comment</strong> saying why you added {{ object.name }} and any useful info about the discovery.</p>
+        <p><strong>2. Submit an observation</strong> from the Observations tab.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="new-target-comment">Add a comment</button>
+        <button type="button" class="btn btn-primary" id="new-target-observe">Go to Observations</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 <table class="header-table" cellpadding="0" cellspacing="0" style="background: #174460; font-family: 'Open Sans', sans-serif; color: white; width: 100vw; margin-left: calc(-1 * (100vw - 100%) / 2); margin-top: 0;">
   <tr height="89">
     <td align="left">
@@ -215,4 +235,27 @@
 {% block extra_javascript %}
 <script src="//aladin.cds.unistra.fr/AladinLite/api/v3/3.8.2/aladin.js" charset="utf-8" defer></script>
 <script src="{% static 'tom_targets/js/aladin_finderchart.js' %}" defer></script>
+{% if request.GET.new %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const element = document.getElementById('new-target-tips');
+  const modal = new bootstrap.Modal(element);
+  history.replaceState(null, '', window.location.pathname + window.location.hash);
+  document.getElementById('new-target-comment').addEventListener('click', function () {
+    element.addEventListener('hidden.bs.modal', function () {
+      const comment = document.getElementById('id_comment');
+      if (comment) { comment.scrollIntoView({block: 'center'}); comment.focus(); }
+    }, {once: true});
+    modal.hide();
+  });
+  document.getElementById('new-target-observe').addEventListener('click', function () {
+    element.addEventListener('hidden.bs.modal', function () {
+      document.getElementById('observations-tab').click();
+    }, {once: true});
+    modal.hide();
+  });
+  modal.show();
+});
+</script>
+{% endif %}
 {% endblock %}
