@@ -64,6 +64,8 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
             self.fields['groups'].label = "Visible to"
         self.fields.pop('gwfollowupgalaxy_id', None)
         self.fields.pop('standard', None)
+        self.fields.pop('shared_by', None)
+        self.fields.pop('shared_from', None)
 
     def save(self, commit=True):
         instance = super().save(commit=commit)

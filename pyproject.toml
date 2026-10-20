@@ -26,7 +26,7 @@ dependencies = [
     "tom_tns>=0.5.0",
     "sep",
     "requests_oauthlib",
-    "dash",
+    "dash<4.4.1",
     "whitenoise",
     "gevent>1.4",
     "gunicorn", 

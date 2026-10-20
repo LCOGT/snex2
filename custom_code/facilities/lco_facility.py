@@ -164,19 +164,19 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
                     ),
                     css_class='col-md-4'
                 ),
-                css_class='form-row'
+                css_class='row'
             ),
             Div(
                 Column(),
                 Column('retry_until_obtained'),
                 Column(),
-                css_class='form-row'
+                css_class='row'
             ),
             Div(
                 Column(),
                 Column('delay_start'),
                 Column(AppendedText('delay_amount', 'Days')),
-                css_class='form-row'
+                css_class='row'
             ),
             Layout('facility', 'target_id', 'observation_type'),
             self.layout(),
@@ -258,7 +258,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
         else:
             groups = Row('groups')
 
-        filter_container = Div(css_class='form-row', css_id='all-filters-div')
+        filter_container = Div(css_id='all-filters-div')
 
         for filter_name in self.filters:
             label_name = filter_name
@@ -283,20 +283,14 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
                 css_class='col-md-6'
             ),
             Div(
-                Div(
-                    Row('max_airmass'),
-                    Row(PrependedText('min_lunar_distance', '>')),
-                    Row('instrument_type'),
-                    Row('proposal'),
-                    Row('observation_mode'),
-                    Row('ipp_value'),
-                    Row(AppendedText('reminder', 'days')),
-                    css_class='form-row',
-                ),
-                Div(groups, css_class='form-row'),
+                Row(Column('max_airmass'), Column(PrependedText('min_lunar_distance', '>'))),
+                Row(Column('instrument_type'), Column('proposal')),
+                Row(Column('observation_mode'), Column('ipp_value')),
+                Row(Column(AppendedText('reminder', 'days')), Column()),
+                groups,
                 css_class='col-md-6'
             ),
-            css_class='form-row'
+            css_class='row'
         )
 
     def instrument_choices(self):
@@ -510,19 +504,19 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
                     ),
                     css_class='col-md-4'
                 ),
-                css_class='form-row'
+                css_class='row'
             ),
             Div(
                 Column(),
                 Column('retry_until_obtained'),
                 Column(),
-                css_class='form-row'
+                css_class='row'
             ),
             Div(
                 Column(),
                 Column('delay_start'),
                 Column(AppendedText('delay_amount', 'Days')),
-                css_class='form-row'
+                css_class='row'
             ),
             Layout('facility', 'target_id', 'observation_type'),
             self.layout(),
@@ -603,27 +597,21 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
             groups = Row('groups')
         return Div(
             Div(
-                Row('exposure_count'),
-                Row('exposure_time'),
-                Row('max_airmass'),
-                Row(PrependedText('min_lunar_distance', '>')),
-                Row('site'),
-                Row('filter'),
-                Row('guider_mode'),
-                Row('guider_exposure_time'),
-                Row('comment'),
+                Row(Column('exposure_count'), Column('exposure_time')),
+                Row(Column('max_airmass'), Column(PrependedText('min_lunar_distance', '>'))),
+                Row(Column('site'), Column('filter')),
+                Row(Column('guider_mode'), Column('guider_exposure_time')),
+                Row(Column('comment')),
                 css_class='col-md-6'
             ),
             Div(
-                Row('acquisition_radius'),
-                Row('proposal'),
-                Row('observation_mode'),
-                Row('ipp_value'),
-                Row(AppendedText('reminder', 'days')),
+                Row(Column('acquisition_radius'), Column('proposal')),
+                Row(Column('observation_mode'), Column('ipp_value')),
+                Row(Column(AppendedText('reminder', 'days')), Column()),
                 groups,
                 css_class='col-md-6'
             ),
-            css_class='form-row'
+            css_class='row'
         )
 
     def observation_payload(self):
