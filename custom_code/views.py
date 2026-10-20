@@ -567,6 +567,11 @@ def observation_sequence_cancel_view(request):
         logger.error('This sequence was not canceled', exc_info=True)
         return JsonResponse({'failure': 'This sequence was not canceled'})
 
+@login_required
+def observation_record_disabled_view(request, pk):
+    return HttpResponseForbidden('Disabled because it bypasses SNEx cadences. Use Stop Sequence on the target page.')
+
+
 def scheduling_row_view(request, observation_id):
     obs = get_object_or_404(ObservationRecord, id=observation_id)
     if obs.facility != 'LCO':

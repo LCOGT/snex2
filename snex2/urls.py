@@ -33,6 +33,8 @@ urlpatterns = [
     path('api/', include(api_router.urls)),
     path('targets/', TargetListView.as_view(), name='list'),
     path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
+    path('observations/<int:pk>/cancel/', observation_record_disabled_view),
+    path('observations/<int:pk>/update/', observation_record_disabled_view),
     path('', include('tom_common.urls')),
     path('view_object/', view_object_view, name='view-object'),
     path('redirect/', target_redirect_view, name='redirect'),
