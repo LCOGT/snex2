@@ -55,6 +55,17 @@ class SnexCadenceStrategyField(forms.ChoiceField):
         return super().valid_value(value) or value in self.extra_valid_values
 
 
+def shared_settings_layout(groups):
+    return Div(
+        Row(Column('max_airmass'), Column(PrependedText('min_lunar_distance', '>'))),
+        Row(Column('proposal'), Column('observation_mode')),
+        Row(Column('ipp_value'), Column(AppendedText('reminder', 'days'))),
+        Row(Column('comment')),
+        groups,
+        css_class='col-md'
+    )
+
+
 class InitialValue:
     exposure_count = 2
     block_num = 1
@@ -273,21 +284,14 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
 
         return Div(
             Div(
+                Row(Column('instrument_type')),
                 HTML('<div class="d-flex filter-header"><div class="filter-label-spacer"></div>'
                      '<div id="exp-time-header">Exposure Time</div><div id="exp-num-header">No. of Exposures</div>'
                      '<div id="block-no-header">Block No.</div></div>'),
                 filter_container,
-                Row('comment'),
-                css_class='col-md-6'
+                css_class='col-md-auto obs-left'
             ),
-            Div(
-                Row(Column('max_airmass'), Column(PrependedText('min_lunar_distance', '>'))),
-                Row(Column('instrument_type'), Column('proposal')),
-                Row(Column('observation_mode'), Column('ipp_value')),
-                Row(Column(AppendedText('reminder', 'days')), Column()),
-                groups,
-                css_class='col-md-6'
-            ),
+            shared_settings_layout(groups),
             css_class='row'
         )
 
@@ -594,16 +598,16 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         else:
             groups = Row('groups')
         return Div(
-            Row(Column('exposure_time', css_class='col-md-3'), Column('max_airmass', css_class='col-md-3'),
-                Column(PrependedText('min_lunar_distance', '>'), css_class='col-md-3'), Column('filter', css_class='col-md-3')),
-            Row(Column('guider_mode', css_class='col-md-3'), Column('guider_exposure_time', css_class='col-md-3'),
-                Column('acquisition_radius', css_class='col-md-3'), Column('proposal', css_class='col-md-3')),
-            Row(Column('observation_mode', css_class='col-md-3'), Column('ipp_value', css_class='col-md-3'),
-                Column(AppendedText('reminder', 'days'), css_class='col-md-3')),
-            Row(Column('comment')),
-            'exposure_count',
-            'site',
-            groups
+            Div(
+                Row(Column('exposure_time'), Column('filter')),
+                Row(Column('guider_mode'), Column('guider_exposure_time')),
+                Row(Column('acquisition_radius'), Column()),
+                'exposure_count',
+                'site',
+                css_class='col-md-auto obs-left'
+            ),
+            shared_settings_layout(groups),
+            css_class='row'
         )
 
     def observation_payload(self):

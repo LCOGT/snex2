@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 def user_can_access_soar(user):
     return bool(
         getattr(user, 'is_authenticated', False)
-        and user.groups.filter(name=SOAR_GROUP_NAME).exists()
+        and (user.is_superuser or user.groups.filter(name=SOAR_GROUP_NAME).exists())
     )
 
 class SOARObservationForm(SOARSpectroscopyObservationForm):
@@ -506,36 +506,22 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
 
         self.helper.layout = Layout(
             *hidden_layout,
+            HTML('<p>One-time SOAR submission using the default portal setup for each instrument.</p>'),
             Div(
-                HTML('<p>One-time SOAR submission using the default portal setup for each instrument.</p>'),
-                Row(
-                    Column('instrument_type', css_class='col-md-6'),
-                    Column('readout', css_class='col-md-6'),
+                Div(
+                    Row(Column('instrument_type'), Column('readout')),
+                    Row(Column('start'), Column('end')),
+                    Row(Column(PrependedText('exposure_time', 'Exposure Time')),
+                        Column(PrependedText('exposure_count', 'Exposure Count'))),
+                    css_class='col-md-auto obs-left'
                 ),
-                Row(
-                    Column(
-                        'start',
-                        css_class='col'
-                    ),
-                    Column(
-                        'end',
-                        css_class='col'
-                    ),
-                    css_class='form-row'
+                Div(
+                    Row(Column('max_airmass'), Column(PrependedText('min_lunar_distance', '>'))),
+                    Row(Column('proposal'), Column()),
+                    Row(Column('ipp_value'), Column()),
+                    css_class='col-md'
                 ),
-                Row(
-                    Column(PrependedText('exposure_time', 'Exposure Time'), css_class='col-md-6'),
-                    Column(PrependedText('exposure_count', 'Exposure Count'), css_class='col-md-6'),
-                ),
-                Row(
-                    Column(PrependedText('max_airmass', '<'), css_class='col-md-6'),
-                    Column(PrependedText('min_lunar_distance', '>'), css_class='col-md-6'),
-                ),
-                Row(
-                    Column('ipp_value', css_class='col-md-6'),
-                    Column('proposal', css_class='col-md-6'),
-                ),
-                css_class='col-12'
+                css_class='row'
             ),
             self.button_layout()
         )
