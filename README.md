@@ -4,7 +4,7 @@ The Supernova Exchange (3.0) is an interface for viewing and sharing observation
 data of supernovae, and for requesting and managing observations
 with the [LCO](https://lco.global/) network.
 
-SNEx 2.0 is currently live at [supernova.exchange](https://supernova.exchange/). Most pages are private (proprietary data), but the "TNS Targets" page is public.
+SNEx 3.0 is currently live at [supernova.exchange](https://supernova.exchange/). Most pages are private (proprietary data), but the "TNS Targets" page is public.
 
 ## License
 
