@@ -10,6 +10,10 @@
     <label for="phot-end" class="fw-bold">End Date:</label>
     <input type="date" id="phot-end" class="form-control phot-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
+  <div class="col-md-2">
+    <label for="phot-basename" class="fw-bold">Frame:</label>
+    <input type="search" id="phot-basename" class="form-control" placeholder="Search basename" autocomplete="off">
+  </div>
   <div class="col-md-1">
     <label for="phot-band" class="fw-bold">Filter:</label>
     <select id="phot-band" class="form-control phot-filter">
@@ -159,6 +163,7 @@
 
   function applyFilters() {
     const start = val('phot-start'), end = val('phot-end'), band = val('phot-band'), inst = val('phot-instrument'), type = val('phot-type');
+    const basename = val('phot-basename').trim().toLowerCase();
     const algorithmGroup = document.getElementById('phot-algorithm-group');
     algorithmGroup.style.visibility = type === 'subtracted' ? 'visible' : 'hidden';
     const algorithm = type === 'subtracted' ? val('phot-algorithm') : '';
@@ -166,14 +171,16 @@
       const d = r.dataset.date;
       const show = (!start || d >= start) && (!end || d <= end) &&
                    (!band || r.dataset.band === band) && (!inst || r.dataset.instrument === inst) &&
-                   (!type || r.dataset.type === type) && (!algorithm || r.dataset.algorithm === algorithm);
+                   (!type || r.dataset.type === type) && (!algorithm || r.dataset.algorithm === algorithm) &&
+                   (!basename || r.dataset.basename.toLowerCase().includes(basename));
       r.style.display = show ? '' : 'none';
     });
   }
   document.querySelectorAll('.phot-filter').forEach((el) => el.addEventListener('change', applyFilters));
+  document.getElementById('phot-basename').addEventListener('input', applyFilters);
   document.getElementById('phot-clear').addEventListener('click', function () {
     ['phot-start', 'phot-end'].forEach((id) => { const el = document.getElementById(id); el.value = el.defaultValue; });
-    ['phot-band', 'phot-instrument', 'phot-type', 'phot-algorithm'].forEach((id) => { document.getElementById(id).value = ''; });
+    ['phot-basename', 'phot-band', 'phot-instrument', 'phot-type', 'phot-algorithm'].forEach((id) => { document.getElementById(id).value = ''; });
     applyFilters();
   });
   document.getElementById('phot-select-all').addEventListener('change', function (ev) {
