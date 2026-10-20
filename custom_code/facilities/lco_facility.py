@@ -265,7 +265,7 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
             if filter_name == 'muscat_filter':
                 label_name = 'gp, rp, ip, zs'
             filter_container.append(
-                Row(
+                Div(
                     PrependedText(filter_name, label_name),
                     css_id=f'row_{filter_name}'
                 )
@@ -273,11 +273,9 @@ class SnexPhotometricSequenceForm(LCOPhotometricSequenceForm):
 
         return Div(
             Div(
-                Row(
-                    Column(HTML('Exposure Time'), css_id='exp-time-header'),
-                    Column(HTML('No. of Exposures'), css_id='exp-num-header'),
-                    Column(HTML('Block No.'), css_id='block-no-header')
-                ),
+                HTML('<div class="d-flex filter-header"><div class="filter-label-spacer"></div>'
+                     '<div id="exp-time-header">Exposure Time</div><div id="exp-num-header">No. of Exposures</div>'
+                     '<div id="block-no-header">Block No.</div></div>'),
                 filter_container,
                 Row('comment'),
                 css_class='col-md-6'
@@ -596,22 +594,16 @@ class SnexSpectroscopicSequenceForm(LCOSpectroscopicSequenceForm):
         else:
             groups = Row('groups')
         return Div(
-            Div(
-                Row(Column('exposure_count'), Column('exposure_time')),
-                Row(Column('max_airmass'), Column(PrependedText('min_lunar_distance', '>'))),
-                Row(Column('site'), Column('filter')),
-                Row(Column('guider_mode'), Column('guider_exposure_time')),
-                Row(Column('comment')),
-                css_class='col-md-6'
-            ),
-            Div(
-                Row(Column('acquisition_radius'), Column('proposal')),
-                Row(Column('observation_mode'), Column('ipp_value')),
-                Row(Column(AppendedText('reminder', 'days')), Column()),
-                groups,
-                css_class='col-md-6'
-            ),
-            css_class='row'
+            Row(Column('exposure_time', css_class='col-md-3'), Column('max_airmass', css_class='col-md-3'),
+                Column(PrependedText('min_lunar_distance', '>'), css_class='col-md-3'), Column('filter', css_class='col-md-3')),
+            Row(Column('guider_mode', css_class='col-md-3'), Column('guider_exposure_time', css_class='col-md-3'),
+                Column('acquisition_radius', css_class='col-md-3'), Column('proposal', css_class='col-md-3')),
+            Row(Column('observation_mode', css_class='col-md-3'), Column('ipp_value', css_class='col-md-3'),
+                Column(AppendedText('reminder', 'days'), css_class='col-md-3')),
+            Row(Column('comment')),
+            'exposure_count',
+            'site',
+            groups
         )
 
     def observation_payload(self):
