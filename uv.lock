@@ -3917,6 +3917,7 @@ dependencies = [
     { name = "requests-oauthlib" },
     { name = "sep" },
     { name = "slack-sdk" },
+    { name = "sqlalchemy" },
     { name = "tom-alertstreams" },
     { name = "tom-nonlocalizedevents" },
     { name = "tom-tns" },
