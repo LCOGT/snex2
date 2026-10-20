@@ -35,7 +35,7 @@ def photlco_value(row):
     }
     if value['background_subtracted']:
         value['reduction_type'] = 'manual'
-        value['template_source'] = 'SDSS' if row.filename and 'SDSS' in row.filename else 'LCO'
+        value['template_source'] = next((source for source in ('SDSS', 'PS1') if source in (row.filename or '')), 'LCO')
         algorithm = {0: 'Hotpants', 1: 'PyZOGY'}.get(row.difftype)
         if algorithm:
             value['subtraction_algorithm'] = algorithm
