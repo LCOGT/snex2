@@ -42,12 +42,12 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
         initial=2,
         min_value=1,
         required=False,
-        label='',
+        label='Exposure count',
         widget=forms.NumberInput(attrs={'min': 1})
     )
     exposure_time = forms.FloatField(
         min_value=0.1,
-        label='',
+        label='Exposure time',
         widget=forms.TextInput(attrs={'placeholder': 'Seconds'})
     )
     observation_mode = forms.ChoiceField(
@@ -511,8 +511,7 @@ class SOARObservationForm(SOARSpectroscopyObservationForm):
                 Div(
                     Row(Column('instrument_type'), Column('readout')),
                     Row(Column('start'), Column('end')),
-                    Row(Column(PrependedText('exposure_time', 'Exposure Time')),
-                        Column(PrependedText('exposure_count', 'Exposure Count'))),
+                    Row(Column('exposure_time'), Column('exposure_count')),
                     css_class='col-md-auto obs-left'
                 ),
                 Div(

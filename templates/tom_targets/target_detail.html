@@ -51,6 +51,29 @@
 {% endblock %}
 {% block content %}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+  const updateUrlWithTab = (tabId) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tabId);
+    history.replaceState({}, document.title, url.toString());
+  };
+
+  document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll('#tabs .nav-link').forEach(tab => {
+      tab.addEventListener('click', function() {
+        updateUrlWithTab(this.id.replace('-tab', ''));
+      });
+    });
+
+    const tabQuery = new URL(window.location.href).searchParams.get('tab');
+    if (tabQuery) {
+      const tabElement = document.querySelector(`#tabs a[href="#${tabQuery}"]`);
+      if (tabElement) {
+        tabElement.click();
+      }
+    }
+  });
+</script>
 {% if request.GET.new %}
 <div class="modal fade" id="new-target-tips" tabindex="-1" aria-labelledby="new-target-tips-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
