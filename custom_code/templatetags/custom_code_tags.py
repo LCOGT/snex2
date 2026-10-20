@@ -257,7 +257,7 @@ def get_color(filter_name, filter_translate):
 def generic_lightcurve_plot(target, user, subtracted=None):
     """
     Writing a generic function to return the data to plot
-    for the different light curve applications SNEx2 uses
+    for the different light curve applications SNEx uses
     """
     
     filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
@@ -1378,7 +1378,7 @@ def spectra_list(context, target):
         'submitter': request.user,
         'target': target,
         'data_type': 'spectroscopy',
-        'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'SNEx2')}."
+        'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'SNEx')}."
     }
     form = DataShareForm(initial=initial)
     form.fields['data_type'].widget = forms.HiddenInput()

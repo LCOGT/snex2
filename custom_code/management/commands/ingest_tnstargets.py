@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     
-    help = 'Ingests TNS Targets into SNEx2'
+    help = 'Ingests TNS Targets into SNEx'
 
     def handle(self, *args, **kwargs):
 

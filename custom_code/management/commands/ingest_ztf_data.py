@@ -104,7 +104,7 @@ def delete_ztf_data(target):
 
 class Command(BaseCommand):
 
-    help = 'Imports ZTF photometry into SNEx2'
+    help = 'Imports ZTF photometry into SNEx'
 
     def add_arguments(self, parser):
         parser.add_argument('--target_id', help = 'Ingest data for this target')
