@@ -69,7 +69,7 @@
     if (tabQuery) {
       const tabElement = document.querySelector(`#tabs a[href="#${tabQuery}"]`);
       if (tabElement) {
-        tabElement.click();
+        setTimeout(() => tabElement.click(), 0);
       }
     }
   });

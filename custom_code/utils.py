@@ -259,14 +259,14 @@ def unsubtracted_q():
 def download_archive_frame(basename):
     response = requests.get(settings.FACILITIES['LCO']['archive_url'],
                             headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"},
-                            params={'basename_exact': basename, 'include_related_frames': False})
+                            params={'basename_exact': basename, 'include_related_frames': False}, timeout=(30, 120))
     if not response.ok:
         logger.error(f'LCO archive lookup for {basename} failed: {response.status_code} {response.text[:200]}')
         return None
     results = response.json().get('results', [])
     if not results:
         return None
-    download = requests.get(results[0]['url'])
+    download = requests.get(results[0]['url'], timeout=(30, 300))
     if not download.ok:
         logger.error(f'LCO archive download of {basename} failed: {download.status_code}')
         return None

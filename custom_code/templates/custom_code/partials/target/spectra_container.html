@@ -2,6 +2,17 @@
 <style>
   .comment-row { transition: background-color .15s; }
   .comment-row:has(.comment-delete:hover) { background-color: #f8d7da; }
+  #spectra-tbody > tr > td:first-child .btn-sm,
+  #spectra-tbody > tr > td:first-child .form-select-sm,
+  #spectra-tbody > tr > td:first-child .form-control-sm {
+    font-size: 1rem;
+    padding-top: .15rem;
+    padding-bottom: .15rem;
+  }
+  #spectra-tbody > tr > td:first-child .btn-sm {
+    padding-left: .35rem;
+    padding-right: .35rem;
+  }
 </style>
 
 <form method="POST" action="{% url 'tom_dataproducts:share_all' tg_pk=target.id %}" enctype="multipart/form-data" id="spectroscopy-data-share-form">
