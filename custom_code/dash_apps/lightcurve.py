@@ -10,12 +10,11 @@ from tom_dataproducts.models import DataProduct, ReducedDatum
 from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
-from custom_code.utils import measured, viewable_dataproducts
+from custom_code.utils import measured, photometry_data_type, viewable_dataproducts, viewable_reduceddatums
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
 from astropy.time import Time
-from guardian.shortcuts import get_objects_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -256,23 +255,20 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
 
         if de_value.get('instrument', '') in selected_telescope and de_value.get('reducer_group', '') in selected_groups:
             dp_id = de.data_product_id
-            datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                               klass=ReducedDatum.objects.filter(
-                                                   target=target, data_type='photometry',
-                                                   data_product_id=dp_id, value__has_key='filter')))
+            datums.append(viewable_reduceddatums(user, ReducedDatum.objects.filter(
+                target=target, data_type=photometry_data_type(target),
+                data_product_id=dp_id, value__has_key='filter')))
 
     ### Finally, get the data that was uploaded by the pipeline
     if 'LCO' in selected_telescope and '' in selected_groups:
         uploaded_products = [de.data_product_id for de in datumextras if de.value.get('instrument')]
-        datums.append(get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                           klass=ReducedDatum.objects.filter(
-                                               target=target, data_type='photometry',
-                                               value__has_key='filter').exclude(data_product_id__in=uploaded_products)))
+        datums.append(viewable_reduceddatums(user, ReducedDatum.objects.filter(
+            target=target, data_type=photometry_data_type(target),
+            value__has_key='filter').exclude(data_product_id__in=uploaded_products)))
     
     ### Plot the data
-    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                klass=ReducedDatum.objects.filter(
-                                    target=target, data_type='spectroscopy'))
+    spec = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+        target=target, data_type='spectroscopy'))
         
     for data in datums:
         for rd in data:

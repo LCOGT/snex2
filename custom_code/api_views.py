@@ -3,8 +3,6 @@ import logging
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Q
-from guardian.shortcuts import get_objects_for_user
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.mixins import UpdateModelMixin
@@ -22,7 +20,7 @@ from custom_code.processors.data_processor import run_custom_data_processor
 from custom_code.processors.spectroscopy_processor import SpecProcessor
 from custom_code.scheduling import save_comments
 from custom_code.serializers import SNExDataProductSerializer, SNExReducedDatumSerializer, SNExTargetSerializer
-from custom_code.utils import groups_from_payload, set_dataproduct_view_groups
+from custom_code.utils import groups_from_payload, set_dataproduct_view_groups, viewable_reduceddatums
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +77,7 @@ class SNExReducedDatumViewSet(UpdateModelMixin, ReducedDatumViewSet):
         queryset = super().get_queryset()
         if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
             return queryset
-        viewable = get_objects_for_user(self.request.user, 'tom_dataproducts.view_reduceddatum', klass=queryset)
-        return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(data_type='photometric_standard'))
+        return viewable_reduceddatums(self.request.user, queryset)
 
     def destroy(self, request, *args, **kwargs):
         if not request.user.is_superuser:
@@ -105,9 +102,6 @@ class SNExDataProductViewSet(DataProductViewSet):
             groups = groups_from_payload(json.loads(groups) if isinstance(groups, str) else groups)
         except (ValueError, AttributeError, TypeError):
             return Response({'groups': ['Expected a list of {"name": ...} objects.']}, status=status.HTTP_400_BAD_REQUEST)
-        if str(data.get('target')).isdigit() and Target.objects.filter(pk=data.get('target'), standard=True).exists() and data.get('data_product_type') in (
-                'raw_spectrum', 'spectroscopy'):
-            return Response({'target': ['Spectra of standards are not stored in SNEx.']}, status=status.HTTP_400_BAD_REQUEST)
 
         posted = {key: data[key] for key in SpecProcessor.field_keywords if data.get(key)}
         try:

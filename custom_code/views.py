@@ -67,7 +67,7 @@ from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSSubmitView
-from custom_code.utils import datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import datum_value, photometry_data_type, viewable_reduceddatums, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -468,6 +468,7 @@ def set_target_standard_view(request):
     standard = request.POST.get('standard') == 'true'
     with transaction.atomic():
         target.standard = standard
+        target.permissions = Target.Permissions.PUBLIC if standard else Target.Permissions.PRIVATE
         if standard:
             target.classification = 'Standard'
         elif target.classification == 'Standard':
@@ -1162,9 +1163,7 @@ def load_airmass_plot_view(request, pk):
 
 def _spectrum_for_user(request, pk, spectrum_id):
     target = _target_for_user(request, pk)
-    spectrum = get_objects_for_user(
-        request.user, 'tom_dataproducts.view_reduceddatum',
-        klass=ReducedDatum.objects.filter(id=spectrum_id, target=target, data_type='spectroscopy')).first()
+    spectrum = viewable_reduceddatums(request.user, ReducedDatum.objects.filter(id=spectrum_id, target=target, data_type='spectroscopy')).first()
     if spectrum is None:
         raise Http404('Spectrum not found or not visible to this user')
     return target, spectrum
@@ -1681,14 +1680,12 @@ def download_photometry_view(request, targetid):
     target = Target.objects.get(id=int(targetid))
 
     if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
+        datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
 
     else:
-        datums = get_objects_for_user(user,
-                                      'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(
-                                        target=target,
-                                        data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+        datums = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+            target=target,
+            data_type=photometry_data_type(target)))
 
     if 'datum_ids' in request.POST:
         datums = datums.filter(pk__in=json.loads(request.POST['datum_ids']))

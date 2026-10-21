@@ -5,7 +5,7 @@ from dash import html
 import plotly.graph_objs as go
 import numpy as np
 import json
-from guardian.shortcuts import get_objects_for_user
+from custom_code.utils import viewable_reduceddatums
 from tom_targets.models import Target
 from django.contrib.auth.models import User
 import logging
@@ -321,8 +321,8 @@ def display_output(selected_rows,
                       'layout': []}
 
     # If the page just loaded, plot all the spectra
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=ReducedDatum.objects.filter(
-                                                         target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectral_dataproducts = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+        target=target, data_type='spectroscopy')).order_by('timestamp')
     if not spectral_dataproducts:
         return 'No spectra yet'
 

@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import photometry_data_type, datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.utils import photometry_data_type, viewable_reduceddatums, datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -267,14 +267,12 @@ def generic_lightcurve_plot(target, user, subtracted=None):
     photometry_data = {}
 
     if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
+        datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
     
     else:
-        datums = get_objects_for_user(user,
-                                      'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(
-                                        target=target,
-                                        data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+        datums = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+            target=target,
+            data_type=photometry_data_type(target)))
     for rd in datums:
         value = rd.value
         if not value:  # empty
@@ -315,10 +313,9 @@ def lightcurve_collapse(target, user):
     
     plot_data = generic_lightcurve_plot(target, user)   
 
-    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                klass=ReducedDatum.objects.filter(
-                                    target=target,
-                                    data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0])) 
+    spec = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+        target=target,
+        data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0])) 
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -428,9 +425,8 @@ def bin_spectra(waves, fluxes, b):
 def spectra_plot(context, target, dataproduct=None):
     user = context['request'].user
     spectra = []
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                 klass=ReducedDatum.objects.filter(
-                                                     target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectral_dataproducts = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+        target=target, data_type='spectroscopy')).order_by('timestamp')
     
     if dataproduct:
         spectral_dataproducts = DataProduct.objects.get(dataproduct=dataproduct)
@@ -496,9 +492,8 @@ def spectra_plot(context, target, dataproduct=None):
 @register.inclusion_tag('custom_code/spectra_collapse.html')
 def spectra_collapse(target,user):
     spectra = []
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                 klass=ReducedDatum.objects.filter(
-                                                     target=target, data_type='spectroscopy')).order_by('-timestamp')
+    spectral_dataproducts = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+        target=target, data_type='spectroscopy')).order_by('-timestamp')
     for spectrum in spectral_dataproducts:
         datum = spectrum.value
         wavelength = []
@@ -722,8 +717,7 @@ def dash_lightcurve(context, target, height):
         frame_height = f'{400 + LIGHTCURVE_CONTROLS_HEIGHT}px'
 
     frames = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target), value__has_key='basename')
-    viewable = frames if settings.TARGET_PERMISSIONS_ONLY or target.standard else get_objects_for_user(
-        user, 'tom_dataproducts.view_reduceddatum', klass=frames)
+    viewable = frames if settings.TARGET_PERMISSIONS_ONLY else viewable_reduceddatums(user, frames)
     viewable_ids = set(viewable.values_list('pk', flat=True))
     raw_frames, reduced_frames, viewable_frames = set(), set(), set()
     for pk, value in frames.values_list('pk', 'value'):
@@ -752,9 +746,8 @@ def dash_spectra(context, target):
 
     ### Send the min and max flux values 
     user = User.objects.get(username=request.user)
-    spectral_dataproducts = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                                 klass=ReducedDatum.objects.filter(
-                                                     target=target, data_type='spectroscopy'))
+    spectral_dataproducts = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+        target=target, data_type='spectroscopy'))
     dash_context = {'target_id': {'value': target.id},
                     'user_id': {'value': user.id},
                     'target_redshift': {'value': z},
@@ -809,8 +802,8 @@ def dash_spectra(context, target):
 def photometry_data_list(context, target):
     user = context['request'].user
     datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
-    if not settings.TARGET_PERMISSIONS_ONLY and not target.standard:
-        datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=datums)
+    if not settings.TARGET_PERMISSIONS_ONLY:
+        datums = viewable_reduceddatums(user, datums)
     visible = reduceddatum_view_groups(datums) if user.is_superuser else {}
     datums = list(datums.order_by('-timestamp'))
     rows = []
@@ -863,7 +856,7 @@ def photometric_standards_list(context, target):
     user = context['request'].user
     photometry = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename')
     if not settings.TARGET_PERMISSIONS_ONLY:
-        photometry = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=photometry)
+        photometry = viewable_reduceddatums(user, photometry)
     exact_setups, site_setups, times = set(), set(), []
     for value, timestamp in photometry.values_list('value', 'timestamp'):
         exact, site = _frame_setups(value['basename'], value.get('filter'))
@@ -1449,9 +1442,7 @@ def spectra_list(context, target):
     sharing = getattr(settings, "DATA_SHARING", None)
     hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
 
-    spectra = get_objects_for_user(
-        request.user, 'tom_dataproducts.view_reduceddatum',
-        klass=ReducedDatum.objects.filter(target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectra = viewable_reduceddatums(request.user, ReducedDatum.objects.filter(target=target, data_type='spectroscopy')).order_by('timestamp')
 
     extras = {
         row.data_product_id: row.value or {}
@@ -1857,13 +1848,11 @@ def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
     photometry_data = {}
 
     if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=settings.DATA_PRODUCT_TYPES['photometry'][0])
+        datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
     else:
-        datums = get_objects_for_user(user,
-                                      'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(
-                                        target=target,
-                                        data_type=settings.DATA_PRODUCT_TYPES['photometry'][0]))
+        datums = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+            target=target,
+            data_type=photometry_data_type(target)))
 
     for rd in datums:
         value = rd.value
@@ -2006,10 +1995,9 @@ def lightcurve_with_extras(target, user, subtracted=False):
         'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
         'UVW1': 'UVW1'}
     plot_data = generic_lightcurve_plot(target, user, subtracted)
-    spec = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                klass=ReducedDatum.objects.filter(
-                                    target=target,
-                                    data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0]))
+    spec = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+        target=target,
+        data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0]))
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -2223,12 +2211,10 @@ def broker_target_lightcurve(target):
 def snex2_get_photometry_data(context, target, target_share=False):
 
     user = context['request'].user
-    photometry = get_objects_for_user(user,
-                                  'tom_dataproducts.view_reduceddatum',
-                                  klass=ReducedDatum.objects.filter(
-                                    target=target,
-                                    data_type=settings.DATA_PRODUCT_TYPES['photometry'][0],
-                                    value__has_key='filter')).order_by('timestamp')
+    photometry = viewable_reduceddatums(user, ReducedDatum.objects.filter(
+        target=target,
+        data_type=photometry_data_type(target),
+        value__has_key='filter')).order_by('timestamp')
     data = []
     for reduced_datum in photometry:
         if 'limit' not in reduced_datum.value and measured(reduced_datum.value.get('magnitude')) is None:
@@ -2333,9 +2319,7 @@ def time_usage_bars(context, telescope):
 def tns_generated_ascii_choice(context, form):
     request = context.request
     kwargs = request.resolver_match.kwargs
-    spectrum = get_objects_for_user(
-        request.user, 'tom_dataproducts.view_reduceddatum',
-        klass=ReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'], data_type='spectroscopy')).first()
+    spectrum = viewable_reduceddatums(request.user, ReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'], data_type='spectroscopy')).first()
     if spectrum is not None and spectrum_ascii(spectrum) is not None:
         value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'
         form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + list(form.fields['ascii_file'].choices)

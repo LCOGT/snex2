@@ -90,4 +90,6 @@ class SNExTargetSerializer(TargetSerializer):
             raise serializers.ValidationError(
                 {'duplicate': {'id': target.id, 'name': target.name, 'matched_by': matched_by}}
             )
+        if data.get('standard', inst.standard if inst else False):
+            data['permissions'] = Target.Permissions.PUBLIC
         return data

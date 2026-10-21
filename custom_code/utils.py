@@ -116,12 +116,23 @@ def sync_group_permissions_to_target(obs_group, records, target):
             assign_perm(f'tom_observations.change_{codename_model}', group, obj)
             assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
+def standard_target_ids():
+    from tom_targets.models import Target
+    return Target.objects.filter(standard=True).values('pk')
+
+
+def viewable_reduceddatums(user, queryset):
+    viewable = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=queryset)
+    return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(target_id__in=standard_target_ids()))
+
+
 def viewable_dataproducts(user, queryset):
     from tom_dataproducts.models import ReducedDatum
     direct = get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset)
     via_datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
                                       klass=ReducedDatum.objects.filter(data_product__in=queryset))
-    return queryset.filter(Q(pk__in=direct.values('pk')) | Q(pk__in=via_datums.values('data_product_id')))
+    return queryset.filter(Q(pk__in=direct.values('pk')) | Q(pk__in=via_datums.values('data_product_id'))
+                           | Q(target_id__in=standard_target_ids()))
 
 
 def dataproduct_view_groups(dp):
