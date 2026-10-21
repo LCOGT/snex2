@@ -46,7 +46,7 @@ class Command(BaseCommand):
 
         ### Get the active Key Project proposal and query the observation portal for time used
 
-        token = os.environ['LCO_APIKEY']
+        token = os.environ['LCO_API_KEY']
 
         proposals = requests.get('https://observe.lco.global/api/proposals?active=True&limit=50/',
                                  headers={'Authorization': 'Token ' + token}).json()

@@ -2,13 +2,11 @@
 
 import healpy as hp 
 import numpy as np
-from astropy.io import fits
 from astropy.table import Table
 from configparser import ConfigParser
 from scipy.stats import norm
 #from scipy.special import gammaincinv
 #from scipy.special import gammaincc
-from ligo.skymap import distance
 
 from gw.models import GWFollowupGalaxy
 import os

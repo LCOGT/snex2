@@ -1,7 +1,5 @@
-from lasair import LasairError, lasair_client as lasair
+from lasair import lasair_client as lasair
 import os
-import json
-from astropy.time import Time
 from datetime import datetime, timedelta
 import logging
 

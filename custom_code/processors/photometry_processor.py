@@ -1,5 +1,5 @@
+import math
 import mimetypes
-import json
 
 from astropy import units
 from astropy.io import ascii
@@ -17,7 +17,7 @@ class PhotometryProcessor(DataProcessor):
         mimetype = mimetypes.guess_type(data_product.data.name)[0]
         if mimetype in self.PLAINTEXT_MIMETYPES:
             photometry, rd_extras = self._process_photometry_from_plaintext(data_product, extras, rd_extras)
-            return [(datum.pop('timestamp'), json.dumps(datum)) for datum in photometry], rd_extras
+            return [(datum.pop('timestamp'), datum) for datum in photometry], rd_extras
         else:
             raise InvalidFileFormatException('Unsupported file type')
 
@@ -49,9 +49,9 @@ class PhotometryProcessor(DataProcessor):
             time.format = 'datetime'
             value = {
                 'timestamp': time.to_datetime(timezone=utc),
-                'magnitude': datum['magnitude'],
-                'filter': datum['filter'],
-                'error': datum['error']
+                'magnitude': float(datum['magnitude']) if math.isfinite(float(datum['magnitude'])) else None,
+                'filter': str(datum['filter']),
+                'error': float(datum['error']) if math.isfinite(float(datum['error'])) else None
             }
             value.update(extras)
 

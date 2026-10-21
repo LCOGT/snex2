@@ -1,9 +1,7 @@
-import dash
 from dash.dependencies import Input, Output, State
-import dash_table
 import dash_bootstrap_components as dbc
-import dash_core_components as dcc
-import dash_html_components as html
+from dash import dcc
+from dash import html
 import plotly.graph_objs as go
 import numpy as np
 import json
@@ -24,7 +22,6 @@ from django.templatetags.static import static
 import matplotlib.pyplot as plt
 from custom_code.dash_apps.spectra_utils import elements, calculate_flux_range
 
-external_stylesheets = [dbc.themes.BOOTSTRAP]
 
 app = DjangoDash(name='Spectra', add_bootstrap_links=True, suppress_callback_exceptions=True)   # replaces dash.Dash
 app.css.append_css({'external_url': static('custom_code/css/dash.css')})

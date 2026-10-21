@@ -5,9 +5,8 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from django.conf import settings
 from django import forms
-from dateutil.parser import parse
 from crispy_forms.layout import Layout, Div, HTML
-from crispy_forms.bootstrap import PrependedAppendedText, PrependedText, InlineRadios
+from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
 from tom_observations.facility import BaseObservationForm
 from tom_observations.facility import BaseRoboticObservationFacility
@@ -438,15 +437,13 @@ class GeminiFacility(BaseRoboticObservationFacility):
             url = server + '/too'
             params = observation_payloads[payload]
             response = requests.post(url, verify=False, params=params)
-            print(response.url)
             try:
                 response.raise_for_status()
                 newobsid = response.text
                 new_observation_ids.append(newobsid)
-                print(newobsid + ' created and set On Hold')
+                logger.info(newobsid + ' created and set On Hold')
             except requests.exceptions.HTTPError as exc:
-                print('Request failed: ')
-                print(response.content)
+                logger.error(f'Gemini request failed: {response.content}')
                 raise exc
         
         return new_observation_ids
