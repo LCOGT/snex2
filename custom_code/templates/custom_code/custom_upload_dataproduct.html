@@ -5,11 +5,6 @@
     font-size: 16px;
 }
 
-#id_photometry_type {
-    list-style: none;
-    font-size: 16px;
-}
-
 #id_instrument_0 {
     list-style: none;
     font-size: 16px;
@@ -33,7 +28,7 @@
 <h4>Upload a data product</h4>
 <form method="POST" action="{% url "custom-data-upload" %}" enctype="multipart/form-data">
   {% csrf_token %}
-  {% bootstrap_form data_product_form exclude='data_product_type,photometry_type,instrument,background_subtracted,subtraction_algorithm,reducer_group,used_in,final_reduction,template_source,telescope,exposure_time,slit,date_obs,groups' %}
+  {% bootstrap_form data_product_form exclude='data_product_type,instrument,background_subtracted,subtraction_algorithm,reducer_group,final_reduction,template_source,telescope,exposure_time,slit,date_obs,groups' %}
   <div class="row">
     <div class="column" id="column-dataproducttype" style="width: 20%;">
       {{ data_product_form.data_product_type.label_tag }}</br>
@@ -47,19 +42,11 @@
       Reducer:</br>
       {{ data_product_form.reducer_group }}
     </div>
-    <div class="column" id="column-usedin" style="width: 20%;">
-      {{ data_product_form.used_in.label_tag }}</br>
-      {{ data_product_form.used_in }}
-    </div>
     <div class="column" id="column-finalreduction" style="width: 20%;">
       {{ data_product_form.final_reduction }} Final Reduction?</br>
     </div>
   </div>
   <div class="row" style="padding-bottom: 20px;">
-    <div class="column" id="column-photometrytype" style="width: 25%; display: none;">
-      {{ data_product_form.photometry_type.label_tag }}</br>
-      {{ data_product_form.photometry_type }}
-    </div>
     <div class="column" id="column-background" style="width: 25%; display: none;">
       <div class="row" id="row-background" style="display: block;">
         {{ data_product_form.background_subtracted }} Background Subtracted?</br>
@@ -108,13 +95,11 @@
 <script>
   $(document).ready(function() {
     $('#id_data_product_type_0').change(function() {
-      document.getElementById("column-photometrytype").style.display = "block";
       document.getElementById("column-background").style.display = "block";
       document.getElementById("spec-row").style.display = "none";
     });
     $('#id_data_product_type_1').change(function() {
       document.getElementById("spec-row").style.display = "flex";
-      document.getElementById("column-photometrytype").style.display = "none";
       document.getElementById("column-background").style.display = "none";
     });
   });

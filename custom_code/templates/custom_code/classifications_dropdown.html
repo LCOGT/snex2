@@ -54,7 +54,6 @@
     var targetid = {{ target.id }};
     var new_class = classification; //$('#classification--' + classification).val();
     document.getElementById("class-display-btn").innerHTML=new_class;
-    console.log(targetid, new_class);
     
     var newdata = {
       "key": "classification",
@@ -68,7 +67,6 @@
       contentType: "application/json",
       dataType: "json",
       success: function(response) {
-        console.log("Classification synced for target: ",targetid,new_class,response)
       },
       error: function(e) {
         console.log("Error syncing classification for target: ",targetid,new_class,e);

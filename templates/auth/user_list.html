@@ -15,4 +15,53 @@
 {% user_list %}
 <hr/>
 {% group_list %}
+{% if request.user.is_superuser %}
+<hr/>
+<div class="card mb-4" style="max-width: 640px;">
+  <div class="card-header"><h4 class="mb-0">API Token</h4></div>
+  <div class="card-body">
+    <p class="card-text text-muted">Lets a script use the SNEx API as {{ request.user.username }} without a password.</p>
+    <div class="input-group">
+      <input type="text" class="form-control" id="api-token" data-token="{{ request.user.auth_token.key }}" value="" readonly aria-label="API token">
+      <div class="input-group-append">
+        <button type="button" class="btn btn-outline-secondary" id="api-token-show">Show</button>
+        <button type="button" class="btn btn-outline-secondary" id="api-token-copy" disabled>Copy</button>
+      </div>
+    </div>
+    <button type="button" class="btn btn-link text-danger px-0 mt-2" id="api-token-replace">Replace with a new token</button>
+  </div>
+</div>
+<script>
+(function () {
+  const token = document.getElementById('api-token');
+  const show = document.getElementById('api-token-show');
+  const copy = document.getElementById('api-token-copy');
+  function display(visible) {
+    token.value = visible ? token.dataset.token : '';
+    show.textContent = visible ? 'Hide' : 'Show';
+    copy.disabled = !(visible && token.dataset.token);
+    copy.textContent = 'Copy';
+  }
+  show.addEventListener('click', function () { display(show.textContent === 'Show'); });
+  copy.addEventListener('click', async function () {
+    try {
+      await navigator.clipboard.writeText(token.dataset.token);
+    } catch (error) {
+      token.select();
+      document.execCommand('copy');
+    }
+    copy.textContent = 'Copied';
+  });
+  document.getElementById('api-token-replace').addEventListener('click', async function () {
+    if (!confirm('Replace the API token for {{ request.user.username }}? The current token stops working.')) { return; }
+    const body = new FormData();
+    body.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    const response = await fetch('{% url "create-api-token" %}', { method: 'POST', body: body });
+    if (!response.ok) { alert('Could not replace the token (' + response.status + ').'); return; }
+    token.dataset.token = (await response.json()).token;
+    display(true);
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

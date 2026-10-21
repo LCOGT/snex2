@@ -5,11 +5,11 @@
 <div class="row mb-3 bg-light p-3 rounded">
   <div class="col-md-3">
     <label for="startDateFilter" class="font-weight-bold">Start Date:</label>
-    <input type="date" id="startDateFilter" class="form-control product-filter">
+    <input type="date" id="startDateFilter" class="form-control product-filter" value="{{ date_min }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-3">
     <label for="endDateFilter" class="font-weight-bold">End Date:</label>
-    <input type="date" id="endDateFilter" class="form-control product-filter">
+    <input type="date" id="endDateFilter" class="form-control product-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-2">
     <label for="telescopeFilter" class="font-weight-bold">Telescope:</label>
@@ -38,7 +38,7 @@
       <option value="fits">fits</option>
       <option value="ascii">ascii</option>
     </select>
-    <button type="submit" class="btn btn-success">Download</button>
+    <button type="submit" class="btn btn-success" id="bulkDownloadSubmit">Download</button>
   </div>
   <span class="text-muted ml-2">Download spectra as a filetype if available</span>
   <table class="table table-striped" id="dataproductsTable">
@@ -50,7 +50,7 @@
         <th>Filename</th>
         <th>Type</th>
         <th>Date</th>
-        <th>Update</th>
+        {% if is_admin %}<th>Update</th>{% endif %}
         <th>Delete</th>
       </tr>
     </thead>
@@ -87,7 +87,7 @@
             {{ rd.timestamp|date:"Y-m-d" }}
           {% endwith %}
         </td>
-        <td>{% dataproduct_update product %}</td>
+        {% if is_admin %}<td>{% dataproduct_update product %}</td>{% endif %}
         <td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>
       </tr>
       {% endwith %}
@@ -135,10 +135,25 @@
     }
   });
   document.addEventListener('click', function (ev) {
+    if (ev.target.classList.contains('dp-apply-groups')) {
+      const menu = ev.target.closest('.dropdown-menu');
+      const groups = Array.from(menu.querySelectorAll('.dp-group:checked')).map(function (cb) { return cb.value; });
+      const body = new FormData();
+      body.append('dataproductid', ev.target.dataset.dp);
+      body.append('groups', JSON.stringify(groups));
+      fetch('{% url "save_dataproduct_groups" %}', {
+        method: 'POST', body: body,
+        headers: { 'X-CSRFToken': (document.cookie.match(/(?:^|; )csrftoken=([^;]+)/) || [])[1] },
+      }).then(function (resp) {
+        if (!resp.ok) { alert('Could not update groups: ' + resp.status); return; }
+        menu.classList.remove('show');
+      });
+      return;
+    }
     if (ev.target.id === 'clearFilters') {
       ['startDateFilter', 'endDateFilter', 'telescopeFilter', 'instrumentFilter'].forEach(function (id) {
         const el = document.getElementById(id);
-        if (el) { el.value = ''; }
+        if (el) { el.value = el.type === 'date' ? el.defaultValue : ''; }
       });
       filterTable();
     }
@@ -146,6 +161,7 @@
   document.addEventListener('submit', function (ev) {
     if (ev.target.id !== 'bulkDownloadForm') return;
     ev.preventDefault();
+    if (ev.submitter && ev.submitter.id !== 'bulkDownloadSubmit') return;
     const form = ev.target;
     if (!document.querySelectorAll('.product-checkbox:checked').length) {
       alert("No items selected. Please check at least one data product before downloading.");

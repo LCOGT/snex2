@@ -1,12 +1,11 @@
 import logging
-import os
 import traceback
 from astropy.table import Table
 from astropy.io import fits
 from dateutil.parser import parse
 from ligo.skymap import distance
 
-from tom_nonlocalizedevents.alertstream_handlers.gcn_event_handler import extract_all_fields, EXPECTED_FIELDS, get_moc_url_from_skymap_fits_url, handle_retraction
+from tom_nonlocalizedevents.alertstream_handlers.gcn_event_handler import extract_all_fields, get_moc_url_from_skymap_fits_url, handle_retraction
 from tom_nonlocalizedevents.alertstream_handlers.igwn_event_handler import handle_igwn_message
 from tom_nonlocalizedevents.models import NonLocalizedEvent, EventSequence, EventLocalization
 from gw.find_galaxies import generate_galaxy_list

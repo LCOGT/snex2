@@ -24,46 +24,56 @@
   {% endfor %}
   </tbody>
   </table>
-  <div class="card">
-    <div class="card-header">
-        Share Selected Data
+  <div class="card mt-4 mb-4">
+    <div class="card-header d-flex align-items-center">
+        <span>Share selected spectra <span class="text-muted ml-2" id="selected-spectra-count">(none selected)</span></span>
+        <span class="ml-4 d-inline-flex align-items-center">
+            <input type="checkbox" id="select-all-spectra" onchange="select_all_spectra(this.checked)">
+            <label class="form-check-label ml-1 mb-0" for="select-all-spectra">Select all</label>
+        </span>
     </div>
+    <div class="card-body">
     {% if sharing_destinations %}
-        <div class="form-row" style="padding-inline:1rem">
-            <div class="col-sm-12">
-                {% bootstrap_field target_data_share_form.share_title %}
-            </div>
-        </div>
-        <div class="form-row" style="padding-inline:1rem">
-            <div class="col-sm-12">
-                {% bootstrap_field target_data_share_form.share_message %}
-            </div>
-        </div>
-        <div class="form-row" style="padding-inline:1rem">
-            <div class="col-sm-4">
+        {% bootstrap_field target_data_share_form.share_title %}
+        {% bootstrap_field target_data_share_form.share_message %}
+        <div class="form-row align-items-end">
+            <div class="col-sm-5">
                 {% bootstrap_field target_data_share_form.share_destination %}
             </div>
-            <div class="col-sm-2 offset-sm-1">
-                <input type="submit" class="btn btn-primary" id="submit_selected_spectra" value="Submit" name="share_targetdata_form" style="position:absolute; bottom:1rem" disabled onclick="setTargetOnSpectroscopyForm('')">
+            <div class="col-sm-7 mb-3">
+                <input type="submit" class="btn btn-primary" id="submit_selected_spectra" value="Submit" name="share_targetdata_form" disabled onclick="setTargetOnSpectroscopyForm('')">
+                {% if hermes_sharing %}
+                <span class="mx-3">or</span>
+                <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnSpectroscopyForm('_blank')">Open in Hermes &#x1F5D7;</button>
+                {% endif %}
             </div>
-            {% if hermes_sharing %}
-            <div class="col-sm-1">
-                <b style="position:absolute; bottom:1.2rem">or</b>
-            </div>
-            <div class="col-sm-4">
-                <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnSpectroscopyForm('_blank')" style="position:absolute; bottom:1rem">Open in Hermes &#x1F5D7;</button>
-            </div>
-            {% endif %}
         </div>
     {% else %}
-        <em style="padding-inline:1rem">Sharing Not Configured. See
+        <em>Sharing Not Configured. See
             <a href="https://tom-toolkit.readthedocs.io/en/stable/managing_data/tom_direct_sharing.html"
                target="_blank">Documentation</a>.</em>
     {% endif %}
+    </div>
   </div>
 </form>
 
 <script>
+function downloadSpectrum(url, missingMessage) {
+  fetch(url).then(function (response) {
+    if (response.status === 404) { alert(missingMessage); return; }
+    if (!response.ok) { alert('Download failed: ' + response.status); return; }
+    const name = ((response.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/) || [])[1] || 'spectrum';
+    return response.blob().then(function (blob) {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+    });
+  });
+}
 function setTargetOnSpectroscopyForm(val) {
   const spectroscopyShareForm = document.getElementById('spectroscopy-data-share-form');
   if (val && val !== '') {
@@ -73,12 +83,27 @@ function setTargetOnSpectroscopyForm(val) {
   }
   return true;
 }
+function select_all_spectra(checked) {
+  document.querySelectorAll("#spectra-tbody input[name='share-box']").forEach(box => { box.checked = checked; });
+  check_selected_spectra();
+}
+if (!window.spectraSelectAllBound) {
+  window.spectraSelectAllBound = true;
+  document.body.addEventListener('htmx:afterSwap', function () {
+    const selectAll = document.getElementById('select-all-spectra');
+    if (selectAll && selectAll.checked) { select_all_spectra(true); }
+  });
+}
 function check_selected_spectra() {
   const boxes = document.querySelectorAll("#spectra-tbody input[name='share-box']");
   const submitBtn = document.getElementById('submit_selected_spectra');
   if (!submitBtn) {
     return;
   }
-  submitBtn.disabled = ![...boxes].some(box => box.checked);
+  const selected = [...boxes].filter(box => box.checked).length;
+  submitBtn.disabled = selected === 0;
+  document.getElementById('selected-spectra-count').textContent = selected ? '(' + selected + ' selected)' : '(none selected)';
+  const selectAll = document.getElementById('select-all-spectra');
+  if (selectAll && selected < boxes.length) { selectAll.checked = false; }
 }
 </script>

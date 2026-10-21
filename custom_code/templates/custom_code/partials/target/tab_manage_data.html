@@ -1,5 +1,21 @@
 {% load custom_code_tags %}
-{% if user.is_authenticated %}
-{% custom_upload_dataproduct target %}
-{% endif %}
-{% snex_dataproduct_list target %}
+<ul class="nav nav-tabs manage-data-tabs" role="tablist">
+  <li class="nav-item">
+    <a class="nav-link active" href="#manage-data-photometry" role="tab" data-toggle="tab">Photometry</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="#manage-data-spectroscopy" role="tab" data-toggle="tab">Spectroscopy</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="#manage-data-standards" role="tab" data-toggle="tab"
+       hx-get="{% url 'load-manage-standards' target.id %}" hx-target="#manage-data-standards" hx-trigger="click once">Photometric Standards</a>
+  </li>
+</ul>
+<div class="tab-content pt-3">
+  <div class="tab-pane active" id="manage-data-photometry" role="tabpanel"
+       hx-get="{% url 'load-manage-photometry' target.id %}" hx-trigger="load">Loading...</div>
+  <div class="tab-pane" id="manage-data-spectroscopy" role="tabpanel">
+    {% snex_dataproduct_list target %}
+  </div>
+  <div class="tab-pane" id="manage-data-standards" role="tabpanel">Loading...</div>
+</div>
