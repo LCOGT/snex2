@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import can_delete_spectrum, observed_spectra, photometry_datums, spectrum_comment_object, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts, viewable_datums
+from custom_code.utils import can_delete_spectrum, default_version, observed_spectra, standard_spectra, photometry_datums, spectrum_comment_object, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts, viewable_datums
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -579,8 +579,12 @@ def snex_dataproduct_list(context, target):
     if not settings.TARGET_PERMISSIONS_ONLY:
         dataproduct_context['products'] = viewable_dataproducts(
             context['request'].user, target.dataproduct_set.exclude(data_product_type__in=('difference_image', 'template_image')))
-    dataproduct_context['products'] = dataproduct_context['products'].annotate(
-        observed=Coalesce(Min('spectroscopyreduceddatum__timestamp'), 'created')).order_by('observed')
+    dataproduct_context['products'] = list(dataproduct_context['products'].annotate(
+        observed=Coalesce(Min('spectroscopyreduceddatum__timestamp'), 'created')).order_by('observed'))
+    for product in dataproduct_context['products']:
+        versions = list(product.spectroscopyreduceddatum_set.all())
+        product.spectrum = default_version(versions) if versions else None
+        product.standards = standard_entries(product.spectrum) if product.spectrum else []
     telescopes, instruments = set(), set()
     for p in dataproduct_context['products']:
         rde = p.reduceddatumextra_set.first()
@@ -1485,7 +1489,14 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         'can_delete': can_delete_spectrum(user) if user else False,
         'has_fits': spec_extras.get('file_version') in (None, spectrum.reduction_version),
         'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
+        'standards': standard_entries(spectrum) if include_plot else [],
     }
+
+
+def standard_entries(spectrum):
+    return [{'spectrum': standard, 'name': standard.target.name,
+             'hours': (standard.timestamp - spectrum.timestamp).total_seconds() / 3600}
+            for standard in standard_spectra(spectrum)]
 
 
 @register.filter

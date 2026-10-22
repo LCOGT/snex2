@@ -1199,6 +1199,14 @@ def load_single_spectrum_view(request, pk, spectrum_id):
     return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
 
 
+def spectrum_data_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    wavelength, flux = custom_code_tags.bin_spectra(spectrum.wavelength, spectrum.flux, 5) if spectrum.wavelength else ([], [])
+    return JsonResponse({'label': f'{target.name} {spectrum.timestamp:%Y-%m-%d %H:%M}',
+                         'target_url': reverse('tom_targets:detail', args=(target.id,)),
+                         'wavelength': wavelength, 'flux': flux})
+
+
 def load_spectrum_interactive_view(request, pk, spectrum_id):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
     entry = custom_code_tags.build_spectrum_entry(target, spectrum, user=request.user, include_plot=False)

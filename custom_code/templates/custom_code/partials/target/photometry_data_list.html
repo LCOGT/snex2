@@ -93,7 +93,10 @@
   <tbody>
   {% for row in rows %}
     <tr class="phot-row" data-id="{{ row.datum.pk }}" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}"
-        data-band="{{ row.datum.bandpass }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-algorithm="{{ row.subtracted }}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}">
+        data-band="{{ row.datum.bandpass }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-algorithm="{{ row.subtracted }}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}"
+        data-time="{{ row.datum.timestamp|date:'c' }}" data-mag="{% if row.brightness is not None %}{{ row.brightness|stringformat:'.4f' }}{% endif %}"
+        data-err="{% if row.datum.brightness_error is not None %}{{ row.datum.brightness_error|stringformat:'.4f' }}{% endif %}"
+        data-limit="{% if row.datum.limit is not None %}{{ row.datum.limit|stringformat:'.4f' }}{% endif %}">
       <td><input type="checkbox" class="phot-check" checked></td>
       <td>{{ row.datum.timestamp|date:'m/d/y H:i' }}</td>
       <td>{{ row.datum.bandpass }}</td>
@@ -121,6 +124,10 @@
   {% endfor %}
   </tbody>
 </table>
+<div class="card mt-3">
+  <div class="card-header">Selected points</div>
+  <div class="card-body"><div id="phot-plot"></div></div>
+</div>
 <script>
 (function () {
   const table = document.getElementById('phot-table');
@@ -175,7 +182,46 @@
                    (!basename || r.dataset.basename.toLowerCase().includes(basename));
       r.style.display = show ? '' : 'none';
     });
+    plotSelected();
   }
+  const plotDiv = document.getElementById('phot-plot');
+  function plotSelected() {
+    const palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'];
+    const bands = [], traces = {};
+    selected().forEach(function (r) {
+      const limit = r.dataset.mag === '';
+      if (limit && r.dataset.limit === '') { return; }
+      const band = r.dataset.band || '?';
+      if (bands.indexOf(band) === -1) { bands.push(band); }
+      const color = palette[bands.indexOf(band) % palette.length];
+      const key = band + (limit ? ' (limit)' : '');
+      const trace = traces[key] || (traces[key] = {
+        x: [], y: [], mode: 'markers', name: key, type: 'scatter',
+        marker: { color: color, symbol: limit ? 'triangle-down-open' : 'circle' },
+        error_y: { type: 'data', array: [], visible: !limit, color: color },
+      });
+      trace.x.push(r.dataset.time);
+      trace.y.push(Number(limit ? r.dataset.limit : r.dataset.mag));
+      trace.error_y.array.push(limit || r.dataset.err === '' ? 0 : Number(r.dataset.err));
+    });
+    if (!Object.keys(traces).length) {
+      Plotly.purge(plotDiv);
+      plotDiv.innerHTML = '<div class="text-muted p-3">No measured points selected.</div>';
+      return;
+    }
+    if (!plotDiv.querySelector('.plot-container')) { plotDiv.innerHTML = ''; }
+    Plotly.react(plotDiv, Object.values(traces), {
+      height: 400, margin: { l: 60, r: 20, t: 10, b: 40 }, hovermode: 'closest',
+      xaxis: { title: 'Date', type: 'date' }, yaxis: { title: 'Magnitude', autorange: 'reversed' },
+      legend: { orientation: 'h', y: -0.2 },
+    }, { responsive: true });
+  }
+  table.addEventListener('change', plotSelected);
+  table.addEventListener('htmx:afterSwap', plotSelected);
+  new IntersectionObserver(function (entries, observer) {
+    if (entries[0].isIntersecting) { observer.disconnect(); plotSelected(); }
+  }).observe(plotDiv);
+
   document.querySelectorAll('.phot-filter').forEach((el) => el.addEventListener('change', applyFilters));
   document.getElementById('phot-basename').addEventListener('input', applyFilters);
   document.getElementById('phot-clear').addEventListener('click', function () {

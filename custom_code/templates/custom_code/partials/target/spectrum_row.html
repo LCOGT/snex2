@@ -17,6 +17,18 @@
         {% if entry.spec_extras.reducer %}<tr><th class="p-0 pe-2 fw-normal text-muted">Reducer</th><td class="p-0">{{ entry.spec_extras.reducer }}</td></tr>{% endif %}
       </tbody>
     </table>
+    {% if entry.standards %}
+    <div style="margin-bottom: .25rem;">
+      <div class="text-muted">Flux standard{{ entry.standards|pluralize }}</div>
+      {% for standard in entry.standards %}
+      <div class="d-flex align-items-center justify-content-between">
+        <span>{{ standard.name }} <span class="text-muted">({{ standard.hours|floatformat:1 }} h)</span></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" title="View the standard spectrum"
+          onclick="snexSpectra.show('{% url 'spectrum-data' standard.spectrum.target_id standard.spectrum.id %}')">View</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     {% if entry.versions|length > 1 %}
     <select class="form-select form-select-sm" style="margin-bottom: .25rem;" title="Reduction version"
       onchange="htmx.ajax('GET', '{% url 'load-single-spectrum' entry.spectrum.target.id 0 %}'.replace('/0/', '/' + this.value + '/'), {target: '#spectrum-row-{{ entry.spectrum.id }}', swap: 'outerHTML'})">

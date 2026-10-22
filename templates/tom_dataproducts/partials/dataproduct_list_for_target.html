@@ -1,5 +1,6 @@
-{% load django_bootstrap5 %}
+{% load django_bootstrap5 static %}
 {% load custom_code_tags %}
+<script src="{% static 'custom_code/spectrum_view.js' %}"></script>
 {% include 'tom_dataproducts/partials/js9_scripts.html' %}
 <h4>Data</h4>
 <div class="row mb-3 bg-light p-3 rounded">
@@ -50,6 +51,7 @@
         <th>Filename</th>
         <th>Type</th>
         <th>Date</th>
+        <th>Spectrum</th>
         {% if is_admin %}<th>Update</th>{% endif %}
         {% if is_admin %}<th>Delete</th>{% endif %}
       </tr>
@@ -61,7 +63,8 @@
       <tr class="product-row"
           data-observed="{{ product.observed|date:'Y-m-d' }}"
           data-telescope="{{ extra.value.telescope|default:'' }}"
-          data-instrument="{{ extra.value.instrument|default:'' }}">
+          data-instrument="{{ extra.value.instrument|default:'' }}"{% if product.spectrum %}
+          data-spectrum-url="{% url 'spectrum-data' target.id product.spectrum.id %}"{% endif %}>
         <td>
           <input type="checkbox" name="selected_products" value="{{ product.id }}" class="product-checkbox" checked>
         </td>
@@ -87,6 +90,15 @@
             {{ rd.timestamp|date:"Y-m-d" }}
           {% endwith %}
         </td>
+        <td>
+          {% if product.spectrum %}
+          <button type="button" class="btn btn-outline-primary" onclick="snexSpectra.show('{% url 'spectrum-data' target.id product.spectrum.id %}')">View</button>
+          {% for standard in product.standards %}
+          <button type="button" class="btn btn-outline-secondary" title="Flux standard, {{ standard.hours|floatformat:1 }} h from this spectrum"
+            onclick="snexSpectra.show('{% url 'spectrum-data' standard.spectrum.target_id standard.spectrum.id %}')">{{ standard.name }}</button>
+          {% endfor %}
+          {% endif %}
+        </td>
         {% if is_admin %}<td>{% dataproduct_update product %}</td>{% endif %}
         {% if is_admin %}<td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>{% endif %}
       </tr>
@@ -96,10 +108,35 @@
     </tbody>
   </table>
 </form>
+<div class="card mt-3">
+  <div class="card-header">Selected spectra</div>
+  <div class="card-body"><div id="dp-spectra-plot"></div></div>
+</div>
+<script>
+(function () {
+  const div = document.getElementById('dp-spectra-plot');
+  new IntersectionObserver(function (entries, observer) {
+    if (entries[0].isIntersecting && window.plotSelectedSpectra) {
+      observer.disconnect();
+      window.plotSelectedSpectra();
+    }
+  }).observe(div);
+})();
+</script>
 <script>
 (function () {
   if (window.__dataProductFiltersBound) { return; }
   window.__dataProductFiltersBound = true;
+
+  function plotSelectedSpectra() {
+    const div = document.getElementById('dp-spectra-plot');
+    if (!div || !window.snexSpectra) { return; }
+    const urls = Array.from(document.querySelectorAll('.product-row')).filter(function (row) {
+      return row.style.display !== 'none' && row.dataset.spectrumUrl && row.querySelector('.product-checkbox').checked;
+    }).map(function (row) { return row.dataset.spectrumUrl; });
+    window.snexSpectra.overlay(div, urls);
+  }
+  window.plotSelectedSpectra = plotSelectedSpectra;
 
   function filterTable() {
     const start = document.getElementById('startDateFilter');
@@ -129,9 +166,13 @@
     const t = ev.target;
     if (t.classList && t.classList.contains('product-filter')) {
       filterTable();
+      plotSelectedSpectra();
     } else if (t.id === 'selectAll') {
       document.querySelectorAll('.product-row:not([style*="display: none"]) .product-checkbox')
         .forEach(function (cb) { cb.checked = t.checked; });
+      plotSelectedSpectra();
+    } else if (t.classList && t.classList.contains('product-checkbox')) {
+      plotSelectedSpectra();
     }
   });
   document.addEventListener('click', function (ev) {
@@ -156,6 +197,7 @@
         if (el) { el.value = el.type === 'date' ? el.defaultValue : ''; }
       });
       filterTable();
+      plotSelectedSpectra();
     }
   });
   document.addEventListener('submit', function (ev) {

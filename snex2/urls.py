@@ -80,6 +80,7 @@ urlpatterns = [
     path('targets/<int:pk>/photometry/<int:datum_id>/delete/', delete_photometry_view, name='delete-photometry'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/download/<str:file_format>/', download_spectrum_view, name='download-spectrum'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/interactive/', load_spectrum_interactive_view, name='load-spectrum-interactive'),
+    path('targets/<int:pk>/spectrum/<int:spectrum_id>/data/', spectrum_data_view, name='spectrum-data'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),
     path('cache-frame/', cache_frame_view, name='cache-frame'),

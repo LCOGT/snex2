@@ -1,4 +1,5 @@
-{% load django_bootstrap5 %}
+{% load django_bootstrap5 static %}
+<script src="{% static 'custom_code/spectrum_view.js' %}"></script>
 <style>
   .comment-row { transition: background-color .15s; }
   .comment-row:has(.comment-delete:hover) { background-color: #f8d7da; }

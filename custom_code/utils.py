@@ -8,6 +8,7 @@ from django.core.exceptions import NON_FIELD_ERRORS
 from django.urls import reverse
 from django.utils import timezone
 
+import datetime
 import hashlib
 import logging
 import requests
@@ -153,6 +154,22 @@ def observed_spectra(target, user=None):
     for spectrum in spectroscopy_datums(target, user):
         observations.setdefault(spectrum.data_product_id or f'spectrum-{spectrum.pk}', []).append(spectrum)
     return sorted((default_version(versions) for versions in observations.values()), key=lambda spectrum: spectrum.timestamp)
+
+
+def standard_spectra(spectrum):
+    from tom_dataproducts.models import SpectroscopyReducedDatum
+    if spectrum.target_id in set(standard_target_ids().values_list('pk', flat=True)):
+        return []
+    window = datetime.timedelta(days=1)
+    candidates = SpectroscopyReducedDatum.objects.filter(
+        target_id__in=standard_target_ids(), timestamp__range=(spectrum.timestamp - window, spectrum.timestamp + window))
+    if spectrum.instrument:
+        candidates = candidates.filter(Q(instrument=spectrum.instrument) | Q(instrument=''))
+    observations = {}
+    for candidate in candidates.select_related('target'):
+        observations.setdefault(candidate.data_product_id or f'spectrum-{candidate.pk}', []).append(candidate)
+    return sorted((default_version(versions) for versions in observations.values()),
+                  key=lambda standard: abs(standard.timestamp - spectrum.timestamp))
 
 
 def spectrum_comment_object(spectrum):
