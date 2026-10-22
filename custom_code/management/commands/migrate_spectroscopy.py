@@ -9,11 +9,18 @@ from tom_dataproducts.models import DataProduct, ReducedDatum, SpectroscopyReduc
 
 from custom_code.management.commands.migrate_photometry import Command as PhotometryCommand
 from custom_code.models import ReducedDatumExtra
+from custom_code.raw_spectra import is_floyds_frame
 from custom_code.utils import file_version, frame_night, measured, upload_reduction_version
 
 BATCH_SIZE = 100
 SPECTRUM_KEYS = ('flux', 'photon_flux', 'wavelength', 'error', 'flux_error', 'flux_units', 'photon_flux_units',
                  'wavelength_units', 'telescope', 'instrument')
+
+
+def _same_coverage(a, b):
+    shared = min(a[1], b[1]) - max(a[0], b[0])
+    longest = max(a[1] - a[0], b[1] - b[0])
+    return longest > 0 and shared / longest > 0.8
 
 
 def _floats(values):
@@ -66,6 +73,42 @@ class Command(PhotometryCommand):
         product_id = product.product_id if product else ''
         return product_id.split('-')[1] if frame_night(product_id) else ''
 
+    def find_merges(self, observations):
+        products = {dp.pk: dp for dp in DataProduct.objects.filter(pk__in=list(observations))}
+        groups = {}
+        for pk, (target_id, timestamp, instrument, span) in observations.items():
+            if pk in products:
+                name = f'{products[pk].product_id or ""} {products[pk].data.name or ""}'.lower()
+                groups.setdefault((target_id, timestamp, 'host' in name), []).append(pk)
+        merges = []
+        for pks in groups.values():
+            pks.sort(key=lambda pk: (not is_floyds_frame(products[pk].product_id), pk))
+            clusters = []
+            for pk in pks:
+                instrument, span = observations[pk][2], observations[pk][3]
+                for cluster in clusters:
+                    lead = observations[cluster[0]]
+                    if (not instrument or not lead[2] or instrument == lead[2]) and _same_coverage(span, lead[3]):
+                        cluster.append(pk)
+                        break
+                else:
+                    clusters.append([pk])
+            merges.extend((cluster[0], cluster[1:]) for cluster in clusters if len(cluster) > 1)
+        return merges
+
+    def describe(self, pk):
+        dp = DataProduct.objects.select_related('target').get(pk=pk)
+        return f'{dp.pk} ({dp.target.name}, {dp.product_id or dp.data.name.split("/")[-1]})'
+
+    def merge(self, survivor, others, product_type):
+        others = [pk for pk in others if not ReducedDatum.objects.filter(data_product_id=pk).exists()]
+        with transaction.atomic():
+            SpectroscopyReducedDatum.objects.filter(data_product_id__in=others).update(data_product_id=survivor)
+            Comment.objects.filter(content_type=product_type, object_pk__in=[str(pk) for pk in others]).update(
+                object_pk=str(survivor))
+            ReducedDatumExtra.objects.filter(data_product_id__in=others).delete()
+            DataProduct.objects.filter(pk__in=others).delete()
+
     def version(self, product):
         try:
             return file_version(product.data)
@@ -86,7 +129,7 @@ class Command(PhotometryCommand):
         self.stdout.write(f'{len(pks)} spectra to move.')
 
         moved, dropped, skipped, copied, comments = 0, 0, 0, 0, 0
-        seen, current_target = {}, None
+        seen, current_target, observations = {}, None, {}
         for start in range(0, len(pks), BATCH_SIZE):
             datums, old_pks, kept = [], [], {}
             for rd in sorted(ReducedDatum.objects.filter(pk__in=pks[start:start + BATCH_SIZE]), key=lambda rd: (rd.target_id, -rd.pk)):
@@ -100,6 +143,10 @@ class Command(PhotometryCommand):
                 else:
                     datums.append(datum)
                     old_pks.append(rd.pk)
+                    if datum.data_product_id and datum.wavelength:
+                        observations.setdefault(datum.data_product_id, (
+                            datum.target_id, datum.timestamp, datum.instrument,
+                            (min(datum.wavelength), max(datum.wavelength))))
             moved += len(datums)
             dropped += len(kept)
             if dry_run:
@@ -118,8 +165,17 @@ class Command(PhotometryCommand):
                     comments += Comment.objects.filter(content_type=old_type, object_pk=str(old)).update(**moved_to)
                 ReducedDatum.objects.filter(pk__in=list(new_pks)).delete()
 
+        merges = self.find_merges(observations)
+        for survivor, others in merges:
+            self.stdout.write(f'{"Would merge" if dry_run else "Merged"} {", ".join(self.describe(pk) for pk in others)} '
+                              f'into {self.describe(survivor)} as versions')
+            if not dry_run:
+                self.merge(survivor, others, product_type)
+
         label = 'Would move' if dry_run else 'Moved'
         self.stdout.write(f'{label} {moved} spectra; {skipped} left in place because no spectrum could be read from them.')
+        self.stdout.write(f'{len(merges)} observations {"would be" if dry_run else "were"} merged into single data products '
+                          f'with {sum(len(others) for _, others in merges)} extra versions.')
         self.stdout.write(f'{dropped} duplicates {"would be" if dry_run else "were"} dropped, keeping the newest copy.')
         if not dry_run:
             self.stdout.write(f'Copied {copied} object permissions and moved {comments} comments.')

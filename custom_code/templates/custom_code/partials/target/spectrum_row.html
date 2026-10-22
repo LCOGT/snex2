@@ -51,6 +51,11 @@
     <div class="d-flex" style="gap: .25rem; margin-bottom: .25rem;">
       <button type="button" class="btn btn-sm btn-outline-primary"{% if not entry.has_fits %} disabled title="The FITS file is kept for the most recently uploaded version only"{% else %} title="Download FITS"{% endif %} onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
       <button type="button" class="btn btn-sm btn-outline-primary" title="Download ASCII" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
+      {% if entry.raw_available %}
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'download-raw-spectra' %}?dp={{ entry.spectrum.data_product_id }}&standards=1" title="Raw spectrum, arc and flat, plus the flux standard's from the same night">Raw</a>
+      {% else %}
+      <span class="d-inline-block" tabindex="0" title="Raw files are only available for FLOYDS spectra"><button type="button" class="btn btn-sm btn-outline-primary" disabled>Raw</button></span>
+      {% endif %}
       <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title="Submit TNS classification" class="btn btn-sm btn-outline-info flex-grow-1">Classify on TNS</a>
     </div>
     {% if entry.static_plot %}

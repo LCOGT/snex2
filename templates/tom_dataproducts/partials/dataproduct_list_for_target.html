@@ -38,10 +38,14 @@
       <option value="any">Any (default fits)</option>
       <option value="fits">fits</option>
       <option value="ascii">ascii</option>
+      <option value="raw">raw FLOYDS frames</option>
     </select>
-    <button type="submit" class="btn btn-success" id="bulkDownloadSubmit">Download</button>
+    <label class="ms-2 text-muted" id="rawStandardsLabel" title="Only for raw FLOYDS frames">
+      <input type="checkbox" id="rawStandards" checked disabled> Include flux standards
+    </label>
+    <button type="submit" class="btn btn-success ms-2" id="bulkDownloadSubmit">Download</button>
   </div>
-  <span class="text-muted ms-2">Download spectra as a filetype if available</span>
+  <span class="text-muted ms-2" id="bulkDownloadHint">Download spectra as a filetype if available</span>
   <table class="table table-striped" id="dataproductsTable">
     <thead>
       <tr>
@@ -63,7 +67,8 @@
       <tr class="product-row"
           data-observed="{{ product.observed|date:'Y-m-d' }}"
           data-telescope="{{ extra.value.telescope|default:'' }}"
-          data-instrument="{{ extra.value.instrument|default:'' }}"{% if product.spectrum %}
+          data-instrument="{{ extra.value.instrument|default:'' }}"
+          data-dp="{{ product.id }}" data-raw="{% if product.raw_available %}1{% endif %}"{% if product.spectrum %}
           data-spectrum-url="{% url 'spectrum-data' target.id product.spectrum.id %}"{% endif %}>
         <td>
           <input type="checkbox" name="selected_products" value="{{ product.id }}" class="product-checkbox" checked>
@@ -164,7 +169,14 @@
   }
   document.addEventListener('change', function (ev) {
     const t = ev.target;
-    if (t.classList && t.classList.contains('product-filter')) {
+    if (t.name === 'download_format') {
+      const raw = t.value === 'raw';
+      document.getElementById('rawStandards').disabled = !raw;
+      document.getElementById('rawStandardsLabel').classList.toggle('text-muted', !raw);
+      document.getElementById('bulkDownloadHint').textContent = raw
+        ? 'Raw spectrum, arc and flat for each FLOYDS spectrum, in one folder per spectrum'
+        : 'Download spectra as a filetype if available';
+    } else if (t.classList && t.classList.contains('product-filter')) {
       filterTable();
       plotSelectedSpectra();
     } else if (t.id === 'selectAll') {
@@ -207,6 +219,22 @@
     const form = ev.target;
     if (!document.querySelectorAll('.product-checkbox:checked').length) {
       alert("No items selected. Please check at least one data product before downloading.");
+      return;
+    }
+    if (form.download_format.value === 'raw') {
+      const checked = Array.from(document.querySelectorAll('.product-row')).filter(function (row) {
+        return row.style.display !== 'none' && row.querySelector('.product-checkbox').checked;
+      });
+      const raw = checked.filter(function (row) { return row.dataset.raw === '1'; });
+      if (!raw.length) {
+        alert('None of the selected spectra are FLOYDS spectra with raw frames in the LCO archive.');
+        return;
+      }
+      const params = new URLSearchParams(raw.map(function (row) { return ['dp', row.dataset.dp]; }));
+      if (document.getElementById('rawStandards').checked) { params.append('standards', '1'); }
+      document.getElementById('bulkDownloadHint').textContent = 'Downloading raw frames for ' + raw.length + ' spectra' +
+        (checked.length > raw.length ? ' (' + (checked.length - raw.length) + ' selected are not FLOYDS and were skipped)' : '') + '...';
+      window.location.href = '{% url "download-raw-spectra" %}?' + params.toString();
       return;
     }
     const formData = new FormData(form);

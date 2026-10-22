@@ -24,7 +24,7 @@ from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F,
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
 from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -58,12 +58,13 @@ from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedD
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
+from custom_code.raw_spectra import is_floyds_frame, stream_raw_zip
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSFormView, TNSSubmitView
-from custom_code.utils import can_delete_spectrum, default_version, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import can_delete_spectrum, default_version, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -1561,6 +1562,47 @@ class BulkDownloadView(LoginRequiredMixin, View):
         return response
 
 
+def download_raw_spectra_view(request):
+    include_standard = request.GET.get('standards') == '1'
+    products = viewable_dataproducts(request.user, DataProduct.objects.filter(pk__in=request.GET.getlist('dp')))
+    products = sorted((p for p in products.select_related('target') if is_floyds_frame(p.product_id)),
+                      key=lambda p: p.product_id)
+    if not products:
+        return HttpResponse('None of the selected spectra are FLOYDS spectra with raw frames in the LCO archive.', status=404)
+    target_name = products[0].target.name.replace(' ', '')
+    if len(products) == 1:
+        entries, name = [('', products[0].product_id)], f'{target_name}_{products[0].product_id}_raw.zip'
+    else:
+        entries, name = [(f'{p.product_id}/', p.product_id) for p in products], f'{target_name}_raw_spectra.zip'
+    response = StreamingHttpResponse(stream_raw_zip(entries, include_standard), content_type='application/zip')
+    response['Content-Disposition'] = f'attachment; filename="{name}"'
+    return response
+
+
+@require_http_methods(["POST"])
+def photometry_standards_view(request, pk):
+    target = _target_for_user(request, pk)
+    selected = photometry_datums(target, request.user).filter(
+        pk__in=json.loads(request.POST.get('datum_ids', '[]')), value__has_key='basename')
+    setups, chosen, nights = set(), set(), Q()
+    one_day = timedelta(days=1)
+    for value, bandpass, timestamp in selected.values_list('value', 'bandpass', 'timestamp'):
+        exact, _ = custom_code_tags._frame_setups(value['basename'], bandpass)
+        if exact and exact not in setups:
+            nights |= Q(timestamp__range=(timestamp - one_day, timestamp + one_day))
+        if exact:
+            setups.add(exact)
+            chosen.add(value['basename'])
+    basenames = set()
+    if setups:
+        standards = PhotometryReducedDatum.objects.filter(nights, target_id__in=standard_target_ids(), value__has_key='basename')
+        for value, bandpass in standards.values_list('value', 'bandpass'):
+            exact, _ = custom_code_tags._frame_setups(value['basename'], bandpass)
+            if exact in setups and value['basename'] not in chosen:
+                basenames.add(value['basename'])
+    return JsonResponse({'basenames': sorted(basenames)})
+
+
 @require_http_methods(["POST"])
 def get_frame_ids_view(request):
     basenames = set(json.loads(request.POST.get('basenames', '[]')))
@@ -1720,6 +1762,8 @@ class FloydsInboxView(TemplateView):
                 logger.warning(f'FLOYDS inbox entry {dp.product_id} is incomplete: {e}')
                 info = {}
             inbox_rows.append({'targetid': dp.target_id,
+                               'dp_id': dp.id,
+                               'raw_available': is_floyds_frame(dp.product_id),
                                'targetnames': custom_code_tags.smart_name_list(dp.target),
                                'propid': info.get('propid', ''),
                                'dateobs': info.get('dateobs', ''),
