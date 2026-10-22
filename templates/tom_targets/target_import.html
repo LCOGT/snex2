@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 static %}
+{% load django_bootstrap5 static %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
 {% endblock %}
@@ -17,8 +17,8 @@
 <form method="POST" action="{% url 'tom_targets:import' %}" enctype="multipart/form-data">
   {% csrf_token %}
   <input type="file" name="target_csv">
-  {% buttons %}
+  <div class="mb-3">
   <input type="submit" value="Upload" class="btn btn-primary">
-  {% endbuttons %}
+  </div>
 </form>
 {% endblock %}

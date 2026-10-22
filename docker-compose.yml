@@ -29,10 +29,8 @@ services:
                 max-file: "3"
                 max-size: "10m"
         environment:
-            - DB_NAME=snex2
             - SNEX2_DB_HOST=snex2-db
             - SNEX2_DB_PORT=5432
-            - SNEX2_USER=${SNEX2_USER}
             - SNEX2_DB_USER=${SNEX2_DB_USER}
             - SNEX2_DB_PASSWORD=${SNEX2_DB_PASSWORD}
             - SNEX2_DB_BACKEND=postgres
@@ -56,15 +54,11 @@ services:
             - SNEX_EMAIL_PASSWORD=${SNEX_EMAIL_PASSWORD}
             - TNS_APIKEY=${TNS_APIKEY}
             - TNS_APIID=${TNS_APIID}
-            - SWIFT_USERNAME=${SWIFT_USERNAME}
-            - SWIFT_SECRET=${SWIFT_SECRET}
+            - TNS_BASE_URL=${TNS_BASE_URL}
             - LASAIR_IRIS_TOKEN=${LASAIR_IRIS_TOKEN}
             - SCIMMA_AUTH_USERNAME=${SCIMMA_AUTH_USERNAME}
             - SCIMMA_AUTH_PASSWORD=${SCIMMA_AUTH_PASSWORD}
-            - GCN_CLASSIC_CLIENT_ID=${GCN_CLASSIC_CLIENT_ID}
-            - GCN_CLASSIC_CLIENT_SECRET=${GCN_CLASSIC_CLIENT_SECRET}
-            - CREDENTIAL_USERNAME=${CREDENTIAL_USERNAME}
-            - CREDENTIAL_PASSWORD=${CREDENTIAL_PASSWORD}
+            - HOPSKOTCH_GROUP_ID=${HOPSKOTCH_GROUP_ID}
             - TM_TOKEN=${TM_TOKEN}
             - HERMES_BASE_URL=${HERMES_BASE_URL}
             - HERMES_API_KEY=${HERMES_API_KEY}
@@ -84,7 +78,6 @@ services:
         restart: "always"
         entrypoint: [ "bash", "-c", "python manage.py readstreams"]
         environment:
-            - DB_NAME=snex2
             - SNEX2_DB_HOST=snex2-db
             - SNEX2_DB_PORT=5432
             - SNEX2_DB_USER=${SNEX2_DB_USER}
@@ -92,5 +85,4 @@ services:
             - SNEX2_DB_BACKEND=postgres
             - SCIMMA_AUTH_USERNAME=${SCIMMA_AUTH_USERNAME}
             - SCIMMA_AUTH_PASSWORD=${SCIMMA_AUTH_PASSWORD}
-            - GCN_CLASSIC_CLIENT_ID=${GCN_CLASSIC_CLIENT_ID}
-            - GCN_CLASSIC_CLIENT_SECRET=${GCN_CLASSIC_CLIENT_SECRET}
+            - HOPSKOTCH_GROUP_ID=${HOPSKOTCH_GROUP_ID}

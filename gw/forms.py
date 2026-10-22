@@ -43,5 +43,5 @@ class GWGalaxyObservationForm(forms.Form):
                 Row('observation_mode'),
                 css_class='col-md-6'
             ),
-        css_class='form-row'
+        css_class='row g-2'
         )

@@ -1,6 +1,5 @@
 from custom_code.models import TNSTarget, BrokerTarget
-from tom_dataproducts.filters import ReducedDatumFilter
-from custom_code.utils import unsubtracted_q
+from tom_dataproducts.models import PhotometryReducedDatum
 import django_filters
 from django.db.models import Q
 from astropy.time import Time
@@ -10,14 +9,12 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Submit, Layout, Div
 from crispy_forms.bootstrap import PrependedAppendedText, PrependedText
 
-class SNExReducedDatumFilter(ReducedDatumFilter):
+class SNExPhotometryFilter(django_filters.rest_framework.FilterSet):
     basename = django_filters.CharFilter(field_name='value__basename')
-    background_subtracted = django_filters.BooleanFilter(method='filter_background_subtracted')
 
-    def filter_background_subtracted(self, queryset, name, value):
-        if value:
-            return queryset.filter(value__background_subtracted=True)
-        return queryset.filter(unsubtracted_q())
+    class Meta:
+        model = PhotometryReducedDatum
+        fields = ['target__id', 'source_name', 'bandpass', 'reduction_version']
 
 
 class TNSTargetForm(forms.Form): 
@@ -30,14 +27,14 @@ class TNSTargetForm(forms.Form):
                 Div(PrependedText('name', 'Name like'), css_class='col-md-4'),
                 Div(PrependedText('source_group', 'Discovered by'), css_class='col-md-4'),
                 Div('in_tess', css_class='col-md-4'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
             Div(
                 Div(PrependedText('disc_mag', 'Discovery mag brighter than',
                     placeholder='19', style='color: black;'), css_class='col-md-6'),
                 Div(PrependedAppendedText('lnd_jd', 'Last non-detection within the last',
                     'days', placeholder='5', style='color: black;'), css_class='col-md-6'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
         )
 
@@ -85,7 +82,7 @@ class BrokerTargetForm(forms.Form):
                 Div(PrependedText('name', 'Name like'), css_class='col-md-4'),
                 Div(PrependedText('stream_name', 'Name of Stream'), css_class='col-md-4'),
                 Div(PrependedText('status', 'Status'), css_class='col-md-4'),
-                css_class='form-row'
+                css_class='row g-2'
             ),
         )
 

@@ -1,8 +1,5 @@
-{% load bootstrap4 crispy_forms_tags observation_extras targets_extras custom_code_tags static cache %}
+{% load django_bootstrap5 crispy_forms_tags observation_extras targets_extras custom_code_tags static cache %}
 <style>
-.border-right {
-    border-right: 1px solid black;
-}
 #div_phot_groups {
     overflow-y: scroll;
     width: 250px;
@@ -12,6 +9,26 @@
     overflow-y: scroll;
     width: 250px;
     height: 250px;
+}
+#all-filters-div .input-group-text,
+.filter-header .filter-label-spacer {
+    flex: 0 0 9rem;
+    width: 9rem;
+    justify-content: center;
+}
+.filter-header > div:not(.filter-label-spacer) {
+    flex: 1 1 0;
+}
+.obs-left {
+    width: 31.5rem;
+    max-width: 100%;
+}
+#all-filters-div > div,
+#all-filters-div > div > div {
+    margin: 0 !important;
+}
+#all-filters-div .form-control {
+    margin-right: 0 !important;
 }
 #div_phot_delay_amount {
     display: none;
@@ -34,27 +51,99 @@
     {% moon_vis object %}
   </div>
 </div>
-<div class="row">
-  <div class="col-md-6 border-right">
-    <h4>Submit a Photometry Sequence</h4>
+{% if portal_error %}
+<div class="alert alert-warning mt-3">{{ portal_error }}</div>
+{% else %}
+<ul class="nav nav-tabs mt-3" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#obs-pane-phot" type="button" role="tab">Photometry</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#obs-pane-spec" type="button" role="tab">FLOYDS</button>
+  </li>
+  {% if soar_form %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#obs-pane-soar" type="button" role="tab">SOAR</button>
+  </li>
+  {% endif %}
+</ul>
+<div class="tab-content pt-3">
+  <div class="tab-pane fade show active" id="obs-pane-phot" role="tabpanel">
+    <div class="d-flex align-items-center mb-2">
+      <h4 class="mb-0">Submit a Photometry Sequence</h4>
+      <button class="btn btn-sm btn-outline-secondary ms-3" type="button" data-bs-toggle="modal" data-bs-target="#phot-exposure-guide">Suggested exposure times</button>
+    </div>
+    <div class="modal fade" id="phot-exposure-guide" tabindex="-1" aria-labelledby="phot-exposure-guide-title" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="phot-exposure-guide-title">Photometry (limit ~ 21.0-20.5 mag)</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <table class="table table-sm table-bordered mb-0">
+              <thead><tr><th>Magnitude</th><th>U</th><th>B, g</th><th>V, r, i</th></tr></thead>
+              <tbody>
+                <tr><td>20.5-19.5</td><td></td><td>400 s</td><td>300 s</td></tr>
+                <tr><td>19.5-18.5</td><td>400 s</td><td>300 s</td><td>200 s</td></tr>
+                <tr><td>18.5-17.5</td><td>300 s</td><td>200 s</td><td>120 s</td></tr>
+                <tr><td>17.5-16.5</td><td>200 s</td><td>120 s</td><td>90 s</td></tr>
+                <tr><td>16.5-15.5</td><td>120 s</td><td>90 s</td><td>60 s</td></tr>
+                <tr><td>15.5-14.5</td><td>90 s</td><td>60 s</td><td>40 s</td></tr>
+                <tr><td>14.5-13.5</td><td>60 s</td><td>40 s</td><td>20 s</td></tr>
+                <tr><td>13.5-12.5</td><td>40 s</td><td>20 s</td><td>10 s</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="obs-form-phot">
       {% crispy phot_form %}
     </div>
   </div>
-  <div class="col-md-6">
-    <h4>Submit a FLOYDS Sequence</h4>
+  <div class="tab-pane fade" id="obs-pane-spec" role="tabpanel">
+    <div class="d-flex align-items-center mb-2">
+      <h4 class="mb-0">Submit a FLOYDS Sequence</h4>
+      <button class="btn btn-sm btn-outline-secondary ms-3" type="button" data-bs-toggle="modal" data-bs-target="#spec-exposure-guide">Suggested exposure times</button>
+    </div>
+    <div class="modal fade" id="spec-exposure-guide" tabindex="-1" aria-labelledby="spec-exposure-guide-title" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="spec-exposure-guide-title">Spectroscopy (limit ~ 19.0-18.5 mag)</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <table class="table table-sm table-bordered mb-0">
+              <thead><tr><th>Magnitude</th><th>Exposure time</th></tr></thead>
+              <tbody>
+                <tr><td>18.5-17.5</td><td>3600 s</td></tr>
+                <tr><td>17.5-16.5</td><td>2700 s</td></tr>
+                <tr><td>16.5-15.5</td><td>1800 s</td></tr>
+                <tr><td>15.5-14.5</td><td>900 s</td></tr>
+                <tr><td>14.5-13.5</td><td>600 s</td></tr>
+                <tr><td>13.5-12.5</td><td>400 s</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="obs-form-spec">
       {% crispy spec_form %}
     </div>
-    {% if soar_form %}
-    <hr>
+  </div>
+  {% if soar_form %}
+  <div class="tab-pane fade" id="obs-pane-soar" role="tabpanel">
     <h4>Submit a One-Time SOAR Spectrum</h4>
     <div id="obs-form-soar">
       {% crispy soar_form %}
     </div>
-    {% endif %}
   </div>
+  {% endif %}
 </div>
+{% endif %}
 <script>
 $(function () {
   const config = {
@@ -120,12 +209,10 @@ $(function () {
     }
     if (val === '2M0-SCICAM-MUSCAT') {
       $('#block-no-header').hide();
-      $('#exp-time-header, #exp-num-header').removeClass('col-md-4').addClass('col-md-6');
       $("[id$='_2']").hide();
       $("[id$='_2']").closest('div.col-md-4, .col').hide();
     } else {
       $('#block-no-header').show();
-      $('#exp-time-header, #exp-num-header').removeClass('col-md-6').addClass('col-md-4');
       $("[id$='_2']").show();
       $("[id$='_2']").closest('div.col-md-4, .col').show();
     }
@@ -315,7 +402,7 @@ $(function () {
     }
     const trigger = detail.requestConfig && detail.requestConfig.triggeringEvent;
     const button = (trigger && trigger.submitter) || form.querySelector("[type='submit']");
-    $(button).after('<span class="obs-form-spinner spinner-border spinner-border-sm ml-2"></span>');
+    $(button).after('<span class="obs-form-spinner spinner-border spinner-border-sm ms-2"></span>');
     $(form).find("[type='submit']").css({"pointer-events": "none", "opacity": 0.65});
   });
 

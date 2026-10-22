@@ -1,46 +1,51 @@
-{% load bootstrap4 %}
+{% load django_bootstrap5 static %}
 {% load custom_code_tags %}
+<script src="{% static 'custom_code/spectrum_view.js' %}"></script>
 {% include 'tom_dataproducts/partials/js9_scripts.html' %}
 <h4>Data</h4>
 <div class="row mb-3 bg-light p-3 rounded">
   <div class="col-md-3">
-    <label for="startDateFilter" class="font-weight-bold">Start Date:</label>
+    <label for="startDateFilter" class="fw-bold">Start Date:</label>
     <input type="date" id="startDateFilter" class="form-control product-filter" value="{{ date_min }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-3">
-    <label for="endDateFilter" class="font-weight-bold">End Date:</label>
+    <label for="endDateFilter" class="fw-bold">End Date:</label>
     <input type="date" id="endDateFilter" class="form-control product-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-2">
-    <label for="telescopeFilter" class="font-weight-bold">Telescope:</label>
+    <label for="telescopeFilter" class="fw-bold">Telescope:</label>
     <select id="telescopeFilter" class="form-control product-filter">
       <option value="">-- All --</option>
       {% for t in telescopes %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
     </select>
   </div>
   <div class="col-md-2">
-    <label for="instrumentFilter" class="font-weight-bold">Instrument:</label>
+    <label for="instrumentFilter" class="fw-bold">Instrument:</label>
     <select id="instrumentFilter" class="form-control product-filter">
       <option value="">-- All --</option>
       {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
     </select>
   </div>
   <div class="col-md-2 d-flex align-items-end">
-    <button type="button" id="clearFilters" class="btn btn-secondary btn-block">Clear Filters</button>
+    <button type="button" id="clearFilters" class="btn btn-secondary w-100">Clear Filters</button>
   </div>
 </div>
-<form action="{% url 'custom_code:bulk-download-dataproducts' %}" method="POST" id="bulkDownloadForm">
-  {% csrf_token %}
-  <input type="hidden" name="target_name" value="{{ target.name }}">
+<form action="{% url 'download-spectra' %}" method="GET" id="bulkDownloadForm">
   <div class="mb-3 d-inline-block">
     <select name="download_format" class="form-control d-inline-block w-auto">
       <option value="any">Any (default fits)</option>
       <option value="fits">fits</option>
       <option value="ascii">ascii</option>
     </select>
-    <button type="submit" class="btn btn-success" id="bulkDownloadSubmit">Download</button>
+    <label class="ms-2" title="FLOYDS raw frames from the LCO archive, or reduction files uploaded with a spectrum">
+      <input type="checkbox" id="rawFiles"> Include raw / reduction files
+    </label>
+    <label class="ms-2 text-muted" id="rawStandardsLabel" title="Adds the FLOYDS standard from the same night to each FLOYDS spectrum">
+      <input type="checkbox" id="rawStandards" checked disabled> Include flux standards (FLOYDS)
+    </label>
+    <button type="submit" class="btn btn-success ms-2" id="bulkDownloadSubmit">Download</button>
   </div>
-  <span class="text-muted ml-2">Download spectra as a filetype if available</span>
+  <span class="text-muted ms-2" id="bulkDownloadHint">Current versions in reduced/, earlier versions in reduced/older_versions/</span>
   <table class="table table-striped" id="dataproductsTable">
     <thead>
       <tr>
@@ -50,8 +55,9 @@
         <th>Filename</th>
         <th>Type</th>
         <th>Date</th>
+        <th>Spectrum</th>
         {% if is_admin %}<th>Update</th>{% endif %}
-        <th>Delete</th>
+        {% if is_admin %}<th>Delete</th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -59,9 +65,11 @@
       {% if product.data %}
       {% with extra=product.reduceddatumextra_set.first %}
       <tr class="product-row"
-          data-created="{{ product.created|date:'Y-m-d' }}"
+          data-observed="{{ product.observed|date:'Y-m-d' }}"
           data-telescope="{{ extra.value.telescope|default:'' }}"
-          data-instrument="{{ extra.value.instrument|default:'' }}">
+          data-instrument="{{ extra.value.instrument|default:'' }}"
+          data-dp="{{ product.id }}" data-raw="{% if product.raw_available %}1{% endif %}"{% if product.spectrum %}
+          data-spectrum-url="{% url 'spectrum-data' target.id product.spectrum.id %}"{% endif %}>
         <td>
           <input type="checkbox" name="selected_products" value="{{ product.id }}" class="product-checkbox" checked>
         </td>
@@ -83,12 +91,21 @@
           {% endif %}
         </td>
         <td>
-          {% with rd=product.reduceddatum_set.first %}
+          {% with rd=product.spectroscopyreduceddatum_set.first %}
             {{ rd.timestamp|date:"Y-m-d" }}
           {% endwith %}
         </td>
+        <td>
+          {% if product.spectrum %}
+          <button type="button" class="btn btn-outline-primary" onclick="snexSpectra.show('{% url 'spectrum-data' target.id product.spectrum.id %}')">View</button>
+          {% for standard in product.standards %}
+          <button type="button" class="btn btn-outline-secondary" title="Flux standard, {{ standard.hours|floatformat:1 }} h from this spectrum"
+            onclick="snexSpectra.show('{% url 'spectrum-data' standard.spectrum.target_id standard.spectrum.id %}')">{{ standard.name }}</button>
+          {% endfor %}
+          {% endif %}
+        </td>
         {% if is_admin %}<td>{% dataproduct_update product %}</td>{% endif %}
-        <td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>
+        {% if is_admin %}<td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>{% endif %}
       </tr>
       {% endwith %}
       {% endif %}
@@ -96,10 +113,35 @@
     </tbody>
   </table>
 </form>
+<div class="card mt-3">
+  <div class="card-header">Selected spectra</div>
+  <div class="card-body"><div id="dp-spectra-plot"></div></div>
+</div>
+<script>
+(function () {
+  const div = document.getElementById('dp-spectra-plot');
+  new IntersectionObserver(function (entries, observer) {
+    if (entries[0].isIntersecting && window.plotSelectedSpectra) {
+      observer.disconnect();
+      window.plotSelectedSpectra();
+    }
+  }).observe(div);
+})();
+</script>
 <script>
 (function () {
   if (window.__dataProductFiltersBound) { return; }
   window.__dataProductFiltersBound = true;
+
+  function plotSelectedSpectra() {
+    const div = document.getElementById('dp-spectra-plot');
+    if (!div || !window.snexSpectra) { return; }
+    const urls = Array.from(document.querySelectorAll('.product-row')).filter(function (row) {
+      return row.style.display !== 'none' && row.dataset.spectrumUrl && row.querySelector('.product-checkbox').checked;
+    }).map(function (row) { return row.dataset.spectrumUrl; });
+    window.snexSpectra.overlay(div, urls);
+  }
+  window.plotSelectedSpectra = plotSelectedSpectra;
 
   function filterTable() {
     const start = document.getElementById('startDateFilter');
@@ -112,7 +154,7 @@
     const selTel = (tel.value || '').toLowerCase();
     const selIns = (ins.value || '').toLowerCase();
     document.querySelectorAll('.product-row').forEach(function (row) {
-      const d = row.getAttribute('data-created') || '';
+      const d = row.getAttribute('data-observed') || '';
       const okStart = !startVal || d >= startVal;
       const okEnd = !endVal || d <= endVal;
       const okTel = !selTel || (row.getAttribute('data-telescope') || '').toLowerCase() === selTel;
@@ -127,11 +169,21 @@
   }
   document.addEventListener('change', function (ev) {
     const t = ev.target;
-    if (t.classList && t.classList.contains('product-filter')) {
+    if (t.id === 'rawFiles') {
+      document.getElementById('rawStandards').disabled = !t.checked;
+      document.getElementById('rawStandardsLabel').classList.toggle('text-muted', !t.checked);
+      document.getElementById('bulkDownloadHint').textContent = t.checked
+        ? 'Reduced spectra in reduced/, raw or reduction files in raw/<spectrum>/'
+        : 'Current versions in reduced/, earlier versions in reduced/older_versions/';
+    } else if (t.classList && t.classList.contains('product-filter')) {
       filterTable();
+      plotSelectedSpectra();
     } else if (t.id === 'selectAll') {
       document.querySelectorAll('.product-row:not([style*="display: none"]) .product-checkbox')
         .forEach(function (cb) { cb.checked = t.checked; });
+      plotSelectedSpectra();
+    } else if (t.classList && t.classList.contains('product-checkbox')) {
+      plotSelectedSpectra();
     }
   });
   document.addEventListener('click', function (ev) {
@@ -156,6 +208,7 @@
         if (el) { el.value = el.type === 'date' ? el.defaultValue : ''; }
       });
       filterTable();
+      plotSelectedSpectra();
     }
   });
   document.addEventListener('submit', function (ev) {
@@ -167,33 +220,21 @@
       alert("No items selected. Please check at least one data product before downloading.");
       return;
     }
-    const formData = new FormData(form);
-    fetch(form.action, {
-      method: 'POST',
-      body: formData,
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    }).then(function (resp) {
-      const ct = resp.headers.get('Content-Type') || '';
-      if (ct.indexOf('application/zip') !== -1) {
-        return resp.blob().then(function (blob) {
-          const cd = resp.headers.get('Content-Disposition') || '';
-          const m = cd.match(/filename=([^;]+)/);
-          const name = m ? m[1].replace(/["']/g, '').trim() : 'download.zip';
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = name;
-          document.body.appendChild(a); a.click(); a.remove();
-          URL.revokeObjectURL(url);
-        });
-      }
-      return resp.json().then(function (data) {
-        alert(data.error || 'Download failed.');
-      }).catch(function () {
-        alert('Download failed.');
-      });
-    }).catch(function () {
-      alert('Download failed. Please try again.');
+    const checked = Array.from(document.querySelectorAll('.product-row')).filter(function (row) {
+      return row.style.display !== 'none' && row.querySelector('.product-checkbox').checked;
     });
+    const params = new URLSearchParams(checked.map(function (row) { return ['dp', row.dataset.dp]; }));
+    params.append('format', form.download_format.value);
+    const raw = document.getElementById('rawFiles').checked;
+    if (raw) {
+      params.append('raw', '1');
+      if (document.getElementById('rawStandards').checked) { params.append('standards', '1'); }
+      const missing = checked.filter(function (row) { return row.dataset.raw !== '1'; }).length;
+      document.getElementById('bulkDownloadHint').textContent = 'Downloading ' + checked.length + ' data products' +
+        (missing ? ' (' + missing + ' have no raw files)' : '') + '...';
+    }
+    window.location.href = form.action + '?' + params.toString();
+  });
   });
 })();
 </script>

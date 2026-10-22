@@ -1,0 +1,9 @@
+Welcome to the Global Supernova Project!
+
+- Read the GSP Collaboration Guidelines (https://docs.google.com/document/d/1lOUEJ4rbvJ_KyI1qPu_Kcz35jRwgRhdeAR2oErtjM3U/edit?usp=sharing) and the GSP Publication Rules (https://docs.google.com/spreadsheets/d/1gn0OsNu7Px8-eBt7W-NNuPymm0kpT8HBRebnxZtiV9c/edit?usp=sharing). These answer a lot of common questions about data/publication policies.
+
+- Join the gsp@lco.global mailing list by going to https://groups.google.com/a/lco.global/g/gsp and "asking to join the group." We typically see news about GSP-related proposals and observing runs here.
+
+- Join the GSP Slack workspace via this invite link: https://join.slack.com/t/global-supernova/shared_invite/zt-20hwt62ea-7FLJuWOq0HT9rYHMEgewrw. We typically see discussion about individual supernovae here, as well as support running the GSP photometry pipeline.
+
+- Subscribe to the GSP Google calendar by going to https://calendar.google.com/calendar/u/0?cid=Y19rcHRoaGJ0dXI1cTVsaWNnazNyY2FwODc4c0Bncm91cC5jYWxlbmRhci5nb29nbGUuY29t and signing in to the same Google account used to subscribe to this mailing list.

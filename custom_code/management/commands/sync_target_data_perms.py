@@ -7,13 +7,15 @@ from guardian.models import GroupObjectPermission
 from guardian.shortcuts import assign_perm
 
 from tom_targets.models import Target
-from tom_dataproducts.models import ReducedDatum, DataProduct
+from tom_dataproducts.models import ReducedDatum, PhotometryReducedDatum, SpectroscopyReducedDatum, DataProduct
 from custom_code.models import ReducedDatumExtra
 
 ACTIONS = ('view', 'change', 'delete')
 
 MODELS = [
     (ReducedDatum,      'target', 'tom_dataproducts', 'reduceddatum'),
+    (PhotometryReducedDatum, 'target', 'tom_dataproducts', 'photometryreduceddatum'),
+    (SpectroscopyReducedDatum, 'target', 'tom_dataproducts', 'spectroscopyreduceddatum'),
     (DataProduct,       'target', 'tom_dataproducts', 'dataproduct'),
     (ReducedDatumExtra, 'target', 'custom_code',      'reduceddatumextra'),
 ]

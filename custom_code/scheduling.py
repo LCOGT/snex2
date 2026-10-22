@@ -78,7 +78,8 @@ def save_comments(comment_text, object_id, user, model_name='observationgroup'):
     try:
         model_map = {
             'observationgroup': 'observationgroup',
-            'spec': 'reduceddatum',
+            'spec': 'dataproduct',
+            'spectrum': 'spectroscopyreduceddatum',
             'targets': 'snextarget'
         }
         actual_model = model_map.get(model_name, model_name)
@@ -133,7 +134,7 @@ def cancel_observation(obs_group):
         logger.info(f'Current cadence status: {dynamic_cadence.active}')
         dynamic_cadence.active = False
         dynamic_cadence.save()
-        logger.info(f'Dynamic Cadence turned off')
+        logger.info('Dynamic Cadence turned off')
     except DynamicCadence.DoesNotExist:
         logger.warning(f"No dynamic cadence found for group {obs_group.id}")
 
@@ -155,7 +156,7 @@ def cancel_observation(obs_group):
     
     if not all_canceled:
         if dynamic_cadence is not None:
-            logger.error(f'One or more cancellations failed, re-activating cadence')
+            logger.error('One or more cancellations failed, re-activating cadence')
             dynamic_cadence.active = True
             dynamic_cadence.save()
         return False

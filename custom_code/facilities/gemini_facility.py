@@ -32,10 +32,6 @@ def proposal_choices():
     return [(proposal, proposal) for proposal in SNEX_GEMINI_SETTINGS['programs']]
 
 
-def get_site_code_from_program(program_id):
-    return program_id.split('-')[0]
-
-
 class OpticalImagingForm(BaseObservationForm):
 
     window_size = forms.FloatField(initial=1.0, min_value=0.0, label='')
@@ -110,7 +106,6 @@ class OpticalImagingForm(BaseObservationForm):
         wait = True #On Hold
         coords = SkyCoord(ra=target.ra*u.degree, dec=target.dec*u.degree)
         now = datetime.utcnow()
-        sn_name = target.name
 
         payload = {
             'ready': str(not wait).lower(),
@@ -282,10 +277,8 @@ class OpticalSpectraForm(BaseObservationForm):
         return not errors
 
     def _init_observation_payload(self, target):
-        wait = True #On Hold
         coords = SkyCoord(ra=target.ra*u.degree, dec=target.dec*u.degree)
         now = datetime.utcnow()
-        sn_name = target.name
 
         if self.data['n_or_s'] == 'north':
             prog = os.getenv('GEMINI_NORTH_PROGRAMID')

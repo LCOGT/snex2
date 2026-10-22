@@ -1,4 +1,4 @@
-# Generated manually for SNEx2 registration "who you are" field
+# Generated manually for SNEx registration "who you are" field
 
 from django.conf import settings
 from django.db import migrations, models

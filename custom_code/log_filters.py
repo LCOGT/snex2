@@ -1,5 +1,5 @@
 """
-Custom logging filters for SNEx2.
+Custom logging filters for SNEx.
 """
 import logging
 

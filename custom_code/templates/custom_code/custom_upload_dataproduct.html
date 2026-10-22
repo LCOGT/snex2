@@ -1,4 +1,4 @@
-{% load bootstrap4 static %}
+{% load django_bootstrap5 static %}
 <style>
 #id_data_product_type {
     list-style: none;
@@ -28,7 +28,7 @@
 <h4>Upload a data product</h4>
 <form method="POST" action="{% url "custom-data-upload" %}" enctype="multipart/form-data">
   {% csrf_token %}
-  {% bootstrap_form data_product_form exclude='data_product_type,instrument,background_subtracted,subtraction_algorithm,reducer_group,final_reduction,template_source,telescope,exposure_time,slit,date_obs,groups' %}
+  {% bootstrap_form data_product_form exclude='data_product_type,instrument,background_subtracted,subtraction_algorithm,reducer_group,final_reduction,template_source,telescope,exposure_time,slit,date_obs,groups,reduction_files' %}
   <div class="row">
     <div class="column" id="column-dataproducttype" style="width: 20%;">
       {{ data_product_form.data_product_type.label_tag }}</br>
@@ -78,6 +78,11 @@
       {{ data_product_form.date_obs.label_tag }}</br>
       {{ data_product_form.date_obs }}
     </div>
+    <div class="col-md-12 pt-3" id="column-reduction-files">
+      {{ data_product_form.reduction_files.label_tag }}</br>
+      {{ data_product_form.reduction_files }}
+      <div class="form-text">{{ data_product_form.reduction_files.help_text }}</div>
+    </div>
   </div>
   <div class="row" id="hint-row">
     <span>Notes about file uploads:</span>
@@ -85,12 +90,12 @@
       <li>Photometry files must be uploaded in the following format: time (in MJD),filter,magnitude,error</li>
       <li>Spectra can be uploaded as ascii (with wavelength, flux as columns) or as fits files</li>
       <li>Information such as telescope, instrument, and reducer will be taken from the above text areas first</li>
-      <li>If these fields are blank, SNEx2 will try to read them directly from the uploaded file (either commented lines in plaintext files or fits headers)</li>
+      <li>If these fields are blank, SNEx will try to read them directly from the uploaded file (either commented lines in plaintext files or fits headers)</li>
     </ul>
   </div>
-  {% buttons %}
+  <div class="mb-3">
   <input type="submit" class="btn btn-primary" value="Upload" name="upload_dataproduct_form">
-  {% endbuttons %}
+  </div>
 </form>
 <script>
   $(document).ready(function() {
