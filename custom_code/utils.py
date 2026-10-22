@@ -11,9 +11,13 @@ from django.utils import timezone
 import datetime
 import hashlib
 import logging
+import re
 import requests
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum, SpectroscopyReducedDatum
+from tom_dataservices.data_services.tns import TNSDataService
+from tom_targets.models import Target, TargetName
 from custom_code.match_managers import TNS_PREFIX_RE
 
 logger = logging.getLogger(__name__)
@@ -21,6 +25,20 @@ logger = logging.getLogger(__name__)
 OBSERVATION_FORM_PREFIXES = {('SOAR', 'SPECTRA'): 'soar',
                              ('LCO', 'IMAGING'): 'phot',
                              ('LCO', 'SPECTRA'): 'spec'}
+
+TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target'))
+DATUM_MODELS = (ReducedDatum, PhotometryReducedDatum, SpectroscopyReducedDatum)
+MEASURED_KEYS = ('magnitude', 'error', 'psfmag', 'psfdmag', 'apmag', 'dapmag', 'fwhm', 'psfx', 'psfy')
+GENERATED_ASCII_PREFIX = 'spectrum-'
+FILTER_TRANSLATE = {'U': 'U', 'B': 'B', 'V': 'V', 'R': 'R', 'I': 'I', 'up': 'u', 'u': 'u',
+                    'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i', 'zs': 'zs', 'z': 'zs', 'w': 'w',
+                    'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 'UVW1': 'UVW1',
+                    'cyan': 'cyan', 'orange': 'orange'}
+FILTER_COLORS = {'U': 'rgb(59,0,113)', 'u': 'rgb(59,0,113)', 'B': 'rgb(0,87,255)', 'V': 'rgb(120,255,0)',
+                 'g': 'rgb(0,204,255)', 'r': 'rgb(255,124,0)', 'i': 'rgb(144,0,43)', 'R': 'rgb(224,27,27)',
+                 'I': 'rgb(125,10,60)', 'zs': 'rgb(101,42,42)', 'w': 'rgb(120,120,120)', 'g_ZTF': 'rgb(0,204,255)',
+                 'r_ZTF': 'rgb(255,124,0)', 'i_ZTF': 'rgb(144,0,43)', 'UVW2': '#FE0683', 'UVM2': '#BF01BC',
+                 'UVW1': '#8B06FF', 'cyan': 'rgb(0,128,128)', 'orange': 'rgb(250,128,114)', 'other': 'rgb(0,0,0)'}
 
 
 def observation_form_prefix(facility, observation_type):
@@ -69,8 +87,6 @@ def apply_proposal_rollover(observation_payload, start_keyword='start'):
             observation_payload['proposal'] = rollover['new_id']
     return observation_payload
 
-TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target'))
-
 def get_target_permission_groups(target_id):
     best = Group.objects.none()
     for app_label, model in TARGET_CONTENT_TYPES:
@@ -117,11 +133,6 @@ def sync_group_permissions_to_target(obs_group, records, target):
             assign_perm(f'tom_observations.change_{codename_model}', group, obj)
             assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
-def _datum_models():
-    from tom_dataproducts.models import PhotometryReducedDatum, ReducedDatum, SpectroscopyReducedDatum
-    return ReducedDatum, PhotometryReducedDatum, SpectroscopyReducedDatum
-
-
 def view_datum_perm(model):
     return f'tom_dataproducts.view_{model._meta.model_name}'
 
@@ -134,13 +145,7 @@ def _viewable_datums(model, target, user):
 
 
 def photometry_datums(target, user=None):
-    from tom_dataproducts.models import PhotometryReducedDatum
     return _viewable_datums(PhotometryReducedDatum, target, user)
-
-
-def spectroscopy_datums(target, user=None):
-    from tom_dataproducts.models import SpectroscopyReducedDatum
-    return _viewable_datums(SpectroscopyReducedDatum, target, user)
 
 
 def default_version(versions):
@@ -151,7 +156,7 @@ def default_version(versions):
 
 def observed_spectra(target, user=None):
     observations = {}
-    for spectrum in spectroscopy_datums(target, user):
+    for spectrum in _viewable_datums(SpectroscopyReducedDatum, target, user):
         observations.setdefault(spectrum.data_product_id or f'spectrum-{spectrum.pk}', []).append(spectrum)
     return sorted((default_version(versions) for versions in observations.values()), key=lambda spectrum: spectrum.timestamp)
 
@@ -164,8 +169,7 @@ def frame_night(product_id):
 
 
 def standard_spectra(spectrum):
-    from tom_dataproducts.models import SpectroscopyReducedDatum
-    if spectrum.target_id in set(standard_target_ids().values_list('pk', flat=True)):
+    if standard_target_ids().filter(pk=spectrum.target_id).exists():
         return []
     window = datetime.timedelta(days=1)
     candidates = SpectroscopyReducedDatum.objects.filter(
@@ -182,16 +186,7 @@ def standard_spectra(spectrum):
                   key=lambda standard: abs(standard.timestamp - spectrum.timestamp))
 
 
-def spectrum_comment_object(spectrum):
-    return spectrum.data_product or spectrum
-
-
-def can_delete_spectrum(user):
-    return user.is_superuser
-
-
 def standard_target_ids():
-    from tom_targets.models import Target
     return Target.objects.filter(standard=True).values('pk')
 
 
@@ -202,7 +197,7 @@ def viewable_datums(user, queryset):
 
 def viewable_dataproducts(user, queryset):
     viewable = Q(pk__in=get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset).values('pk'))
-    for model in _datum_models():
+    for model in DATUM_MODELS:
         via_datums = get_objects_for_user(user, view_datum_perm(model), klass=model.objects.filter(data_product__in=queryset))
         viewable |= Q(pk__in=via_datums.values('data_product_id'))
     return queryset.filter(viewable | Q(target_id__in=standard_target_ids()))
@@ -211,7 +206,7 @@ def viewable_dataproducts(user, queryset):
 def dataproduct_view_groups(dp):
     perms = Q(content_type=ContentType.objects.get_for_model(dp), object_pk=str(dp.pk),
               permission__codename='view_dataproduct')
-    for model in _datum_models():
+    for model in DATUM_MODELS:
         datum_pks = [str(pk) for pk in model.objects.filter(data_product=dp).values_list('pk', flat=True)]
         perms |= Q(content_type=ContentType.objects.get_for_model(model), object_pk__in=datum_pks,
                    permission__codename=f'view_{model._meta.model_name}')
@@ -219,7 +214,7 @@ def dataproduct_view_groups(dp):
 
 
 def dataproduct_datums(dp):
-    return [model.objects.filter(data_product=dp) for model in _datum_models()]
+    return [model.objects.filter(data_product=dp) for model in DATUM_MODELS]
 
 
 def _set_view_groups(queryset, groups):
@@ -240,7 +235,6 @@ def set_dataproduct_view_groups(dp, groups):
 
 
 def set_reduceddatum_view_groups(datums, groups):
-    from tom_dataproducts.models import DataProduct
     for dp in DataProduct.objects.filter(pk__in=datums.exclude(data_product=None).values('data_product')):
         set_dataproduct_view_groups(dp, groups)
     _set_view_groups(datums.filter(data_product=None), groups)
@@ -274,15 +268,16 @@ def groups_from_payload(groups):
     return found
 
 
+def get_color(filter_name):
+    return FILTER_COLORS.get(FILTER_TRANSLATE.get(filter_name), FILTER_COLORS['other'])
+
+
 def measured(value):
     try:
         value = float(value)
     except (TypeError, ValueError):
         return None
     return None if value >= 9000 else value
-
-
-MEASURED_KEYS = ('magnitude', 'error', 'psfmag', 'psfdmag', 'apmag', 'dapmag', 'fwhm', 'psfx', 'psfy')
 
 
 def without_sentinels(value):
@@ -365,7 +360,6 @@ def _normalize_view_object_name(name: str) -> str:
 
     # Apply suffix letter casing rule.
     # We only look at the initial contiguous letter run.
-    import re
     m = re.match(r'([A-Za-z]+)', suffix_raw)
     letters = m.group(1) if m else ''
     rest = suffix_raw[len(letters):] if letters else suffix_raw
@@ -390,32 +384,32 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
     return s
 
 
-GENERATED_ASCII_PREFIX = 'spectrum-'
+def upload_extras(product):
+    extra = product.reduceddatumextra_set.first() if product else None
+    return dict(extra.value) if extra and isinstance(extra.value, dict) else {}
 
 
-SPECTRUM_HEADER_FACTS = (('TELESCOPE', 'telescope'), ('INSTRUMENT', 'instrument'), ('EXPTIME', 'exptime'), ('SLIT', 'slit'),
-                         ('GRISM', 'grism'), ('AIRMASS', 'airmass'), ('OBSERVER', 'observer'))
-
-
-def spectrum_ascii_header(rd, columns):
-    upload = rd.data_product.reduceddatumextra_set.first() if rd.data_product else None
-    facts = dict((upload.value or {}) if upload else {}, telescope=rd.telescope, instrument=rd.instrument)
-    if rd.exposure_time is not None:
-        facts['exptime'] = rd.exposure_time
-    header = [('OBJECT', rd.target.name), ('DATE-OBS', rd.timestamp.strftime('%Y-%m-%dT%H:%M:%S'))]
-    header += [(label, facts.get(key)) for label, key in SPECTRUM_HEADER_FACTS]
-    header += [('REDUCER', rd.value.get('reducer') or facts.get('reducer')),
-               ('FINAL', 'yes' if rd.value.get('final_reduction') else 'no'),
-               ('WAVELENGTH_UNIT', rd.wavelength_unit), ('FLUX_UNIT', rd.flux_unit)]
-    return ['# ' + ' '.join(columns)] + [f'# {label} = {item}' for label, item in header if item not in (None, '')]
+def fits_is_current(spectrum):
+    product = spectrum.data_product
+    return bool(product and product.data) and upload_extras(product).get('file_version') in (None, spectrum.reduction_version)
 
 
 def spectrum_ascii(rd, header=True):
     if not rd or not rd.wavelength or not rd.flux or len(rd.wavelength) != len(rd.flux):
         return None
     columns = [rd.wavelength, rd.flux] + ([rd.error] if len(rd.error) == len(rd.flux) else [])
-    names = ['wavelength', 'flux', 'error'][:len(columns)]
-    lines = spectrum_ascii_header(rd, names) if header else []
+    lines = []
+    if header:
+        facts = dict(upload_extras(rd.data_product), telescope=rd.telescope, instrument=rd.instrument)
+        if rd.exposure_time is not None:
+            facts['exptime'] = rd.exposure_time
+        labels = [('OBJECT', rd.target.name), ('DATE-OBS', rd.timestamp.strftime('%Y-%m-%dT%H:%M:%S'))]
+        labels += [(key.upper(), facts.get(key)) for key in ('telescope', 'instrument', 'exptime', 'slit', 'grism', 'airmass', 'observer')]
+        labels += [('REDUCER', rd.value.get('reducer') or facts.get('reducer')),
+                   ('FINAL', 'yes' if rd.value.get('final_reduction') else 'no'),
+                   ('WAVELENGTH_UNIT', rd.wavelength_unit), ('FLUX_UNIT', rd.flux_unit)]
+        lines = ['# ' + ' '.join(['wavelength', 'flux', 'error'][:len(columns)])]
+        lines += [f'# {label} = {item}' for label, item in labels if item not in (None, '')]
     lines += [' '.join(str(item) for item in row) for row in zip(*columns)]
     return ('\n'.join(lines)).encode('utf-8')
 
@@ -446,13 +440,12 @@ def photometry_reduction_version(value, data_product_id=None):
     return '{}-{}'.format(value.get('subtraction_algorithm') or 'subtracted', value.get('template_source') or '')
 
 
-def update_target_from_tns(target):
-    from tom_dataservices.data_services.tns import TNSDataService
-    from tom_targets.models import Target, TargetName
+def tns_object(name):
+    name = name.replace(' ', '')
+    return TNS_PREFIX_RE.sub('', name).lower() if TNS_PREFIX_RE.match(name) else None
 
-    def tns_object(name):
-        name = name.replace(' ', '')
-        return TNS_PREFIX_RE.sub('', name).lower() if TNS_PREFIX_RE.match(name) else None
+
+def update_target_from_tns(target):
 
     objname = next((tns_object(name) for name in target.names if tns_object(name)), None)
     if objname is None:

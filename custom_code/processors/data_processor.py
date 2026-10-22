@@ -2,6 +2,7 @@ import os
 from importlib import import_module
 from django.conf import settings
 from django.utils import timezone
+from tom_dataproducts.exceptions import InvalidFileFormatException
 from tom_dataproducts.models import try_parse_reduced_datum
 from tom_targets.sharing import continuous_share_data
 
@@ -23,6 +24,8 @@ def run_custom_data_processor(dp, extras, rd_extras, uploaded_by=''):
         raise ImportError('Could not import {}. Did you provide the correct path?'.format(processor_class))
     data_processor = clazz()
     data, rd_extras = data_processor.process_data(dp, extras, rd_extras)
+    if not data:
+        raise InvalidFileFormatException('No data could be read from this file')
 
     version, fields = upload_reduction_version(dp.id), {}
     if dp.data_product_type == 'spectroscopy':
@@ -51,20 +54,24 @@ def merge_into_observation(dp, datums):
     if dp.data_product_type != 'spectroscopy' or spectrum is None:
         return dp, datums
     if spectrum.data_product_id != dp.id:
-        dp.delete()
-        return spectrum.data_product, datums
-    same_time = type(spectrum).objects.filter(target=dp.target, timestamp=spectrum.timestamp).exclude(
-        data_product=dp).exclude(data_product=None)
-    observation = next((other.data_product for other in same_time
-                        if not other.instrument or not spectrum.instrument or other.instrument == spectrum.instrument), None)
-    if observation is None:
-        return dp, datums
-    versions = type(spectrum).objects.filter(data_product=observation)
-    if not versions.filter(reduction_version=spectrum.reduction_version).exists():
-        datums.update(data_product=observation)
-        observation.data.save(os.path.basename(dp.data.name), dp.data.file)
-        for extra in observation.reduceddatumextra_set.all():
-            extra.value['file_version'] = spectrum.reduction_version
-            extra.save()
+        observation = spectrum.data_product
+    else:
+        same_time = type(spectrum).objects.filter(target=dp.target, timestamp=spectrum.timestamp).exclude(
+            data_product=dp).exclude(data_product=None)
+        observation = next((other.data_product for other in same_time
+                            if not other.instrument or not spectrum.instrument or other.instrument == spectrum.instrument), None)
+        if observation is None:
+            return dp, datums
+        versions = type(spectrum).objects.filter(data_product=observation)
+        if not versions.filter(reduction_version=spectrum.reduction_version).exists():
+            datums.update(data_product=observation)
+            observation.data.save(os.path.basename(dp.data.name), dp.data.file)
+            for extra in observation.reduceddatumextra_set.all():
+                extra.value['file_version'] = spectrum.reduction_version
+                extra.save()
+        datums = versions.filter(reduction_version=spectrum.reduction_version)
     dp.delete()
-    return observation, versions.filter(reduction_version=spectrum.reduction_version)
+    if dp.product_id and not observation.product_id:
+        observation.product_id = dp.product_id
+        observation.save(update_fields=['product_id'])
+    return observation, datums

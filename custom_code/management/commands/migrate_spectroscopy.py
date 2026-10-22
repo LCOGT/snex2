@@ -10,17 +10,11 @@ from tom_dataproducts.models import DataProduct, ReducedDatum, SpectroscopyReduc
 from custom_code.management.commands.migrate_photometry import Command as PhotometryCommand
 from custom_code.models import ReducedDatumExtra
 from custom_code.raw_spectra import is_floyds_frame
-from custom_code.utils import file_version, frame_night, measured, upload_reduction_version
+from custom_code.utils import file_version, frame_night, measured, upload_extras, upload_reduction_version
 
 BATCH_SIZE = 100
 SPECTRUM_KEYS = ('flux', 'photon_flux', 'wavelength', 'error', 'flux_error', 'flux_units', 'photon_flux_units',
                  'wavelength_units', 'telescope', 'instrument')
-
-
-def _same_coverage(a, b):
-    shared = min(a[1], b[1]) - max(a[0], b[0])
-    longest = max(a[1] - a[0], b[1] - b[0])
-    return longest > 0 and shared / longest > 0.8
 
 
 def _floats(values):
@@ -51,9 +45,14 @@ class Command(PhotometryCommand):
             flux_unit, extras = '', {}
         if not flux or len(wavelength) != len(flux):
             return None, False
-        version = self.version(rd.data_product) if rd.data_product_id else ''
-        upload = ReducedDatumExtra.objects.filter(data_product_id=rd.data_product_id).first() if rd.data_product_id else None
-        facts = (upload.value or {}) if upload else {}
+        version = ''
+        if rd.data_product_id:
+            try:
+                version = file_version(rd.data_product.data)
+            except (OSError, ValueError):
+                version = upload_reduction_version(rd.data_product_id)
+        product_id = rd.data_product.product_id if rd.data_product_id else ''
+        facts = upload_extras(rd.data_product)
         extras.update({key: facts[key] for key in ('reducer', 'final_reduction') if facts.get(key)})
         key = (rd.timestamp, tuple(flux), version)
         if key in seen:
@@ -62,58 +61,16 @@ class Command(PhotometryCommand):
             target_id=rd.target_id, data_product_id=rd.data_product_id, timestamp=rd.timestamp,
             source_name=rd.source_name, source_location=rd.source_location,
             telescope=str(value.get('telescope') or facts.get('telescope') or rd.telescope),
-            instrument=str(value.get('instrument') or facts.get('instrument') or rd.instrument or self.camera(rd.data_product)),
+            instrument=str(value.get('instrument') or facts.get('instrument') or rd.instrument or (product_id.split('-')[1] if frame_night(product_id) else '')),
             exposure_time=measured(facts.get('exptime')),
             wavelength=wavelength, flux=flux, error=_floats(value.get('error') or value.get('flux_error') or []),
             flux_unit=str(flux_unit), wavelength_unit=str(value.get('wavelength_units') or ''),
             reduction_version=version, value=extras)
         return seen[key], False
 
-    def camera(self, product):
-        product_id = product.product_id if product else ''
-        return product_id.split('-')[1] if frame_night(product_id) else ''
-
-    def find_merges(self, observations):
-        products = {dp.pk: dp for dp in DataProduct.objects.filter(pk__in=list(observations))}
-        groups = {}
-        for pk, (target_id, timestamp, instrument, span) in observations.items():
-            if pk in products:
-                name = f'{products[pk].product_id or ""} {products[pk].data.name or ""}'.lower()
-                groups.setdefault((target_id, timestamp, 'host' in name), []).append(pk)
-        merges = []
-        for pks in groups.values():
-            pks.sort(key=lambda pk: (not is_floyds_frame(products[pk].product_id), pk))
-            clusters = []
-            for pk in pks:
-                instrument, span = observations[pk][2], observations[pk][3]
-                for cluster in clusters:
-                    lead = observations[cluster[0]]
-                    if (not instrument or not lead[2] or instrument == lead[2]) and _same_coverage(span, lead[3]):
-                        cluster.append(pk)
-                        break
-                else:
-                    clusters.append([pk])
-            merges.extend((cluster[0], cluster[1:]) for cluster in clusters if len(cluster) > 1)
-        return merges
-
     def describe(self, pk):
         dp = DataProduct.objects.select_related('target').get(pk=pk)
         return f'{dp.pk} ({dp.target.name}, {dp.product_id or dp.data.name.split("/")[-1]})'
-
-    def merge(self, survivor, others, product_type):
-        others = [pk for pk in others if not ReducedDatum.objects.filter(data_product_id=pk).exists()]
-        with transaction.atomic():
-            SpectroscopyReducedDatum.objects.filter(data_product_id__in=others).update(data_product_id=survivor)
-            Comment.objects.filter(content_type=product_type, object_pk__in=[str(pk) for pk in others]).update(
-                object_pk=str(survivor))
-            ReducedDatumExtra.objects.filter(data_product_id__in=others).delete()
-            DataProduct.objects.filter(pk__in=others).delete()
-
-    def version(self, product):
-        try:
-            return file_version(product.data)
-        except (OSError, ValueError):
-            return upload_reduction_version(product.pk)
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
@@ -165,12 +122,47 @@ class Command(PhotometryCommand):
                     comments += Comment.objects.filter(content_type=old_type, object_pk=str(old)).update(**moved_to)
                 ReducedDatum.objects.filter(pk__in=list(new_pks)).delete()
 
-        merges = self.find_merges(observations)
+        products = {dp.pk: dp for dp in DataProduct.objects.filter(pk__in=list(observations))}
+        groups = {}
+        for pk, (target_id, timestamp, instrument, span) in observations.items():
+            if pk in products:
+                name = f'{products[pk].product_id or ""} {products[pk].data.name or ""}'.lower()
+                groups.setdefault((target_id, timestamp, 'host' in name), []).append(pk)
+        merges = []
+        for pks in groups.values():
+            pks.sort(key=lambda pk: (not is_floyds_frame(products[pk].product_id), pk))
+            clusters = []
+            for pk in pks:
+                instrument, (low, high) = observations[pk][2], observations[pk][3]
+                for cluster in clusters:
+                    lead_instrument, (lead_low, lead_high) = observations[cluster[0]][2], observations[cluster[0]][3]
+                    longest = max(high - low, lead_high - lead_low)
+                    same_coverage = longest > 0 and (min(high, lead_high) - max(low, lead_low)) / longest > 0.8
+                    if (not instrument or not lead_instrument or instrument == lead_instrument) and same_coverage:
+                        cluster.append(pk)
+                        break
+                else:
+                    clusters.append([pk])
+            merges.extend((cluster[0], cluster[1:]) for cluster in clusters if len(cluster) > 1)
+
         for survivor, others in merges:
             self.stdout.write(f'{"Would merge" if dry_run else "Merged"} {", ".join(self.describe(pk) for pk in others)} '
                               f'into {self.describe(survivor)} as versions')
-            if not dry_run:
-                self.merge(survivor, others, product_type)
+            if dry_run:
+                continue
+            others = [pk for pk in others if not ReducedDatum.objects.filter(data_product_id=pk).exists()]
+            product = products[survivor]
+            with transaction.atomic():
+                extra = product.reduceddatumextra_set.first() or ReducedDatumExtra(
+                    target_id=product.target_id, data_product=product, data_type='spectroscopy', key='upload_extras', value={})
+                extra.value = {**upload_extras(product), 'file_version': SpectroscopyReducedDatum.objects.filter(
+                    data_product_id=survivor).values_list('reduction_version', flat=True).first()}
+                extra.save()
+                SpectroscopyReducedDatum.objects.filter(data_product_id__in=others).update(data_product_id=survivor)
+                Comment.objects.filter(content_type=product_type, object_pk__in=[str(pk) for pk in others]).update(
+                    object_pk=str(survivor))
+                ReducedDatumExtra.objects.filter(data_product_id__in=others).delete()
+                DataProduct.objects.filter(pk__in=others).delete()
 
         label = 'Would move' if dry_run else 'Moved'
         self.stdout.write(f'{label} {moved} spectra; {skipped} left in place because no spectrum could be read from them.')

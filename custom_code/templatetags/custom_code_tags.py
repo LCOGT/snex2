@@ -1,5 +1,6 @@
 from plotly import offline
 import plotly.graph_objs as go
+import requests
 from django import template, forms
 from django.conf import settings
 from django.db.models.functions import Coalesce, Lower
@@ -36,7 +37,7 @@ from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
 from custom_code.raw_spectra import is_floyds_frame, reduction_files
-from custom_code.utils import can_delete_spectrum, default_version, observed_spectra, standard_spectra, photometry_datums, spectrum_comment_object, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts, viewable_datums
+from custom_code.utils import FILTER_TRANSLATE, get_color, default_version, fits_is_current, observed_spectra, standard_spectra, photometry_datums, spectrum_ascii, upload_extras, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, standard_target_ids, viewable_dataproducts, viewable_datums
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -51,6 +52,7 @@ TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED',
 LIGHTCURVE_CONTROLS_HEIGHT = 580
 
 register = template.Library()
+
 
 @register.inclusion_tag('custom_code/airmass_collapse.html')
 def airmass_collapse(target):
@@ -234,25 +236,6 @@ def get_24hr_airmass(target, interval, airmass_limit, halimit=4.8):
     return plot_data
 
 
-def get_color(filter_name, filter_translate):
-    colors = {'U': 'rgb(59,0,113)',
-        'B': 'rgb(0,87,255)',
-        'V': 'rgb(120,255,0)',
-        'g': 'rgb(0,204,255)',
-        'r': 'rgb(255,124,0)',
-        'i': 'rgb(144,0,43)',
-        'g_ZTF': 'rgb(0,204,255)',
-        'r_ZTF': 'rgb(255,124,0)',
-        'i_ZTF': 'rgb(144,0,43)',
-        'UVW2': '#FE0683',
-        'UVM2': '#BF01BC',
-        'UVW1': '#8B06FF',
-        'cyan': 'rgb(0,128,128)',
-        'orange': 'rgb(250,128,114)',
-        'other': 'rgb(0,0,0)'}
-    try: color = colors[filter_translate[filter_name]]
-    except: color = colors['other']
-    return color
 
 
 def generic_lightcurve_plot(target, user, subtracted=None):
@@ -261,10 +244,6 @@ def generic_lightcurve_plot(target, user, subtracted=None):
     for the different light curve applications SNEx uses
     """
     
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
-        'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
-        'UVW1': 'UVW1'}
     photometry_data = {}
 
     datums = photometry_datums(target, user)
@@ -273,7 +252,7 @@ def generic_lightcurve_plot(target, user, subtracted=None):
             continue
         if subtracted is not None and (rd.value.get('background_subtracted') == True) != subtracted:
             continue
-        filt = filter_translate.get(rd.bandpass, '')
+        filt = FILTER_TRANSLATE.get(rd.bandpass, '')
    
         photometry_data.setdefault(filt, {})
         photometry_data[filt].setdefault('time', []).append(rd.timestamp)
@@ -284,13 +263,13 @@ def generic_lightcurve_plot(target, user, subtracted=None):
         go.Scatter(
             x=filter_values['time'],
             y=filter_values['magnitude'], mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate)),
-            name=filter_translate.get(filter_name, ''),
+            marker=dict(color=get_color(filter_name)),
+            name=FILTER_TRANSLATE.get(filter_name, ''),
             error_y=dict(
                 type='data',
                 array=filter_values['error'],
                 visible=True,
-                color=get_color(filter_name, filter_translate)
+                color=get_color(filter_name)
             )
         ) for filter_name, filter_values in photometry_data.items()]
 
@@ -634,8 +613,12 @@ def submit_lco_observations(context, target):
                     'facility': 'LCO',
                     'observation_type': 'SPECTRA',
                     'name': get_best_name(target)}
-    phot_form = SnexPhotometricSequenceForm(initial=phot_initial, auto_id='phot_%s')
-    spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
+    try:
+        phot_form = SnexPhotometricSequenceForm(initial=phot_initial, auto_id='phot_%s')
+        spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
+    except requests.RequestException as e:
+        logger.warning(f'Could not build the LCO observation forms: {e}')
+        return {'object': target, 'portal_error': 'The LCO observing portal could not be reached, so observations cannot be submitted right now.'}
     bind_observation_form_htmx(phot_form, 'LCO', 'IMAGING')
     bind_observation_form_htmx(spec_form, 'LCO', 'SPECTRA')
 
@@ -819,7 +802,7 @@ def photometric_standards_list(context, target):
     rows = []
     one_day = datetime.timedelta(days=1)
     if site_setups:
-        standards = PhotometryReducedDatum.objects.filter(target__in=Target.objects.filter(standard=True), value__has_key='basename',
+        standards = PhotometryReducedDatum.objects.filter(target_id__in=standard_target_ids(), value__has_key='basename',
                                                           timestamp__gte=min(times) - one_day, timestamp__lte=max(times) + one_day)
         for rd in standards.select_related('target').order_by('timestamp'):
             basename = rd.value['basename']
@@ -1463,7 +1446,7 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
 
     if spectrum.value.get('reducer'):
         spec_extras['reducer'] = spectrum.value['reducer']
-    commented = spectrum_comment_object(spectrum)
+    commented = spectrum.data_product or spectrum
     comments = Comment.objects.filter(
         object_pk=commented.id, content_type=ContentType.objects.get_for_model(commented)).order_by('id').select_related('user')
     spec_extras['comments'] = comments
@@ -1488,8 +1471,8 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
                       'reducer': version.value.get('reducer') or 'Unknown reducer',
                       'uploaded': (version.value.get('uploaded') or '')[:10],
                       'hash': version.reduction_version[:7]} for version in versions],
-        'can_delete': can_delete_spectrum(user) if user else False,
-        'has_fits': spec_extras.get('file_version') in (None, spectrum.reduction_version),
+        'can_delete': bool(user and user.is_superuser),
+        'has_fits': fits_is_current(spectrum),
         'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
         'standards': standard_entries(spectrum) if include_plot else [],
         'raw_available': bool(spectrum.data_product_id and is_floyds_frame(spectrum.data_product.product_id)),
@@ -1788,10 +1771,6 @@ def image_slideshow(context, target):
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
     
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
-        'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
-        'UVW1': 'UVW1'}
     photometry_data = {}
 
     datums = photometry_datums(target, user)
@@ -1801,7 +1780,7 @@ def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
             continue
         if (rd.value.get('background_subtracted') == True) != subtracted:
             continue
-        current_filt = filter_translate.get(rd.bandpass, '')
+        current_filt = FILTER_TRANSLATE.get(rd.bandpass, '')
    
         photometry_data.setdefault(current_filt, {})
         photometry_data[current_filt].setdefault('time', []).append(rd.timestamp)
@@ -1812,13 +1791,13 @@ def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
         go.Scatter(
             x=filter_values['time'],
             y=filter_values['magnitude'], mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate)),
-            name=filter_translate.get(filter_name, ''),
+            marker=dict(color=get_color(filter_name)),
+            name=FILTER_TRANSLATE.get(filter_name, ''),
             error_y=dict(
                 type='data',
                 array=filter_values['error'],
                 visible=True,
-                color=get_color(filter_name, filter_translate)
+                color=get_color(filter_name)
             )
         ) for filter_name, filter_values in photometry_data.items()] 
      
@@ -1926,10 +1905,6 @@ def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_with_extras(target, user, subtracted=False):
     
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
-        'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
-        'UVW1': 'UVW1'}
     plot_data = generic_lightcurve_plot(target, user, subtracted)
     spec = observed_spectra(target, user)
 
@@ -1967,7 +1942,7 @@ def lightcurve_with_extras(target, user, subtracted=False):
                     go.Scatter(
                         x=[Time(float(jd), format='jd', scale='utc').isot],
                         y=[float(value['mag'])], mode='markers',
-                        marker=dict(color=get_color(value['filt'], filter_translate), size=12, symbol=symbols[i]),
+                        marker=dict(color=get_color(value['filt']), size=12, symbol=symbols[i]),
                         name=names[i]
                     )
                 )
@@ -2062,10 +2037,6 @@ def urgency_converter(urgency):
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def broker_target_lightcurve(target):
 
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
-        'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2',
-        'UVW1': 'UVW1', 'cyan': 'cyan', 'orange': 'orange'}
      
     photometry_data = {}
     nondetection_data = {}
@@ -2087,13 +2058,13 @@ def broker_target_lightcurve(target):
         go.Scatter(
             x=filter_values['time'],
             y=filter_values['magnitude'], mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate)),
-            name=filter_translate.get(filter_name, filter_name),
+            marker=dict(color=get_color(filter_name)),
+            name=FILTER_TRANSLATE.get(filter_name, filter_name),
             error_y=dict(
                 type='data',
                 array=filter_values['magerr'],
                 visible=True,
-                color=get_color(filter_name, filter_translate)
+                color=get_color(filter_name)
             )
         ) for filter_name, filter_values in photometry_data.items()] 
 
@@ -2113,8 +2084,8 @@ def broker_target_lightcurve(target):
         go.Scatter(
             x=filter_values['time'],
             y=filter_values['magnitude'], mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate), symbol='arrow-down'),
-            name=filter_translate.get(filter_name, filter_name) + ' upper limit',
+            marker=dict(color=get_color(filter_name), symbol='arrow-down'),
+            name=FILTER_TRANSLATE.get(filter_name, filter_name) + ' upper limit',
         ) for filter_name, filter_values in nondetection_data.items()] 
 
     layout = go.Layout(
@@ -2241,11 +2212,9 @@ def tns_generated_ascii_choice(context, form):
     spectrum = viewable_datums(request.user, SpectroscopyReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'])).first()
     if spectrum is None:
         return ''
-    upload = spectrum.data_product.reduceddatumextra_set.first() if spectrum.data_product else None
-    facts = (upload.value or {}) if upload else {}
+    facts = upload_extras(spectrum.data_product)
     choices = list(form.fields['ascii_file'].choices)
-    if (spectrum.data_product_id in [choice[0] for choice in choices if choice[0]]
-            and facts.get('file_version') in (None, spectrum.reduction_version)):
+    if spectrum.data_product_id in [choice[0] for choice in choices if choice[0]] and fits_is_current(spectrum):
         form.initial['ascii_file'] = spectrum.data_product_id
     elif spectrum_ascii(spectrum) is not None:
         value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'

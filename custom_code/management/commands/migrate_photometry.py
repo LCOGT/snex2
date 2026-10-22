@@ -14,13 +14,6 @@ BATCH_SIZE = 1000
 OLD_TYPES = ('photometry', 'photometric_standard')
 
 
-def _number(value):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 class Command(BaseCommand):
     help = ('Moves photometry and photometric_standard ReducedDatum rows into PhotometryReducedDatum, keeping the '
             'extra value keys and the per-datum permissions. Use this instead of migrate_reduced_datums.')
@@ -35,7 +28,10 @@ class Command(BaseCommand):
         value = without_sentinels(value)
         brightness = value.pop('magnitude', None)
         error = value.pop('error', None)
-        limit = _number(value.pop('limit', None))
+        try:
+            limit = float(value.pop('limit', None))
+        except (TypeError, ValueError):
+            limit = None
         bandpass = str(value.pop('filter', '') or '')[:32]
         instrument = str(value.pop('instrument', '') or rd.instrument)
         version = photometry_reduction_version(value, rd.data_product_id)

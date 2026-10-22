@@ -51,6 +51,9 @@
     {% moon_vis object %}
   </div>
 </div>
+{% if portal_error %}
+<div class="alert alert-warning mt-3">{{ portal_error }}</div>
+{% else %}
 <ul class="nav nav-tabs mt-3" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#obs-pane-phot" type="button" role="tab">Photometry</button>
@@ -140,6 +143,7 @@
   </div>
   {% endif %}
 </div>
+{% endif %}
 <script>
 $(function () {
   const config = {

@@ -126,6 +126,8 @@ app.layout = html.Div([
     ], style={'overflow-y': 'auto'}),
 ], style={'padding-bottom': '0px'})
 
+line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('standalone-checkbox-custom-wavelength-1', 'value'), Input('standalone-checkbox-custom-wavelength-2', 'value')]
+
 
 @app.callback(
     Output('spectra-compare-dropdown', 'options'),
@@ -181,7 +183,6 @@ def clear_compare(value, existing, *args, **kwargs):
     return existing if 'display' in value else ''
 
 
-line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('standalone-checkbox-custom-wavelength-1', 'value'), Input('standalone-checkbox-custom-wavelength-2', 'value')]
 line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('v-custom-wavelength-1', 'value'), Input('v-custom-wavelength-2', 'value')]
 line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]+[Input('z-custom-wavelength-1', 'value'), Input('z-custom-wavelength-2', 'value')]
 line_plotting_input += [Input('lambda-custom-wavelength-1', 'value'), Input('lambda-custom-wavelength-2', 'value')]

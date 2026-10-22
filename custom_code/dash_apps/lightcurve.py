@@ -9,7 +9,7 @@ from tom_dataproducts.models import DataProduct
 from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
-from custom_code.utils import measured, observed_spectra, photometry_datums, viewable_dataproducts
+from custom_code.utils import FILTER_TRANSLATE, get_color, measured, observed_spectra, photometry_datums, viewable_dataproducts
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
@@ -204,39 +204,12 @@ def update_template_value(selected_subtraction):
          Input('magnitude-type-radio', 'value'),
          Input('final-only-checklist', 'value')])
 def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_groups, target_id, user_id, height, magnitude_type, final_only):
-    def get_color(filter_name, filter_translate):
-        colors = {'U': 'rgb(59,0,113)',
-            'u': 'rgb(59,0,113)',
-            'B': 'rgb(0,87,255)',
-            'V': 'rgb(120,255,0)',
-            'g': 'rgb(0,204,255)',
-            'r': 'rgb(255,124,0)',
-            'i': 'rgb(144,0,43)',
-            'g_ZTF': 'rgb(0,204,255)',
-            'r_ZTF': 'rgb(255,124,0)',
-            'i_ZTF': 'rgb(144,0,43)',
-            'R': 'rgb(224,27,27)',
-            'I': 'rgb(125,10,60)',
-            'zs': 'rgb(101,42,42)',
-            'w': 'rgb(120,120,120)',
-            'UVW2': '#FE0683',
-            'UVM2': '#BF01BC',
-            'UVW1': '#8B06FF',
-            'other': 'rgb(0,0,0)'}
-        try: color = colors[filter_translate[filter_name]]
-        except: color = colors['other']
-        return color
 
     if not target_id:
         return {'data': [], 'layout': {}}
 
     logger.info('Plotting dash lightcurve for target %s', target_id)
 
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V', 'R': 'R', 'I': 'I',
-        'up': 'u', 'u': 'u', 'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'zs': 'zs', 'z': 'zs', 'w': 'w',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2',
-        'UVW1': 'UVW1'}
     magnitude_keys = {'PSF': ('psfmag', 'psfdmag'), 'Aperture': ('apmag', 'dapmag')}.get(magnitude_type)
     photometry_data = {}
     subtracted_photometry_data = {}
@@ -285,7 +258,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
                 if value.get('subtraction_algorithm', '') in selected_algorithm and value.get('template_source', '') in selected_template:
                     
                     raw_filter = rd.bandpass
-                    subtracted_filt = filter_translate.get(raw_filter, raw_filter or 'other')
+                    subtracted_filt = FILTER_TRANSLATE.get(raw_filter, raw_filter or 'other')
 
                     subtracted_photometry_data.setdefault(subtracted_filt, {})
                     subtracted_photometry_data[subtracted_filt].setdefault('time', []).append(rd.timestamp)
@@ -294,7 +267,7 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             else:
 
                 raw_filter = rd.bandpass
-                filt = filter_translate.get(raw_filter, raw_filter or 'other')
+                filt = FILTER_TRANSLATE.get(raw_filter, raw_filter or 'other')
 
                 photometry_data.setdefault(filt, {})
                 photometry_data[filt].setdefault('time', []).append(rd.timestamp)
@@ -311,15 +284,15 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             x=[(datetime.now(timezone.utc) - t.replace(tzinfo=timezone.utc)).total_seconds()/(24*3600) for t in filter_values['time']],
             y=filter_values['magnitude'], 
             mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate),
+            marker=dict(color=get_color(filter_name),
                         line=dict(color='black', width=1)
             ),
-            name=filter_translate.get(filter_name, filter_name or 'other'),
+            name=FILTER_TRANSLATE.get(filter_name, filter_name or 'other'),
             error_y=dict(
                 type='data',
                 array=filter_values['error'],
                 visible=True,
-                color=get_color(filter_name, filter_translate)
+                color=get_color(filter_name)
             ),
             text=['{} (MJD {})'.format(t.strftime('%m/%d/%Y'), str(round(Time(t).mjd, 2))) for t in filter_values['time']],
         ) for filter_name, filter_values in selected_photometry.items()]

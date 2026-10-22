@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_ztf_data(target):
-    logger.info(f'starting ztf ingestion')
+    logger.info('starting ztf ingestion')
     filters = {1: 'g_ZTF', 2: 'r_ZTF', 3: 'i_ZTF'}
     
     ztf_name = next((name for name in target.names if 'ZTF' in name), None)

@@ -166,6 +166,10 @@ app.layout = html.Div([
     ], style={'overflow-y': 'auto'})
 ])
 
+line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]
+line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]
+line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]
+
 @app.callback(
     Output('table-container-div', 'style'),
     [Input('line-plotting-checklist', 'value')])
@@ -175,9 +179,6 @@ def show_table(value, *args, **kwargs):
     else:
         return {'display': 'none'}
 
-line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]
-line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]
-line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]
 @app.callback(
     Output('checked-rows', 'children'),
     line_plotting_input)

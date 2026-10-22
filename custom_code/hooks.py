@@ -99,17 +99,6 @@ def find_images(target, user, allimages=False):
         logger.info(f'No images found for target {target}')
         return [], [], [], [], [], [], [], [], [], []
 
-    def pixel(v):
-        v = measured(v)
-        return 9999 if v is None else round(v)
-
-    def fwhm_label(v):
-        v = measured(v)
-        return '' if v is None else f'{v:.2f}"'
-
-    def wcs_label(w):
-        return '' if w is None else ('Good' if w == 0 else 'Failed')
-
     basenames, datums = list(frames), list(frames.values())
     return (basenames,
             [rd.timestamp.strftime('%m/%d/%Y') for rd in datums],
@@ -117,7 +106,7 @@ def find_images(target, user, allimages=False):
             [rd.instrument or b.split('-')[1] for b, rd in zip(basenames, datums)],
             [rd.bandpass for rd in datums],
             ['' if rd.value.get('exptime') is None else f"{rd.value['exptime']:.2f}s" for rd in datums],
-            [pixel(rd.value.get('psfx')) for rd in datums],
-            [pixel(rd.value.get('psfy')) for rd in datums],
-            [fwhm_label(rd.value.get('fwhm')) for rd in datums],
-            [wcs_label(rd.value.get('wcs')) for rd in datums])
+            [9999 if (x := measured(rd.value.get('psfx'))) is None else round(x) for rd in datums],
+            [9999 if (y := measured(rd.value.get('psfy'))) is None else round(y) for rd in datums],
+            ['' if (fwhm := measured(rd.value.get('fwhm'))) is None else f'{fwhm:.2f}"' for rd in datums],
+            ['' if rd.value.get('wcs') is None else ('Good' if rd.value['wcs'] == 0 else 'Failed') for rd in datums])

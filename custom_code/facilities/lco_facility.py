@@ -3,6 +3,7 @@ from django import forms
 from crispy_forms.layout import Layout, Div, HTML, Column, Row
 from crispy_forms.bootstrap import PrependedText, AppendedText
 from datetime import timedelta
+from functools import partial
 from django.utils import timezone
 import copy
 from dateutil.parser import parse
@@ -23,13 +24,7 @@ from custom_code.utils import get_target_permission_groups
 
 logger = logging.getLogger(__name__)
 
-_make_request = ocs.make_request
-
-def _make_request_with_timeout(*args, **kwargs):
-    kwargs.setdefault('timeout', 30)
-    return _make_request(*args, **kwargs)
-
-ocs.make_request = _make_request_with_timeout
+ocs.make_request = partial(ocs.make_request, timeout=30)
 
 
 def _default_permission_groups(target_id):

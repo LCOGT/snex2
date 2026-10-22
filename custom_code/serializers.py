@@ -102,13 +102,10 @@ class SNExReducedDatumSerializer(GroupsFieldMixin, ReducedDatumSerializer):
     class Meta(ReducedDatumSerializer.Meta):
         fields = ('id',) + ReducedDatumSerializer.Meta.fields + ('groups',)
 
-    def _stamp_uploader(self, validated_data):
-        if isinstance(validated_data.get('value'), dict):
-            validated_data['value']['uploaded_by'] = self.context['request'].user.username
-
     def create(self, validated_data):
         groups = validated_data.pop('groups', [])
-        self._stamp_uploader(validated_data)
+        if isinstance(validated_data.get('value'), dict):
+            validated_data['value']['uploaded_by'] = self.context['request'].user.username
         return self._grant_view(super().create(validated_data), groups)
 
 

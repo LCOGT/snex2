@@ -1,5 +1,6 @@
 import base64
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import json
 import os
 import re
@@ -64,7 +65,7 @@ from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSFormView, TNSSubmitView
-from custom_code.utils import can_delete_spectrum, default_version, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import default_version, fits_is_current, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -74,6 +75,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG) 
 
 # Create your views here.
+
+OBSERVATION_RECORD_PERMS = ['tom_observations.view_observationrecord',
+                            'tom_observations.change_observationrecord',
+                            'tom_observations.delete_observationrecord']
 
 def make_coords(ra, dec):
     coords = SkyCoord(ra, dec, unit=u.deg)
@@ -391,6 +396,7 @@ class CustomDataProductUploadView(DataProductUploadView):
                 data_product_type=dp_type
             )
             dp.save()
+            uploaded = dp
             try:
 
                 ### ------------------------------------------------------------------
@@ -421,7 +427,6 @@ class CustomDataProductUploadView(DataProductUploadView):
                 rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
                 reduced_data, rdextra_value = run_custom_data_processor(
                     dp, extras, rdextra_value, uploaded_by=self.request.user.username)
-                uploaded = dp
                 dp, reduced_data = merge_into_observation(dp, reduced_data)
                 if bundle_files:
                     bundle = bundle or save_reduction_files(target, bundle_files)
@@ -453,15 +458,15 @@ class CustomDataProductUploadView(DataProductUploadView):
                         assign_perm(view_datum_perm(reduced_data.model), group, reduced_data)
                 successful_uploads.append(str(dp))
             except InvalidFileFormatException as iffe:
-                dp.delete()
+                DataProduct.objects.filter(pk=uploaded.pk).delete()
                 messages.error(
                     self.request,
-                    'File format invalid for file {0} -- error was {1}'.format(str(dp), iffe)
+                    'File format invalid for file {0} -- error was {1}'.format(f.name, iffe)
                 )
             except Exception:
-                dp.delete()
-                messages.error(self.request, 'There was a problem processing your file: {0}'.format(str(dp)))
-                logger.exception(f'Could not process uploaded file {dp}')
+                DataProduct.objects.filter(pk=uploaded.pk).delete()
+                messages.error(self.request, 'There was a problem processing your file: {0}'.format(f.name))
+                logger.exception(f'Could not process uploaded file {f.name}')
         if successful_uploads:
             messages.success(
                 self.request,
@@ -833,11 +838,6 @@ def change_observing_priority_view(request):
             t.observing_run_priority += 1
             t.save()
     return HttpResponseRedirect('/targets/targetgrouping/')
-
-
-OBSERVATION_RECORD_PERMS = ['tom_observations.view_observationrecord',
-                            'tom_observations.change_observationrecord',
-                            'tom_observations.delete_observationrecord']
 
 
 def active_observation_ids(user, completed_only=False):
@@ -1502,7 +1502,7 @@ def delete_photometry_view(request, pk, datum_id):
 
 def delete_spectrum_version_view(request, pk, spectrum_id):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
-    if request.method != 'POST' or not can_delete_spectrum(request.user):
+    if request.method != 'POST' or not request.user.is_superuser:
         return HttpResponseForbidden('Only admins can delete this version')
     product = spectrum.data_product
     spectrum.delete()
@@ -1518,10 +1518,7 @@ def delete_spectrum_version_view(request, pk, spectrum_id):
 def download_spectrum_view(request, pk, spectrum_id, file_format):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
     product = spectrum.data_product
-    extra = product.reduceddatumextra_set.first() if product else None
-    kept_version = (extra.value or {}).get('file_version') if extra else None
-    has_file = bool(product and product.data and os.path.exists(product.data.path)
-                    and kept_version in (None, spectrum.reduction_version))
+    has_file = fits_is_current(spectrum) and os.path.exists(product.data.path)
     if file_format == 'fits':
         if not has_file:
             raise Http404('This spectrum has no file')
@@ -1554,50 +1551,6 @@ def download_raw_spectra_view(request):
     return FileResponse(default_storage.open(bundle['path'], 'rb'), as_attachment=True, filename=f'{target_name}_{bundle["name"]}')
 
 
-def _spectrum_download_items(product, download_format, include_raw, used):
-    versions = sorted(product.spectroscopyreduceddatum_set.all(), key=lambda version: version.pk)
-    file_name = product.get_file_name() if product.data else ''
-    base = product.product_id if is_floyds_frame(product.product_id) else os.path.splitext(file_name)[0] or f'dataproduct_{product.pk}'
-    if base in used:
-        base = f'{base}_{product.pk}'
-    used.add(base)
-    items, notes = [], []
-    if not versions:
-        if product.data and download_format != 'ascii':
-            items.append(('file', f'reduced/{base}{os.path.splitext(file_name)[1]}', product.data.name))
-        if include_raw and is_floyds_frame(product.product_id):
-            items.append(('archive', f'raw/{base}/', product.product_id))
-        return items, f'{base}: {product.get_type_display()}'
-    current = default_version(versions)
-    extra = ReducedDatumExtra.objects.filter(data_product=product, key='upload_extras').first()
-    has_fits = bool(product.data) and (extra.value or {}).get('file_version') in (None, current.reduction_version) if extra else bool(product.data)
-    if download_format != 'ascii' and has_fits:
-        items.append(('file', f'reduced/{base}{os.path.splitext(file_name)[1]}', product.data.name))
-    elif download_format != 'fits' and spectrum_ascii(current):
-        items.append(('text', f'reduced/{base}.ascii', spectrum_ascii(current)))
-    label = {version.pk: f'v{number}' for number, version in enumerate(versions, 1)}
-    for version in versions:
-        if version.pk != current.pk and download_format != 'fits' and spectrum_ascii(version):
-            items.append(('text', f'reduced/older_versions/{base}_{label[version.pk]}.ascii', spectrum_ascii(version)))
-    if include_raw:
-        if is_floyds_frame(product.product_id):
-            items.append(('archive', f'raw/{base}/', product.product_id))
-            notes.append('FLOYDS raw frames from the LCO archive')
-        bundles = {}
-        for version in versions:
-            bundle = reduction_files(version)
-            if bundle and bundle['path'] not in bundles:
-                bundles[bundle['path']] = (label[version.pk], bundle)
-        for version_label, bundle in bundles.values():
-            folder = f'raw/{base}/' if len(bundles) == 1 else f'raw/{base}/{version_label}/'
-            items.append(('file', folder + bundle['name'], bundle['path']))
-        if bundles:
-            notes.append('uploaded reduction files for ' + ', '.join(version_label for version_label, _ in bundles.values()))
-    summary = (f'{base}: {current.timestamp:%Y-%m-%d %H:%M}, {len(versions)} version{"s" if len(versions) > 1 else ""} '
-               f'(current {label[current.pk]})' + (f'; {"; ".join(notes)}' if notes else ('; no raw files' if include_raw else '')))
-    return items, summary
-
-
 def download_spectra_view(request):
     download_format = request.GET.get('format', 'any')
     include_raw = request.GET.get('raw') == '1'
@@ -1607,9 +1560,47 @@ def download_spectra_view(request):
         raise Http404('No data products selected')
     items, summaries, used = [], [], set()
     for product in products:
-        product_items, summary = _spectrum_download_items(product, download_format, include_raw, used)
-        items += product_items
-        summaries.append(summary)
+        versions = sorted(product.spectroscopyreduceddatum_set.all(), key=lambda version: version.pk)
+        file_name = product.get_file_name() if product.data else ''
+        floyds = is_floyds_frame(product.product_id)
+        base = product.product_id if floyds else os.path.splitext(file_name)[0] or f'dataproduct_{product.pk}'
+        if base in used:
+            base = f'{base}_{product.pk}'
+        used.add(base)
+        reduced_file = ('file', f'reduced/{base}{os.path.splitext(file_name)[1]}', product.data.name)
+        if not versions:
+            if product.data and download_format != 'ascii':
+                items.append(reduced_file)
+            if include_raw and floyds:
+                items.append(('archive', f'raw/{base}/', product.product_id))
+            summaries.append(f'{base}: {product.get_type_display()}')
+            continue
+        current = default_version(versions)
+        if download_format != 'ascii' and fits_is_current(current):
+            items.append(reduced_file)
+        elif download_format != 'fits' and (content := spectrum_ascii(current)):
+            items.append(('text', f'reduced/{base}.ascii', content))
+        label = {version.pk: f'v{number}' for number, version in enumerate(versions, 1)}
+        for version in versions:
+            if version.pk != current.pk and download_format != 'fits' and (content := spectrum_ascii(version)):
+                items.append(('text', f'reduced/older_versions/{base}_{label[version.pk]}.ascii', content))
+        notes = []
+        if include_raw:
+            if floyds:
+                items.append(('archive', f'raw/{base}/', product.product_id))
+                notes.append('FLOYDS raw frames from the LCO archive')
+            bundles = {}
+            for version in versions:
+                bundle = reduction_files(version)
+                if bundle and bundle['path'] not in bundles:
+                    bundles[bundle['path']] = (label[version.pk], bundle)
+            for version_label, bundle in bundles.values():
+                folder = f'raw/{base}/' if len(bundles) == 1 else f'raw/{base}/{version_label}/'
+                items.append(('file', folder + bundle['name'], bundle['path']))
+            if bundles:
+                notes.append('uploaded reduction files for ' + ', '.join(version_label for version_label, _ in bundles.values()))
+        summaries.append(f'{base}: {current.timestamp:%Y-%m-%d %H:%M}, {len(versions)} version{"s" if len(versions) > 1 else ""} '
+                         f'(current {label[current.pk]})' + (f'; {"; ".join(notes)}' if notes else ('; no raw files' if include_raw else '')))
     readme = ('reduced/: the current version of each spectrum (the one shown on the target page)\n'
               'reduced/older_versions/: earlier versions, as ascii\n')
     if include_raw:
@@ -1650,15 +1641,15 @@ def photometry_standards_view(request, pk):
 @require_http_methods(["POST"])
 def get_frame_ids_view(request):
     basenames = set(json.loads(request.POST.get('basenames', '[]')))
-    token = settings.FACILITIES['LCO']['api_key']
-    url = settings.FACILITIES['LCO']['archive_url']
-
-    def lookup(basename):
-        return requests.get(url, headers={'Authorization': f'Token {token}'},
-                            params={'basename_exact': basename, 'include_related_frames': False})
-
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        responses = list(pool.map(lookup, basenames))
+    lookup = partial(requests.get, settings.FACILITIES['LCO']['archive_url'], timeout=(10, 60),
+                     headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"})
+    params = [{'basename_exact': basename, 'include_related_frames': False} for basename in basenames]
+    try:
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            responses = list(pool.map(lookup, params))
+    except requests.RequestException as e:
+        logger.error(f'LCO archive frame lookup failed: {e}')
+        return JsonResponse({'error': f'Could not reach the LCO archive: {e}'}, status=502)
 
     frame_ids = set()
     for response in responses:
@@ -2092,10 +2083,8 @@ class TargetFilteringView(FormView):
         cd = form.cleaned_data
         filters = Q()
 
-        # Use SNExTarget since redshift and classification are direct fields on it
         photometry_q = Q(photometryreduceddatum__brightness__isnull=False)
 
-        # Start with only targets the user has permission to view
         if self.request.user.is_authenticated:
             qs = get_objects_for_user(
                 self.request.user,
@@ -2106,7 +2095,6 @@ class TargetFilteringView(FormView):
                 spectra_count=Count('spectroscopyreduceddatum', distinct=True),  
             )
         else:
-            # Anonymous users get empty queryset
             qs = Target.objects.none().annotate(
                 phot_count=Count('photometryreduceddatum', filter=photometry_q, distinct=True),
                 spectra_count=Count('spectroscopyreduceddatum', distinct=True),  
@@ -2115,7 +2103,6 @@ class TargetFilteringView(FormView):
         if not (cd.get('apply_name_filter') and cd.get('target_name', '').strip()):
             qs = qs.exclude(standard=True)
 
-        # name filter
         if cd.get('apply_name_filter'):
             name = cd.get('target_name','').strip()
             if name:
@@ -2128,15 +2115,13 @@ class TargetFilteringView(FormView):
                 filters &= name_q
 
 
-        # RA filter
         if cd.get('apply_ra_filter'):
             h_min = cd.get('min_ra'); h_max = cd.get('max_ra')
             if h_min is not None:
                 filters &= Q(ra__gte=h_min * 15.0)
             if h_max is not None:
                 filters &= Q(ra__lte=h_max * 15.0)
-        
-        # dec filter
+
         if cd.get('apply_dec_filter'):
             d_min = cd.get('min_dec'); d_max = cd.get('max_dec')
             if d_min is not None:
@@ -2144,28 +2129,24 @@ class TargetFilteringView(FormView):
             if d_max is not None:
                 filters &= Q(dec__lte=d_max)
 
-        # Date-created filter
         if cd.get('apply_date_created_filter'):
-            min_date = cd.get('date_created_min')    # this is already a date or None
+            min_date = cd.get('date_created_min')
             if min_date:
                 qs = qs.filter(created__date__gte=min_date)
             max_date = cd.get('date_created_max')
             if max_date:
                 qs = qs.filter(created__date__lte=max_date)
                 
-        # classification contains
         if cd.get('apply_class_filter'):
             cls = cd.get('class_name','').strip()
             if cls:
                 filters &= Q(classification__icontains=cls)
 
-        # Classification doesn't contain
         if cd.get('apply_class_exclude_filter'):
             excl = cd.get('class_exclude_name','').strip()
             if excl:
                 filters &= ~Q(classification__icontains=excl)
 
-        # Redshift range
         if cd.get('apply_redshift_filter'):
             min_z = cd.get('min_red'); max_z = cd.get('max_red')
             if min_z is not None:
@@ -2173,7 +2154,6 @@ class TargetFilteringView(FormView):
             if max_z is not None:
                 filters &= Q(redshift__lte=max_z)
 
-        # Photometry count threshold
         if cd.get('apply_photometry_count_filter'):
             nmin = cd.get('min_photometry_points')
             if nmin is not None:
@@ -2184,7 +2164,6 @@ class TargetFilteringView(FormView):
             if nmin is not None:
                 filters &= Q(spectra_count__gte=nmin)
 
-        # --- Recent observations in last N days (Any/Phot/Spec)
         if cd.get('apply_recent_obs_filter'):
             kind = (cd.get('recent_obs_kind') or 'any').lower()
             ndays = cd.get('recent_obs_days')
@@ -2192,10 +2171,8 @@ class TargetFilteringView(FormView):
             if ndays:
                 cutoff = timezone.now() - timedelta(days=ndays)
 
-                # Build dynamic kwarg for timestamp field
-                ts_kw = {f'timestamp__gte': cutoff}
+                ts_kw = {'timestamp__gte': cutoff}
 
-                # Subqueries for Exists(...)
                 recent_any_sq = ReducedDatum.objects.filter(
                     target=OuterRef('pk'),
                     **ts_kw
@@ -2210,7 +2187,6 @@ class TargetFilteringView(FormView):
                     **ts_kw
                 )
 
-                # Annotate booleans once; then filter on them
                 qs = qs.annotate(
                     has_recent_any = Exists(recent_any_sq),
                     has_recent_phot = Exists(recent_phot_sq),
@@ -2224,7 +2200,6 @@ class TargetFilteringView(FormView):
                 elif kind == 'spec':
                     filters &= Q(has_recent_spec=True)
 
-        # --- On/after (≥) ---
         if cd.get('apply_recent_date_filter'):
             kind = (cd.get('recent_date_kind') or 'any').lower()
             date_cut = cd.get('recent_date_threshold')
@@ -2254,7 +2229,6 @@ class TargetFilteringView(FormView):
                     'spec': Q(has_since_spec=True),
                 }[kind]
 
-        # --- On/before (≤) ---
         if cd.get('apply_recent_date_before_filter'):
             kind = (cd.get('recent_date_before_kind') or 'any').lower()
             date_cut = cd.get('recent_date_before_threshold')
@@ -2284,28 +2258,22 @@ class TargetFilteringView(FormView):
                     'spec': Q(has_before_spec=True),
                 }[kind]
 
-
-        # --- Any/Last observation with apparent mag brighter than X (any filter)
-        ## TODO: this is very slow for some reason
         if cd.get('apply_mag_bright_filter'):
             mode = (cd.get('mag_bright_mode') or 'any').lower()
             X = cd.get('mag_bright_threshold')
 
             if X is not None:
-                # Base photometry queryset: has numeric magnitude in JSON
                 base_phot = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
                     brightness__isnull=False,
                 )
 
-                # ANY obs: fast Exists()
                 if mode == 'any':
                     any_bright_sq = base_phot.filter(brightness__lt=X)
 
                     qs = qs.annotate(has_any_bright=Exists(any_bright_sq))
                     filters &= Q(has_any_bright=True)
 
-                # LAST obs: get latest row id, then its mag
                 else:
                     last_mag_sq = base_phot.order_by('-timestamp').values('brightness')[:1]
 
@@ -2323,15 +2291,11 @@ class TargetFilteringView(FormView):
                 qs = qs.annotate(has_proposal=Exists(base))
                 filters &= Q(has_proposal=True)
 
-        # apply query
         target_match_list = qs.filter(filters).distinct()
 
-        # compute totals for photometry and spectra across all matched targets
         tot_phot = target_match_list.aggregate(total=Sum('phot_count'))['total'] or 0
         tot_spec = target_match_list.aggregate(total=Sum('spectra_count'))['total'] or 0
 
-
-        # return result
         return self.render_to_response(
             self.get_context_data(
                 form=form,
