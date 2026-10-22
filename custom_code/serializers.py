@@ -92,4 +92,5 @@ class SNExTargetSerializer(TargetSerializer):
             )
         if data.get('standard', inst.standard if inst else False):
             data['permissions'] = Target.Permissions.PUBLIC
+            data['classification'] = 'Standard'
         return data
