@@ -163,12 +163,22 @@ def can_delete_spectrum(user):
     return user.is_superuser
 
 
+def standard_target_ids():
+    from tom_targets.models import Target
+    return Target.objects.filter(standard=True).values('pk')
+
+
+def viewable_datums(user, queryset):
+    viewable = get_objects_for_user(user, view_datum_perm(queryset.model), klass=queryset)
+    return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(target_id__in=standard_target_ids()))
+
+
 def viewable_dataproducts(user, queryset):
     viewable = Q(pk__in=get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset).values('pk'))
     for model in _datum_models():
         via_datums = get_objects_for_user(user, view_datum_perm(model), klass=model.objects.filter(data_product__in=queryset))
         viewable |= Q(pk__in=via_datums.values('data_product_id'))
-    return queryset.filter(viewable)
+    return queryset.filter(viewable | Q(target_id__in=standard_target_ids()))
 
 
 def dataproduct_view_groups(dp):

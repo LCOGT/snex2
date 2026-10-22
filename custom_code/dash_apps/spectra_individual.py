@@ -16,7 +16,7 @@ from tom_targets.models import Target
 from custom_code.templatetags.custom_code_tags import bin_spectra
 from django.contrib.auth.models import User
 from django.db.models import Q
-from guardian.shortcuts import get_objects_for_user
+from custom_code.utils import viewable_datums
 from django.templatetags.static import static
 import logging
 from custom_code.dash_apps.spectra_utils import elements, calculate_flux_range
@@ -491,9 +491,7 @@ def display_output(selected_rows,
             if user_id:
                 compare_user = User.objects.filter(id=user_id).first()
                 if compare_user:
-                    spectral_dataproducts = get_objects_for_user(
-                        compare_user, 'tom_dataproducts.view_spectroscopyreduceddatum',
-                        klass=spectral_dataproducts)
+                    spectral_dataproducts = viewable_datums(compare_user, spectral_dataproducts)
             if not spectral_dataproducts:
                 logger.info('No viewable spectra for compare target %s', target_compare)
                 return graph_data

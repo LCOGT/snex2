@@ -3,10 +3,9 @@ import logging
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Q
 from django_filters import rest_framework as drf_filters
 from django.contrib.auth.models import Group
-from guardian.shortcuts import get_groups_with_perms, get_objects_for_user
+from guardian.shortcuts import get_groups_with_perms
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.mixins import CreateModelMixin, DestroyModelMixin, ListModelMixin
@@ -26,7 +25,7 @@ from custom_code.processors.spectroscopy_processor import SpecProcessor
 from custom_code.scheduling import save_comments
 from custom_code.serializers import (SNExDataProductSerializer, SNExPhotometrySerializer, SNExReducedDatumSerializer,
                                      SNExTargetSerializer)
-from custom_code.utils import dataproduct_datums, dataproduct_view_groups, file_version, groups_from_payload, set_dataproduct_view_groups, view_datum_perm
+from custom_code.utils import dataproduct_datums, dataproduct_view_groups, file_version, groups_from_payload, set_dataproduct_view_groups, viewable_datums
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +90,7 @@ class SNExPhotometryViewSet(CreateModelMixin, ListModelMixin, AdminDestroyMixin,
         queryset = PhotometryReducedDatum.objects.order_by('pk')
         if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
             return queryset
-        viewable = get_objects_for_user(self.request.user, view_datum_perm(PhotometryReducedDatum), klass=queryset)
-        return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(target__in=Target.objects.filter(standard=True)))
+        return viewable_datums(self.request.user, queryset)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -109,7 +107,7 @@ class SNExReducedDatumViewSet(AdminDestroyMixin, ReducedDatumViewSet):
         queryset = super()._base_queryset_for_model(model)
         if self.request.user.is_superuser or settings.TARGET_PERMISSIONS_ONLY:
             return queryset
-        return get_objects_for_user(self.request.user, view_datum_perm(model), klass=queryset)
+        return viewable_datums(self.request.user, queryset)
 
 
 class SNExDataProductViewSet(DataProductViewSet):
@@ -130,9 +128,6 @@ class SNExDataProductViewSet(DataProductViewSet):
             groups = groups_from_payload(json.loads(groups) if isinstance(groups, str) else groups)
         except (ValueError, AttributeError, TypeError):
             return Response({'groups': ['Expected a list of {"name": ...} objects.']}, status=status.HTTP_400_BAD_REQUEST)
-        if str(data.get('target')).isdigit() and Target.objects.filter(pk=data.get('target'), standard=True).exists() and data.get('data_product_type') in (
-                'raw_spectrum', 'spectroscopy'):
-            return Response({'target': ['Spectra of standards are not stored in SNEx.']}, status=status.HTTP_400_BAD_REQUEST)
 
         posted = {key: data[key] for key in SpecProcessor.field_keywords if data.get(key)}
         try:
