@@ -2,8 +2,8 @@ from plotly import offline
 import plotly.graph_objs as go
 from django import template, forms
 from django.conf import settings
-from django.db.models.functions import Lower
-from django.db.models import Max
+from django.db.models.functions import Cast, Lower
+from django.db.models import IntegerField, Max
 from django.shortcuts import reverse
 from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
@@ -841,6 +841,14 @@ def snex_recent_targets(context, limit=10):
         'authenticated': user.is_authenticated,
         'targets': targets_for_user(user, Target.objects.filter(standard=False), 'view_target').order_by('-created')[:limit]
     }
+
+
+@register.inclusion_tag('comments/list.html', takes_context=True)
+def snex_recent_comments(context, limit=10):
+    targets = targets_for_user(context['request'].user, Target.objects.filter(standard=False), 'view_target')
+    return {'comment_list': Comment.objects.filter(content_type__model__in=('target', 'snextarget')).annotate(
+        object_pk_as_int=Cast('object_pk', output_field=IntegerField())).filter(
+        object_pk_as_int__in=targets.values('pk')).order_by('-submit_date')[:limit]}
 
 
 def _frame_setups(basename, filt):
