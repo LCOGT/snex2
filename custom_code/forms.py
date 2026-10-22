@@ -20,6 +20,7 @@ from tom_common.accounts.forms import TomSignupForm
 from tom_targets.forms import SiderealTargetCreateForm
 from custom_code.models import Papers, ScienceTags, TargetTags, UserRegistrationInfo
 import logging
+from custom_code.raw_spectra import REDUCTION_FILES_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,22 @@ class SNExSignupForm(TomSignupForm):
         UserRegistrationInfo.objects.update_or_create(user=user, defaults={'who_you_are': self.cleaned_data['who_you_are']})
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('widget', MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        if isinstance(data, (list, tuple)):
+            return [super(MultipleFileField, self).clean(item, initial) for item in data]
+        return [super().clean(data, initial)] if data else []
+
+
 class CustomDataProductUploadForm(DataProductUploadForm):
 
     data_product_type = forms.ChoiceField(
@@ -151,6 +168,10 @@ class CustomDataProductUploadForm(DataProductUploadForm):
     )
 
     template_source = forms.CharField(
+        required=False
+    )
+
+    instrument = forms.CharField(
         required=False
     )
 
@@ -179,6 +200,19 @@ class CustomDataProductUploadForm(DataProductUploadForm):
     final_reduction = forms.BooleanField(
         required=False
     )
+
+    reduction_files = MultipleFileField(
+        required=False,
+        label='Reduction files',
+        help_text='Optional raw, calibration or reduction files used to make this spectrum: '
+                  'several files, or one .zip or .tar.gz. Up to 300 MB in total.'
+    )
+
+    def clean_reduction_files(self):
+        files = self.cleaned_data.get('reduction_files') or []
+        if sum(upload.size for upload in files) > REDUCTION_FILES_LIMIT:
+            raise ValidationError(f'Reduction files must be {REDUCTION_FILES_LIMIT // (1024 * 1024)} MB or less in total.')
+        return files
 
 
 class PapersForm(forms.ModelForm):

@@ -53,8 +53,10 @@
       <button type="button" class="btn btn-sm btn-outline-primary" title="Download ASCII" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
       {% if entry.raw_available %}
       <a class="btn btn-sm btn-outline-primary" href="{% url 'download-raw-spectra' %}?dp={{ entry.spectrum.data_product_id }}&standards=1" title="Raw spectrum, arc and flat, plus the flux standard's from the same night">Raw</a>
+      {% elif entry.bundle %}
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'download-raw-spectra' %}?spectrum={{ entry.spectrum.id }}" title="Reduction files uploaded with this version ({{ entry.bundle.name }})">Raw</a>
       {% else %}
-      <span class="d-inline-block" tabindex="0" title="Raw files are only available for FLOYDS spectra"><button type="button" class="btn btn-sm btn-outline-primary" disabled>Raw</button></span>
+      <span class="d-inline-block" tabindex="0" title="No raw files: only FLOYDS spectra, or spectra uploaded with reduction files, have them"><button type="button" class="btn btn-sm btn-outline-primary" disabled>Raw</button></span>
       {% endif %}
       <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title="Submit TNS classification" class="btn btn-sm btn-outline-info flex-grow-1">Classify on TNS</a>
     </div>

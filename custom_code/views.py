@@ -4,8 +4,7 @@ import json
 import os
 import re
 from datetime import date, datetime, timedelta
-from io import BytesIO, StringIO
-import zipfile
+from io import StringIO
 import requests
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -16,7 +15,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import Group, User
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.files.base import ContentFile
 from django.core.cache import cache
 from django.db import transaction
@@ -58,7 +57,8 @@ from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedD
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
-from custom_code.raw_spectra import is_floyds_frame, stream_raw_zip
+from django.core.files.storage import default_storage
+from custom_code.raw_spectra import is_floyds_frame, reduction_files, save_reduction_files, stream_zip
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
@@ -379,6 +379,8 @@ class CustomDataProductUploadView(DataProductUploadView):
             observation_record = None
         dp_type = form.cleaned_data['data_product_type']
         data_product_files = self.request.FILES.getlist('files')
+        bundle_files = form.cleaned_data.get('reduction_files') if dp_type == 'spectroscopy' else []
+        bundle = None
         successful_uploads = []
         for f in data_product_files:
             dp = DataProduct(
@@ -421,6 +423,11 @@ class CustomDataProductUploadView(DataProductUploadView):
                     dp, extras, rdextra_value, uploaded_by=self.request.user.username)
                 uploaded = dp
                 dp, reduced_data = merge_into_observation(dp, reduced_data)
+                if bundle_files:
+                    bundle = bundle or save_reduction_files(target, bundle_files)
+                    for version in reduced_data:
+                        version.value = {**version.value, 'reduction_files': bundle}
+                        version.save()
 
                 if dp == uploaded:
                     reduced_datum_extra = ReducedDatumExtra(
@@ -1528,54 +1535,91 @@ def download_spectrum_view(request, pk, spectrum_id, file_format):
     return response
 
 
-class BulkDownloadView(LoginRequiredMixin, View):
-    def post(self, request, *args, **kwargs):
-        product_ids = request.POST.getlist('selected_products')
-        target_name = request.POST.get('target_name', 'snextarget')
-        clean_target_name = target_name.replace(' ', '_')
-        download_format = request.POST.get('download_format', 'fits')
-        if not product_ids:
-            return HttpResponse('No items selected.', status=400)
-        allowed = viewable_dataproducts(request.user, DataProduct.objects.filter(id__in=product_ids))
-        zip_buffer = BytesIO()
-        written = 0
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for product in allowed:
-                file_name = product.get_file_name() if product.data else product.product_id
-                fits_path = product.data.path if product.data else None
-                ascii_name = os.path.splitext(file_name)[0] + '.ascii'
-
-                if download_format != 'ascii' and fits_path and os.path.exists(fits_path):
-                    zip_file.write(fits_path, arcname=file_name)
-                    written += 1
-                elif download_format != 'fits':
-                    versions = list(product.spectroscopyreduceddatum_set.all())
-                    content = spectrum_ascii(default_version(versions)) if versions else None
-                    if content:
-                        zip_file.writestr(ascii_name, content)
-                        written += 1
-        if written == 0:
-            return JsonResponse({'error': f'The file with a "{download_format}" extension does not exist.'}, status=404)
-        zip_buffer.seek(0)
-        response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
-        response['Content-Disposition'] = f'attachment; filename={clean_target_name}_{download_format}.zip'
-        return response
-
-
 def download_raw_spectra_view(request):
-    include_standard = request.GET.get('standards') == '1'
-    products = viewable_dataproducts(request.user, DataProduct.objects.filter(pk__in=request.GET.getlist('dp')))
-    products = sorted((p for p in products.select_related('target') if is_floyds_frame(p.product_id)),
-                      key=lambda p: p.product_id)
+    version = viewable_datums(request.user, SpectroscopyReducedDatum.objects.filter(pk=request.GET.get('spectrum') or 0)).first()
+    product = viewable_dataproducts(request.user, DataProduct.objects.filter(
+        pk=version.data_product_id if version else request.GET.get('dp') or 0)).select_related('target').first()
+    if product is None:
+        raise Http404('Spectrum not found or not visible to this user')
+    target_name = product.target.name.replace(' ', '')
+    if is_floyds_frame(product.product_id):
+        response = StreamingHttpResponse(stream_zip([('archive', '', product.product_id)], request.GET.get('standards') == '1'),
+                                         content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{target_name}_{product.product_id}_raw.zip"'
+        return response
+    versions = list(product.spectroscopyreduceddatum_set.all())
+    bundle = reduction_files(version or (default_version(versions) if versions else None))
+    if bundle is None:
+        return HttpResponse('This spectrum has no raw frames in the LCO archive and no attached reduction files.', status=404)
+    return FileResponse(default_storage.open(bundle['path'], 'rb'), as_attachment=True, filename=f'{target_name}_{bundle["name"]}')
+
+
+def _spectrum_download_items(product, download_format, include_raw, used):
+    versions = sorted(product.spectroscopyreduceddatum_set.all(), key=lambda version: version.pk)
+    file_name = product.get_file_name() if product.data else ''
+    base = product.product_id if is_floyds_frame(product.product_id) else os.path.splitext(file_name)[0] or f'dataproduct_{product.pk}'
+    if base in used:
+        base = f'{base}_{product.pk}'
+    used.add(base)
+    items, notes = [], []
+    if not versions:
+        if product.data and download_format != 'ascii':
+            items.append(('file', f'reduced/{base}{os.path.splitext(file_name)[1]}', product.data.name))
+        if include_raw and is_floyds_frame(product.product_id):
+            items.append(('archive', f'raw/{base}/', product.product_id))
+        return items, f'{base}: {product.get_type_display()}'
+    current = default_version(versions)
+    extra = ReducedDatumExtra.objects.filter(data_product=product, key='upload_extras').first()
+    has_fits = bool(product.data) and (extra.value or {}).get('file_version') in (None, current.reduction_version) if extra else bool(product.data)
+    if download_format != 'ascii' and has_fits:
+        items.append(('file', f'reduced/{base}{os.path.splitext(file_name)[1]}', product.data.name))
+    elif download_format != 'fits' and spectrum_ascii(current):
+        items.append(('text', f'reduced/{base}.ascii', spectrum_ascii(current)))
+    label = {version.pk: f'v{number}' for number, version in enumerate(versions, 1)}
+    for version in versions:
+        if version.pk != current.pk and download_format != 'fits' and spectrum_ascii(version):
+            items.append(('text', f'reduced/older_versions/{base}_{label[version.pk]}.ascii', spectrum_ascii(version)))
+    if include_raw:
+        if is_floyds_frame(product.product_id):
+            items.append(('archive', f'raw/{base}/', product.product_id))
+            notes.append('FLOYDS raw frames from the LCO archive')
+        bundles = {}
+        for version in versions:
+            bundle = reduction_files(version)
+            if bundle and bundle['path'] not in bundles:
+                bundles[bundle['path']] = (label[version.pk], bundle)
+        for version_label, bundle in bundles.values():
+            folder = f'raw/{base}/' if len(bundles) == 1 else f'raw/{base}/{version_label}/'
+            items.append(('file', folder + bundle['name'], bundle['path']))
+        if bundles:
+            notes.append('uploaded reduction files for ' + ', '.join(version_label for version_label, _ in bundles.values()))
+    summary = (f'{base}: {current.timestamp:%Y-%m-%d %H:%M}, {len(versions)} version{"s" if len(versions) > 1 else ""} '
+               f'(current {label[current.pk]})' + (f'; {"; ".join(notes)}' if notes else ('; no raw files' if include_raw else '')))
+    return items, summary
+
+
+def download_spectra_view(request):
+    download_format = request.GET.get('format', 'any')
+    include_raw = request.GET.get('raw') == '1'
+    products = viewable_dataproducts(request.user, DataProduct.objects.filter(pk__in=request.GET.getlist('dp'))).select_related('target')
+    products = sorted(products, key=lambda product: product.created)
     if not products:
-        return HttpResponse('None of the selected spectra are FLOYDS spectra with raw frames in the LCO archive.', status=404)
+        raise Http404('No data products selected')
+    items, summaries, used = [], [], set()
+    for product in products:
+        product_items, summary = _spectrum_download_items(product, download_format, include_raw, used)
+        items += product_items
+        summaries.append(summary)
+    readme = ('reduced/: the current version of each spectrum (the one shown on the target page)\n'
+              'reduced/older_versions/: earlier versions, as ascii\n')
+    if include_raw:
+        readme += ('raw/<spectrum>/: raw frames for each spectrum. FLOYDS spectra include the arc, flat and, when chosen, '
+                   'that night\'s flux standard. Reduction files uploaded with a spectrum are under raw/<spectrum>/<version>/ '
+                   'when versions were uploaded with different files.\n')
+    items.insert(0, ('text', 'README.txt', readme + '\n' + '\n'.join(summaries) + '\n'))
     target_name = products[0].target.name.replace(' ', '')
-    if len(products) == 1:
-        entries, name = [('', products[0].product_id)], f'{target_name}_{products[0].product_id}_raw.zip'
-    else:
-        entries, name = [(f'{p.product_id}/', p.product_id) for p in products], f'{target_name}_raw_spectra.zip'
-    response = StreamingHttpResponse(stream_raw_zip(entries, include_standard), content_type='application/zip')
-    response['Content-Disposition'] = f'attachment; filename="{name}"'
+    response = StreamingHttpResponse(stream_zip(items, request.GET.get('standards') == '1'), content_type='application/zip')
+    response['Content-Disposition'] = f'attachment; filename="{target_name}_spectra.zip"'
     return response
 
 

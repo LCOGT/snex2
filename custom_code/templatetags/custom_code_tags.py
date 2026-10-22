@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.raw_spectra import is_floyds_frame
+from custom_code.raw_spectra import is_floyds_frame, reduction_files
 from custom_code.utils import can_delete_spectrum, default_version, observed_spectra, standard_spectra, photometry_datums, spectrum_comment_object, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts, viewable_datums
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
@@ -586,7 +586,7 @@ def snex_dataproduct_list(context, target):
         versions = list(product.spectroscopyreduceddatum_set.all())
         product.spectrum = default_version(versions) if versions else None
         product.standards = standard_entries(product.spectrum) if product.spectrum else []
-        product.raw_available = is_floyds_frame(product.product_id)
+        product.raw_available = is_floyds_frame(product.product_id) or bool(reduction_files(product.spectrum))
     telescopes, instruments = set(), set()
     for p in dataproduct_context['products']:
         rde = p.reduceddatumextra_set.first()
@@ -1493,6 +1493,7 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
         'standards': standard_entries(spectrum) if include_plot else [],
         'raw_available': bool(spectrum.data_product_id and is_floyds_frame(spectrum.data_product.product_id)),
+        'bundle': reduction_files(spectrum),
     }
 
 

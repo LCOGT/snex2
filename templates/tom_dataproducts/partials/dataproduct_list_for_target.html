@@ -30,22 +30,22 @@
     <button type="button" id="clearFilters" class="btn btn-secondary w-100">Clear Filters</button>
   </div>
 </div>
-<form action="{% url 'custom_code:bulk-download-dataproducts' %}" method="POST" id="bulkDownloadForm">
-  {% csrf_token %}
-  <input type="hidden" name="target_name" value="{{ target.name }}">
+<form action="{% url 'download-spectra' %}" method="GET" id="bulkDownloadForm">
   <div class="mb-3 d-inline-block">
     <select name="download_format" class="form-control d-inline-block w-auto">
       <option value="any">Any (default fits)</option>
       <option value="fits">fits</option>
       <option value="ascii">ascii</option>
-      <option value="raw">raw FLOYDS frames</option>
     </select>
-    <label class="ms-2 text-muted" id="rawStandardsLabel" title="Only for raw FLOYDS frames">
-      <input type="checkbox" id="rawStandards" checked disabled> Include flux standards
+    <label class="ms-2" title="FLOYDS raw frames from the LCO archive, or reduction files uploaded with a spectrum">
+      <input type="checkbox" id="rawFiles"> Include raw / reduction files
+    </label>
+    <label class="ms-2 text-muted" id="rawStandardsLabel" title="Adds the FLOYDS standard from the same night to each FLOYDS spectrum">
+      <input type="checkbox" id="rawStandards" checked disabled> Include flux standards (FLOYDS)
     </label>
     <button type="submit" class="btn btn-success ms-2" id="bulkDownloadSubmit">Download</button>
   </div>
-  <span class="text-muted ms-2" id="bulkDownloadHint">Download spectra as a filetype if available</span>
+  <span class="text-muted ms-2" id="bulkDownloadHint">Current versions in reduced/, earlier versions in reduced/older_versions/</span>
   <table class="table table-striped" id="dataproductsTable">
     <thead>
       <tr>
@@ -169,13 +169,12 @@
   }
   document.addEventListener('change', function (ev) {
     const t = ev.target;
-    if (t.name === 'download_format') {
-      const raw = t.value === 'raw';
-      document.getElementById('rawStandards').disabled = !raw;
-      document.getElementById('rawStandardsLabel').classList.toggle('text-muted', !raw);
-      document.getElementById('bulkDownloadHint').textContent = raw
-        ? 'Raw spectrum, arc and flat for each FLOYDS spectrum, in one folder per spectrum'
-        : 'Download spectra as a filetype if available';
+    if (t.id === 'rawFiles') {
+      document.getElementById('rawStandards').disabled = !t.checked;
+      document.getElementById('rawStandardsLabel').classList.toggle('text-muted', !t.checked);
+      document.getElementById('bulkDownloadHint').textContent = t.checked
+        ? 'Reduced spectra in reduced/, raw or reduction files in raw/<spectrum>/'
+        : 'Current versions in reduced/, earlier versions in reduced/older_versions/';
     } else if (t.classList && t.classList.contains('product-filter')) {
       filterTable();
       plotSelectedSpectra();
@@ -221,49 +220,21 @@
       alert("No items selected. Please check at least one data product before downloading.");
       return;
     }
-    if (form.download_format.value === 'raw') {
-      const checked = Array.from(document.querySelectorAll('.product-row')).filter(function (row) {
-        return row.style.display !== 'none' && row.querySelector('.product-checkbox').checked;
-      });
-      const raw = checked.filter(function (row) { return row.dataset.raw === '1'; });
-      if (!raw.length) {
-        alert('None of the selected spectra are FLOYDS spectra with raw frames in the LCO archive.');
-        return;
-      }
-      const params = new URLSearchParams(raw.map(function (row) { return ['dp', row.dataset.dp]; }));
-      if (document.getElementById('rawStandards').checked) { params.append('standards', '1'); }
-      document.getElementById('bulkDownloadHint').textContent = 'Downloading raw frames for ' + raw.length + ' spectra' +
-        (checked.length > raw.length ? ' (' + (checked.length - raw.length) + ' selected are not FLOYDS and were skipped)' : '') + '...';
-      window.location.href = '{% url "download-raw-spectra" %}?' + params.toString();
-      return;
-    }
-    const formData = new FormData(form);
-    fetch(form.action, {
-      method: 'POST',
-      body: formData,
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    }).then(function (resp) {
-      const ct = resp.headers.get('Content-Type') || '';
-      if (ct.indexOf('application/zip') !== -1) {
-        return resp.blob().then(function (blob) {
-          const cd = resp.headers.get('Content-Disposition') || '';
-          const m = cd.match(/filename=([^;]+)/);
-          const name = m ? m[1].replace(/["']/g, '').trim() : 'download.zip';
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url; a.download = name;
-          document.body.appendChild(a); a.click(); a.remove();
-          URL.revokeObjectURL(url);
-        });
-      }
-      return resp.json().then(function (data) {
-        alert(data.error || 'Download failed.');
-      }).catch(function () {
-        alert('Download failed.');
-      });
-    }).catch(function () {
-      alert('Download failed. Please try again.');
+    const checked = Array.from(document.querySelectorAll('.product-row')).filter(function (row) {
+      return row.style.display !== 'none' && row.querySelector('.product-checkbox').checked;
     });
+    const params = new URLSearchParams(checked.map(function (row) { return ['dp', row.dataset.dp]; }));
+    params.append('format', form.download_format.value);
+    const raw = document.getElementById('rawFiles').checked;
+    if (raw) {
+      params.append('raw', '1');
+      if (document.getElementById('rawStandards').checked) { params.append('standards', '1'); }
+      const missing = checked.filter(function (row) { return row.dataset.raw !== '1'; }).length;
+      document.getElementById('bulkDownloadHint').textContent = 'Downloading ' + checked.length + ' data products' +
+        (missing ? ' (' + missing + ' have no raw files)' : '') + '...';
+    }
+    window.location.href = form.action + '?' + params.toString();
+  });
   });
 })();
 </script>

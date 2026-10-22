@@ -86,6 +86,7 @@ urlpatterns = [
     path('cache-frame/', cache_frame_view, name='cache-frame'),
     path('get-frame-ids/', get_frame_ids_view, name='get-frame-ids'),
     path('spectra/raw-download/', download_raw_spectra_view, name='download-raw-spectra'),
+    path('spectra/download/', download_spectra_view, name='download-spectra'),
     path('targets/<int:pk>/photometry/standards/', photometry_standards_view, name='photometry-standards'),
     path('update-photometry-groups/', update_photometry_groups_view, name='update-photometry-groups'),
     path('interesting-targets/', InterestingTargetsView.as_view(), name='interesting-targets'),
