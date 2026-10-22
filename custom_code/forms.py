@@ -179,6 +179,10 @@ class CustomDataProductUploadForm(DataProductUploadForm):
         required=False
     )
 
+    instrument = forms.CharField(
+        required=False
+    )
+
     ### Spectroscopy fields:
     telescope = forms.CharField(
         required=False
