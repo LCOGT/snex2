@@ -147,8 +147,9 @@ class SNExDataProductViewSet(DataProductViewSet):
                              'already_reduced': any(datums.exists() for datums in dataproduct_datums(existing))}, status=status.HTTP_200_OK)
 
         spectrum = data.get('data_product_type') == 'spectroscopy'
+        replace = spectrum and str(data.pop('replace', '')).lower() in ('true', '1')
         versions = SpectroscopyReducedDatum.objects.filter(data_product=existing) if existing else None
-        if existing and spectrum and file and versions.filter(reduction_version=file_version(file)).exists():
+        if existing and spectrum and file and not replace and versions.filter(reduction_version=file_version(file)).exists():
             return Response({'id': existing.id, 'product_id': product_id, 'unchanged': True, 'versions': versions.count()},
                             status=status.HTTP_200_OK)
 
@@ -161,8 +162,8 @@ class SNExDataProductViewSet(DataProductViewSet):
         with transaction.atomic():
             if existing:
                 dp = existing
-                replaced = not spectrum and any(datums.exists() for datums in dataproduct_datums(dp))
-                if not spectrum:
+                replaced = (not spectrum or replace) and any(datums.exists() for datums in dataproduct_datums(dp))
+                if not spectrum or replace:
                     for datums in dataproduct_datums(dp):
                         datums.delete()
                 ReducedDatumExtra.objects.filter(data_product=dp).delete()
