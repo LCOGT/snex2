@@ -156,6 +156,13 @@ def observed_spectra(target, user=None):
     return sorted((default_version(versions) for versions in observations.values()), key=lambda spectrum: spectrum.timestamp)
 
 
+def frame_night(product_id):
+    parts = (product_id or '').split('-')
+    if len(parts) >= 3 and len(parts[2]) == 8 and parts[2].isdigit():
+        return parts[0], parts[2]
+    return None
+
+
 def standard_spectra(spectrum):
     from tom_dataproducts.models import SpectroscopyReducedDatum
     if spectrum.target_id in set(standard_target_ids().values_list('pk', flat=True)):
@@ -163,10 +170,13 @@ def standard_spectra(spectrum):
     window = datetime.timedelta(days=1)
     candidates = SpectroscopyReducedDatum.objects.filter(
         target_id__in=standard_target_ids(), timestamp__range=(spectrum.timestamp - window, spectrum.timestamp + window))
+    night = frame_night(spectrum.data_product.product_id) if spectrum.data_product_id else None
     if spectrum.instrument:
         candidates = candidates.filter(Q(instrument=spectrum.instrument) | Q(instrument=''))
     observations = {}
-    for candidate in candidates.select_related('target'):
+    for candidate in candidates.select_related('target', 'data_product'):
+        if night and frame_night(candidate.data_product.product_id if candidate.data_product_id else '') != night:
+            continue
         observations.setdefault(candidate.data_product_id or f'spectrum-{candidate.pk}', []).append(candidate)
     return sorted((default_version(versions) for versions in observations.values()),
                   key=lambda standard: abs(standard.timestamp - spectrum.timestamp))

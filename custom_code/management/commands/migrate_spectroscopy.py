@@ -9,7 +9,7 @@ from tom_dataproducts.models import DataProduct, ReducedDatum, SpectroscopyReduc
 
 from custom_code.management.commands.migrate_photometry import Command as PhotometryCommand
 from custom_code.models import ReducedDatumExtra
-from custom_code.utils import file_version, measured, upload_reduction_version
+from custom_code.utils import file_version, frame_night, measured, upload_reduction_version
 
 BATCH_SIZE = 100
 SPECTRUM_KEYS = ('flux', 'photon_flux', 'wavelength', 'error', 'flux_error', 'flux_units', 'photon_flux_units',
@@ -55,12 +55,16 @@ class Command(PhotometryCommand):
             target_id=rd.target_id, data_product_id=rd.data_product_id, timestamp=rd.timestamp,
             source_name=rd.source_name, source_location=rd.source_location,
             telescope=str(value.get('telescope') or facts.get('telescope') or rd.telescope),
-            instrument=str(value.get('instrument') or facts.get('instrument') or rd.instrument),
+            instrument=str(value.get('instrument') or facts.get('instrument') or rd.instrument or self.camera(rd.data_product)),
             exposure_time=measured(facts.get('exptime')),
             wavelength=wavelength, flux=flux, error=_floats(value.get('error') or value.get('flux_error') or []),
             flux_unit=str(flux_unit), wavelength_unit=str(value.get('wavelength_units') or ''),
             reduction_version=version, value=extras)
         return seen[key], False
+
+    def camera(self, product):
+        product_id = product.product_id if product else ''
+        return product_id.split('-')[1] if frame_night(product_id) else ''
 
     def version(self, product):
         try:
