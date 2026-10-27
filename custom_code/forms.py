@@ -16,24 +16,15 @@ except ImportError:
     from django.contrib.auth.forms import UserCreationForm
 from tom_dataproducts.forms import DataProductUploadForm
 from tom_observations.widgets import FilterField
-from tom_registration.registration_flows.approval_required.forms import RegistrationApprovalForm
+from tom_common.accounts.forms import TomSignupForm
 from tom_targets.forms import SiderealTargetCreateForm
 from custom_code.models import Papers, ScienceTags, TargetTags, UserRegistrationInfo
 import logging
+from custom_code.raw_spectra import REDUCTION_FILES_LIMIT
 
 logger = logging.getLogger(__name__)
 
-from django.contrib.auth.forms import AuthenticationForm
 
-class SafeAuthenticationForm(AuthenticationForm):
-    def clean(self):
-        try:
-            return super().clean()
-        except AttributeError:
-            raise forms.ValidationError(
-                'Your password needs to be reset. Please follow the link below.'
-            )
-        
 class CustomTargetCreateForm(SiderealTargetCreateForm):
 
     sciencetags = forms.ModelMultipleChoiceField(ScienceTags.objects.all().order_by(Lower('tag')), widget=forms.CheckboxSelectMultiple, label='Science Tags', required=False)
@@ -74,6 +65,8 @@ class CustomTargetCreateForm(SiderealTargetCreateForm):
             self.fields['groups'].label = "Visible to"
         self.fields.pop('gwfollowupgalaxy_id', None)
         self.fields.pop('standard', None)
+        self.fields.pop('shared_by', None)
+        self.fields.pop('shared_from', None)
 
     def save(self, commit=True):
         instance = super().save(commit=commit)
@@ -123,34 +116,33 @@ class SNEx2UserCreationForm(UserCreationForm):
             return user
 
 
-class SNEx2RegistrationApprovalForm(RegistrationApprovalForm):
-    """
-    Registration form with an extra required field: who you are / who you are working with.
-    Saves the extra field to UserRegistrationInfo after creating the user.
-    """
+class SNExSignupForm(TomSignupForm):
     who_you_are = forms.CharField(
         required=True,
         widget=forms.Textarea(attrs={'rows': 3, 'placeholder': 'e.g. PhD student at University X, working with Prof. Y on supernova follow-up'}),
-        label='Who you are / who you are working with and why do you want a SNEx2 account?',
+        label='Who you are / who you are working with and why do you want a SNEx account?',
         help_text='Please briefly describe who you are or which group/institution you work with.',
     )
 
-    def clean_email(self):
-        email = self.cleaned_data.get('email')
+    def signup(self, request, user):
+        super().signup(request, user)
+        UserRegistrationInfo.objects.update_or_create(user=user, defaults={'who_you_are': self.cleaned_data['who_you_are']})
 
-        if User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError("A user already exists with this email address.")
 
-        return email
-    
-    def save(self, commit=True):
-        user = super().save(commit=commit)
-        if commit and user and hasattr(self, 'cleaned_data') and self.cleaned_data.get('who_you_are'):
-            UserRegistrationInfo.objects.update_or_create(
-                user=user,
-                defaults={'who_you_are': self.cleaned_data['who_you_are']},
-            )
-        return user
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('widget', MultipleFileInput())
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        if isinstance(data, (list, tuple)):
+            return [super(MultipleFileField, self).clean(item, initial) for item in data]
+        return [super().clean(data, initial)] if data else []
 
 
 class CustomDataProductUploadForm(DataProductUploadForm):
@@ -208,6 +200,19 @@ class CustomDataProductUploadForm(DataProductUploadForm):
     final_reduction = forms.BooleanField(
         required=False
     )
+
+    reduction_files = MultipleFileField(
+        required=False,
+        label='Reduction files',
+        help_text='Optional raw, calibration or reduction files used to make this spectrum: '
+                  'several files, or one .zip or .tar.gz. Up to 300 MB in total.'
+    )
+
+    def clean_reduction_files(self):
+        files = self.cleaned_data.get('reduction_files') or []
+        if sum(upload.size for upload in files) > REDUCTION_FILES_LIMIT:
+            raise ValidationError(f'Reduction files must be {REDUCTION_FILES_LIMIT // (1024 * 1024)} MB or less in total.')
+        return files
 
 
 class PapersForm(forms.ModelForm):

@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load static targets_extras observation_extras dataproduct_extras tom_common_extras bootstrap4 custom_code_tags %}
+{% load static targets_extras observation_extras dataproduct_extras tom_common_extras django_bootstrap5 custom_code_tags %}
 {% block title %}Home{% endblock %}
 {% block content %}
 <div class="row">
@@ -16,19 +16,19 @@
     <span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:10pt; color:#004459;">welcome to </span>
     <span style="font-family: 'Open Sans', sans-serif; font-weight:600; font-size:48pt; color:#004459; line-height:100%; letter-spacing:-3px;">SN</span>
     </td><td valign=bottom align=left width=50%>
-    <span style="font-family: 'Open Sans', sans-serif; font-weight:600; font-size:48pt; color:#ff9900; line-height:100%; letter-spacing:-3px;">Ex 2.0</span>
+    <span style="font-family: 'Open Sans', sans-serif; font-weight:600; font-size:48pt; color:#ff9900; line-height:100%; letter-spacing:-3px;">Ex 3.0</span>
     </td></tr>
     <tr><td valign=bottom align=right width=50%>
     <span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:10pt; color:#004459;">the </span>
     <span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:24pt; color:#004459;">Supernova</span>
     </td><td valign=bottom align=left width=50%>
-    <span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:24pt; color:#ff9900;">Exchange (2.0)</span>
+    <span style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:24pt; color:#ff9900;">Exchange (3.0)</span>
 
     </td></tr>
 
     <tr><td colspan=2 align=center><br><br>
       <form action="{% url 'redirect' %}" method="get" >
-        <input name="name" type="text" placeholder="Search by name or coordinates" style="font-family: 'Open Sans', sans-serif; font-weight:200; font-size:10pt; color:#ff9900; width:40%" title="Examples: SN 2022hnt; 13:56:9.960 +05:02:12.120">
+        <input name="name" type="text" placeholder="Search by name or coordinates" style="width:40%" title="Examples: SN 2022hnt; 13:56:9.960 +05:02:12.120">
       </form>
     </td></tr>
 

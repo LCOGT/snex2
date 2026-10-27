@@ -44,6 +44,7 @@ h4 {
 
 .fixed-top-2 h3 {
   padding-left: calc(1.5rem + 15px);
+  margin-bottom: 0;
 }
 
 .fixed-top-2 a {

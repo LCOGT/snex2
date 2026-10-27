@@ -1,11 +1,11 @@
 import base64
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import json
 import os
 import re
 from datetime import date, datetime, timedelta
-from io import BytesIO, StringIO
-import zipfile
+from io import StringIO
 import requests
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -16,7 +16,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import Group, User
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.files.base import ContentFile
 from django.core.cache import cache
 from django.db import transaction
@@ -24,16 +24,12 @@ from django.db.models import Count, DateTimeField, Exists, ExpressionWrapper, F,
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import Cast
 from django.shortcuts import redirect, render, get_object_or_404
-from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
-from django.views.generic.base import TemplateView, RedirectView
-from django.views.generic.list import ListView
-from django.views.generic.edit import FormView
-from django.views.generic.detail import DetailView
+from django.http import HttpResponse, JsonResponse, HttpResponseRedirect, FileResponse, StreamingHttpResponse, HttpResponseBadRequest, HttpResponseForbidden, QueryDict, Http404
 from django.urls import reverse, reverse_lazy
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
-from django.views.generic.base import RedirectView, TemplateView
+from django.views.generic.base import TemplateView
 from django.views.generic.detail import DetailView
 from django.views.generic.edit import FormView
 from django.views.generic.list import ListView
@@ -42,32 +38,34 @@ from django_comments.models import Comment
 from django_filters.views import FilterView
 from django.utils.decorators import method_decorator
 from django.contrib.auth.decorators import login_required
-from rest_framework.authtoken.models import Token
 from guardian.shortcuts import assign_perm, get_groups_with_perms, get_objects_for_user, get_users_with_perms, remove_perm
 from tom_common.views import UserUpdateView
 from tom_dataproducts.exceptions import InvalidFileFormatException
-from tom_dataproducts.models import DataProduct, ReducedDatum
-from tom_dataproducts.views import DataProductUploadView
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum, SpectroscopyReducedDatum
+from tom_dataproducts.views import DataProductDeleteView, DataProductUploadView
 from tom_observations.models import DynamicCadence, ObservationGroup, ObservationRecord
 from tom_observations.views import ObservationCreateView, ObservationListView
-from tom_registration.registration_flows.approval_required.views import ApprovalRegistrationView, UserApprovalView
+from tom_common.accounts.views import UserApprovalView
 from tom_targets.models import Target, TargetList, TargetName
 from tom_targets.permissions import targets_for_user
-from tom_targets.views import TargetCreateView, TargetListView as TOMTargetListView
+from tom_targets.tables import TargetTable
+from tom_targets.views import TargetCreateView, TargetDeleteView, TargetListView as TOMTargetListView, TargetMergeView
 from custom_code.facilities.soar_facility import user_can_access_soar
-from custom_code.filters import BrokerTargetFilter, TNSTargetFilter
-from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2RegistrationApprovalForm, SNEx2UserCreationForm, SpecSchedulingForm
+from custom_code.filters import TNSTargetFilter
+from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params
-from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.models import InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
-from custom_code.processors.data_processor import run_custom_data_processor
+from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
+from django.core.files.storage import default_storage
+from custom_code.raw_spectra import is_floyds_frame, reduction_files, save_reduction_files, stream_zip
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
-from tom_tns.views import TNSSubmitView
-from custom_code.utils import datum_value, photometry_data_type, viewable_reduceddatums, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from tom_tns.views import TNSFormView, TNSSubmitView
+from custom_code.utils import TESS_SECTOR_HALF_DAYS, default_version, fits_is_current, query_tns, tess_sectors, tns_object, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -77,6 +75,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG) 
 
 # Create your views here.
+
+OBSERVATION_RECORD_PERMS = ['tom_observations.view_observationrecord',
+                            'tom_observations.change_observationrecord',
+                            'tom_observations.delete_observationrecord']
 
 def make_coords(ra, dec):
     coords = SkyCoord(ra, dec, unit=u.deg)
@@ -134,7 +136,29 @@ class TNSTargets(FilterView):
             target.link = TNS_URL + target.name
         return context
 
+class AdminOnlyMixin(UserPassesTestMixin):
+    def test_func(self):
+        return self.request.user.is_superuser
+
+
+class SNExTargetMergeView(AdminOnlyMixin, TargetMergeView):
+    pass
+
+
+class SNExTargetDeleteView(AdminOnlyMixin, TargetDeleteView):
+    pass
+
+
+class SNExDataProductDeleteView(AdminOnlyMixin, DataProductDeleteView):
+    pass
+
+
+class SNExTargetTable(TargetTable):
+    partial_template_name = 'custom_code/partials/target_list_table.html'
+
+
 class TargetListView(TOMTargetListView):
+    table_class = SNExTargetTable
 
     def get_queryset(self, *args, **kwargs):
         queryset = super().get_queryset(*args, **kwargs)
@@ -303,6 +327,20 @@ class CustomTargetCreateView(TargetCreateView):
             **dict(self.request.GET.items())
         }
 
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        if response.status_code == 302 and any(tns_object(name) for name in self.object.names):
+            try:
+                changes = update_target_from_tns(self.object)
+                if changes:
+                    messages.success(self.request, 'Added from TNS: ' + ', '.join(changes))
+            except (ValueError, KeyError, requests.RequestException) as e:
+                messages.warning(self.request, f'Created the target, but could not add its TNS information: {e}')
+        return response
+
+    def get_success_url(self):
+        return f'{super().get_success_url()}?new=1'
+
 class CustomUserUpdateView(UserUpdateView):
 
     form_class = SNEx2UserCreationForm
@@ -331,22 +369,16 @@ class CustomUserUpdateView(UserUpdateView):
             return super().dispatch(*args, **kwargs)
 
     def form_valid(self, form):
-        old_username = self.get_object().username
         super().form_valid(form)
         return redirect(self.get_success_url())
 
 
-class SNEx2ApprovalRegistrationView(ApprovalRegistrationView):
-    """Registration view that uses our custom form with the who_you_are field."""
-    form_class = SNEx2RegistrationApprovalForm
+class SNExUserApprovalView(UserApprovalView):
 
-
-class SNEx2UserApprovalView(UserApprovalView):
-
-    def form_valid(self, form):
-        if 'send_welcome_email' in self.request.POST:
-            return super().form_valid(form)
-        return super(UserApprovalView, self).form_valid(form)
+    def _notify_user_of_approval(self, request, user):
+        if 'send_welcome_email' not in request.POST:
+            return True
+        return super()._notify_user_of_approval(request, user)
 
 
 class CustomDataProductUploadView(DataProductUploadView):
@@ -363,6 +395,8 @@ class CustomDataProductUploadView(DataProductUploadView):
             observation_record = None
         dp_type = form.cleaned_data['data_product_type']
         data_product_files = self.request.FILES.getlist('files')
+        bundle_files = form.cleaned_data.get('reduction_files') if dp_type == 'spectroscopy' else []
+        bundle = None
         successful_uploads = []
         for f in data_product_files:
             dp = DataProduct(
@@ -373,6 +407,7 @@ class CustomDataProductUploadView(DataProductUploadView):
                 data_product_type=dp_type
             )
             dp.save()
+            uploaded = dp
             try:
 
                 ### ------------------------------------------------------------------
@@ -401,16 +436,24 @@ class CustomDataProductUploadView(DataProductUploadView):
                     rdextra_value['reducer_group'] = reducer_group
 
                 rdextra_value['final_reduction'] = form.cleaned_data['final_reduction']
-                reduced_data, rdextra_value = run_custom_data_processor(dp, extras, rdextra_value)
+                reduced_data, rdextra_value = run_custom_data_processor(
+                    dp, extras, rdextra_value, uploaded_by=self.request.user.username)
+                dp, reduced_data = merge_into_observation(dp, reduced_data)
+                if bundle_files:
+                    bundle = bundle or save_reduction_files(target, bundle_files)
+                    for version in reduced_data:
+                        version.value = {**version.value, 'reduction_files': bundle}
+                        version.save()
 
-                reduced_datum_extra = ReducedDatumExtra(
-                    target = target,
-                    data_product = dp,
-                    data_type = dp_type,
-                    key = 'upload_extras',
-                    value = rdextra_value
-                )
-                reduced_datum_extra.save()
+                if dp == uploaded:
+                    reduced_datum_extra = ReducedDatumExtra(
+                        target = target,
+                        data_product = dp,
+                        data_type = dp_type,
+                        key = 'upload_extras',
+                        value = rdextra_value
+                    )
+                    reduced_datum_extra.save()
 
                 ### -------------------------------------------------------------------
                 
@@ -423,19 +466,18 @@ class CustomDataProductUploadView(DataProductUploadView):
                     for group in user_groups:
                         assign_perm('tom_dataproducts.view_dataproduct', group, dp)
                         assign_perm('tom_dataproducts.delete_dataproduct', group, dp)
-                        assign_perm('tom_dataproducts.view_reduceddatum', group, reduced_data)
+                        assign_perm(view_datum_perm(reduced_data.model), group, reduced_data)
                 successful_uploads.append(str(dp))
             except InvalidFileFormatException as iffe:
-                ReducedDatum.objects.filter(data_product=dp).delete()
-                dp.delete()
+                DataProduct.objects.filter(pk=uploaded.pk).delete()
                 messages.error(
                     self.request,
-                    'File format invalid for file {0} -- error was {1}'.format(str(dp), iffe)
+                    'File format invalid for file {0} -- error was {1}'.format(f.name, iffe)
                 )
-            except Exception as e:
-                dp.delete()
-                messages.error(self.request, 'There was a problem processing your file: {0}'.format(str(dp)))
-                logger.exception(f'Could not process uploaded file {dp}')
+            except Exception:
+                DataProduct.objects.filter(pk=uploaded.pk).delete()
+                messages.error(self.request, 'There was a problem processing your file: {0}'.format(f.name))
+                logger.exception(f'Could not process uploaded file {f.name}')
         if successful_uploads:
             messages.success(
                 self.request,
@@ -454,13 +496,6 @@ def save_dataproduct_groups_view(request):
     return JsonResponse({'success': sorted(group.name for group in groups)})
 
 
-def create_api_token_view(request):
-    if request.method != 'POST' or not request.user.is_superuser:
-        return HttpResponseForbidden('Only admins can replace an API token')
-    Token.objects.filter(user=request.user).delete()
-    return JsonResponse({'token': Token.objects.create(user=request.user).key})
-
-
 def set_target_standard_view(request):
     if request.method != 'POST' or not request.user.is_superuser:
         return HttpResponseForbidden('Only admins can change whether a target is a standard')
@@ -474,14 +509,11 @@ def set_target_standard_view(request):
         elif target.classification == 'Standard':
             target.classification = ''
         target.save()
-        old_type, new_type = ('photometry', 'photometric_standard') if standard else ('photometric_standard', 'photometry')
-        datums = ReducedDatum.objects.filter(target=target, data_type=old_type)
         if standard:
-            set_reduceddatum_view_groups(datums, [])
+            set_reduceddatum_view_groups(PhotometryReducedDatum.objects.filter(target=target), [])
             for group in get_groups_with_perms(target):
                 for permission in ('view_target', 'change_target', 'delete_target'):
                     remove_perm(f'custom_code.{permission}', group, target)
-        datums.update(data_type=new_type)
     return JsonResponse({'standard': standard})
 
 
@@ -582,6 +614,11 @@ def observation_sequence_cancel_view(request):
     except Exception:
         logger.error('This sequence was not canceled', exc_info=True)
         return JsonResponse({'failure': 'This sequence was not canceled'})
+
+@login_required
+def observation_record_disabled_view(request, pk):
+    return HttpResponseForbidden('Disabled because it bypasses SNEx cadences. Use Stop Sequence on the target page.')
+
 
 def scheduling_row_view(request, observation_id):
     obs = get_object_or_404(ObservationRecord, id=observation_id)
@@ -812,11 +849,6 @@ def change_observing_priority_view(request):
             t.observing_run_priority += 1
             t.save()
     return HttpResponseRedirect('/targets/targetgrouping/')
-
-
-OBSERVATION_RECORD_PERMS = ['tom_observations.view_observationrecord',
-                            'tom_observations.change_observationrecord',
-                            'tom_observations.delete_observationrecord']
 
 
 def active_observation_ids(user, completed_only=False):
@@ -1080,9 +1112,54 @@ def _target_for_user(request, pk):
     return target
 
 
+@require_http_methods(['POST'])
+def update_from_tns_view(request, pk):
+    target = get_object_or_404(targets_for_user(request.user, Target.objects.filter(pk=pk), 'change_target'))
+    try:
+        changes = update_target_from_tns(target)
+        messages.success(request, 'Updated from TNS: ' + ', '.join(changes) if changes else 'Already up to date with TNS.')
+    except (ValueError, KeyError, requests.RequestException) as e:
+        messages.error(request, f'Could not update from TNS: {e}')
+    return HttpResponse(status=204, headers={'HX-Refresh': 'true'})
+
+
+def resolve_tns_view(request):
+    objname = TNS_PREFIX_RE.sub('', request.GET.get('name', '').replace(' ', '')).lower()
+    if re.fullmatch(r'\d{2}[a-z]{1,4}', objname):
+        objname = '20' + objname
+    if not re.fullmatch(r'\d{4}[a-z]{1,4}', objname):
+        return JsonResponse({'error': 'Enter a TNS name such as 24abc, 2024abc or AT2024abc'}, status=400)
+    try:
+        tns = query_tns(objname)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=404)
+    except requests.RequestException as e:
+        logger.warning(f'TNS lookup of {objname} failed: {e}')
+        return JsonResponse({'error': 'Could not reach TNS, try again later'}, status=502)
+    name = tns['name_prefix'] + tns['objname']
+    existing = Target.matches.match_name(name).first()
+    return JsonResponse({'name': name, 'ra': tns['radeg'], 'dec': tns['decdeg'],
+                         'existing': {'name': existing.name, 'url': reverse('tom_targets:detail', args=(existing.id,))} if existing else None})
+
+
 def _render_target_partial(request, pk, template):
     target = _target_for_user(request, pk)
     return render(request, template, {'target': target, 'object': target})
+
+
+def tess_sectors_view(request, pk):
+    target = _target_for_user(request, pk)
+    if target.ra is None or target.dec is None:
+        return HttpResponse('<p>This target has no coordinates.</p>')
+    now = Time.now().jd
+    sectors = []
+    for sector in tess_sectors(target.ra, target.dec):
+        start, end = sector['mid_jd'] - TESS_SECTOR_HALF_DAYS, sector['mid_jd'] + TESS_SECTOR_HALF_DAYS
+        sector['start'] = Time(start, format='jd').datetime.date()
+        sector['end'] = Time(end, format='jd').datetime.date()
+        sector['status'] = 'observed' if end < now else ('observing now' if start <= now else 'upcoming')
+        sectors.append(sector)
+    return render(request, 'custom_code/partials/target/tess_sectors.html', {'sectors': sectors})
 
 
 def load_details_tab_view(request, pk):
@@ -1113,11 +1190,11 @@ def load_manage_standards_view(request, pk):
 def update_photometry_groups_view(request):
     if not request.user.is_superuser:
         return HttpResponseForbidden('Only admins can change photometry visibility')
-    datums = ReducedDatum.objects.filter(pk__in=json.loads(request.POST.get('datum_ids', '[]')), data_type='photometry')
+    datums = PhotometryReducedDatum.objects.filter(pk__in=json.loads(request.POST.get('datum_ids', '[]')))
     pks = list(datums.values_list('pk', flat=True))
     groups = list(Group.objects.filter(name__in=json.loads(request.POST.get('groups', '[]'))))
     set_reduceddatum_view_groups(datums, groups)
-    affected = ReducedDatum.objects.filter(
+    affected = PhotometryReducedDatum.objects.filter(
         Q(pk__in=pks) | Q(data_product__in=datums.exclude(data_product=None).values('data_product')))
     visible = reduceddatum_view_groups(affected)
     return JsonResponse({'updated': len(pks),
@@ -1163,7 +1240,7 @@ def load_airmass_plot_view(request, pk):
 
 def _spectrum_for_user(request, pk, spectrum_id):
     target = _target_for_user(request, pk)
-    spectrum = viewable_reduceddatums(request.user, ReducedDatum.objects.filter(id=spectrum_id, target=target, data_type='spectroscopy')).first()
+    spectrum = viewable_datums(request.user, SpectroscopyReducedDatum.objects.filter(id=spectrum_id, target=target)).first()
     if spectrum is None:
         raise Http404('Spectrum not found or not visible to this user')
     return target, spectrum
@@ -1173,6 +1250,14 @@ def load_single_spectrum_view(request, pk, spectrum_id):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
     entry = custom_code_tags.build_spectrum_entry(target, spectrum, user=request.user)
     return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
+
+
+def spectrum_data_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    wavelength, flux = custom_code_tags.bin_spectra(spectrum.wavelength, spectrum.flux, 5) if spectrum.wavelength else ([], [])
+    return JsonResponse({'label': f'{target.name} {spectrum.timestamp:%Y-%m-%d %H:%M}',
+                         'target_url': reverse('tom_targets:detail', args=(target.id,)),
+                         'wavelength': wavelength, 'flux': flux})
 
 
 def load_spectrum_interactive_view(request, pk, spectrum_id):
@@ -1327,51 +1412,6 @@ class ObservationGroupDetailView(DetailView):
         return context
 
 
-class BrokerTargetView(FilterView):
- 
-    template_name = 'custom_code/broker_query_targets.html'
-    model = BrokerTarget
-    paginate_by = 10
-    context_object_name = 'brokertargets'
-    strict = False
-    filterset_class = BrokerTargetFilter
-    ordering = ['-created']
-
-    def get_filterset_kwargs(self, filterset_class):
-        ### Initially filter so only new targets are displayed
-        kwargs = super(BrokerTargetView, self).get_filterset_kwargs(filterset_class)
-        if kwargs['data'] is None:
-            kwargs['data'] = {'status': 'New'}
-        elif 'status' not in kwargs['data']:
-            kwargs['data']._mutable = True
-            kwargs['data']['status'] = 'New'
-        return kwargs
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        #TNS_URL = "https://www.wis-tns.org/object/"
-        for target in context['object_list']:
-            target.coords = make_coords(target.ra, target.dec)
-            if target.tns_target is not None:
-                target.tns_name = target.tns_target.name
-
-            targetname_matchlist = Target.objects.filter(Q(name__icontains=target.name) | Q(aliases__name__icontains=target.name)).distinct().first()
-            if target.tns_target:
-                target_tnsname_matchlist = Target.objects.filter(Q(name__icontains=target.tns_target.name) | Q(aliases__name__icontains=target.tns_target.name)).distinct().first()
-
-            if targetname_matchlist:
-                target.existing_target = targetname_matchlist.id
-                target.exists = True
-            elif target.tns_target and target_tnsname_matchlist:
-                target.existing_target = target_tnsname_matchlist.id
-                target.exists = True
-            else:
-                target.exists = False
-            
-        #    target.link = TNS_URL + target.name
-        return context
-
-
 def query_ztf_observations_view(request):
     target_id = request.GET['target_id']
     target = Target.objects.get(id=target_id)
@@ -1383,7 +1423,7 @@ def query_ztf_observations_view(request):
     
     try:
         get_ztf_data(target)
-        count = ReducedDatum.objects.filter(target=target, data_type='photometry', source_name=ztf_name).count()
+        count = PhotometryReducedDatum.objects.filter(target=target, source_name=ztf_name).count()
         return HttpResponse(json.dumps({'success': f'Ingested {count} ZTF photometry points for {ztf_name}'}), content_type='application/json')
     except Exception as e:
         logger.warning(f'ZTF ingestion failed for {target.name}: {e}')
@@ -1452,10 +1492,33 @@ def cache_frame_view(request):
     return HttpResponse(status=204)
 
 
+@require_http_methods(['POST'])
+def delete_photometry_view(request, pk, datum_id):
+    if not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can delete photometry')
+    get_object_or_404(PhotometryReducedDatum, pk=datum_id, target_id=pk).delete()
+    return HttpResponse('')
+
+
+def delete_spectrum_version_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    if request.method != 'POST' or not request.user.is_superuser:
+        return HttpResponseForbidden('Only admins can delete this version')
+    product = spectrum.data_product
+    spectrum.delete()
+    remaining = SpectroscopyReducedDatum.objects.filter(data_product=product) if product else []
+    if not remaining:
+        if product:
+            product.delete()
+        return HttpResponse('')
+    entry = custom_code_tags.build_spectrum_entry(target, default_version(remaining), user=request.user)
+    return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
+
+
 def download_spectrum_view(request, pk, spectrum_id, file_format):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
     product = spectrum.data_product
-    has_file = bool(product and product.data and os.path.exists(product.data.path))
+    has_file = fits_is_current(spectrum) and os.path.exists(product.data.path)
     if file_format == 'fits':
         if not has_file:
             raise Http404('This spectrum has no file')
@@ -1469,51 +1532,125 @@ def download_spectrum_view(request, pk, spectrum_id, file_format):
     return response
 
 
-class BulkDownloadView(LoginRequiredMixin, View):
-    def post(self, request, *args, **kwargs):
-        product_ids = request.POST.getlist('selected_products')
-        target_name = request.POST.get('target_name', 'snextarget')
-        clean_target_name = target_name.replace(' ', '_')
-        download_format = request.POST.get('download_format', 'fits')
-        if not product_ids:
-            return HttpResponse('No items selected.', status=400)
-        allowed = viewable_dataproducts(request.user, DataProduct.objects.filter(id__in=product_ids))
-        zip_buffer = BytesIO()
-        written = 0
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for product in allowed:
-                file_name = product.get_file_name() if product.data else product.product_id
-                fits_path = product.data.path if product.data else None
-                ascii_name = os.path.splitext(file_name)[0] + '.ascii'
-
-                if download_format != 'ascii' and fits_path and os.path.exists(fits_path):
-                    zip_file.write(fits_path, arcname=file_name)
-                    written += 1
-                elif download_format != 'fits':
-                    content = spectrum_ascii(product.reduceddatum_set.filter(data_type='spectroscopy').first())
-                    if content:
-                        zip_file.writestr(ascii_name, content)
-                        written += 1
-        if written == 0:
-            return JsonResponse({'error': f'The file with a "{download_format}" extension does not exist.'}, status=404)
-        zip_buffer.seek(0)
-        response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
-        response['Content-Disposition'] = f'attachment; filename={clean_target_name}_{download_format}.zip'
+def download_raw_spectra_view(request):
+    version = viewable_datums(request.user, SpectroscopyReducedDatum.objects.filter(pk=request.GET.get('spectrum') or 0)).first()
+    product = viewable_dataproducts(request.user, DataProduct.objects.filter(
+        pk=version.data_product_id if version else request.GET.get('dp') or 0)).select_related('target').first()
+    if product is None:
+        raise Http404('Spectrum not found or not visible to this user')
+    target_name = product.target.name.replace(' ', '')
+    if is_floyds_frame(product.product_id):
+        response = StreamingHttpResponse(stream_zip([('archive', '', product.product_id)], request.GET.get('standards') == '1',
+                                                    f'Raw frames for {product.product_id} from the LCO archive.\n'),
+                                         content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{target_name}_{product.product_id}_raw.zip"'
         return response
+    versions = list(product.spectroscopyreduceddatum_set.all())
+    bundle = reduction_files(version or (default_version(versions) if versions else None))
+    if bundle is None:
+        return HttpResponse('This spectrum has no raw frames in the LCO archive and no attached reduction files.', status=404)
+    return FileResponse(default_storage.open(bundle['path'], 'rb'), as_attachment=True, filename=f'{target_name}_{bundle["name"]}')
+
+
+def download_spectra_view(request):
+    download_format = request.GET.get('format', 'any')
+    include_raw = request.GET.get('raw') == '1'
+    products = viewable_dataproducts(request.user, DataProduct.objects.filter(pk__in=request.GET.getlist('dp'))).select_related('target')
+    products = sorted(products, key=lambda product: product.created)
+    if not products:
+        raise Http404('No data products selected')
+    items, summaries, used = [], [], set()
+    for product in products:
+        versions = sorted(product.spectroscopyreduceddatum_set.all(), key=lambda version: version.pk)
+        file_name = product.get_file_name() if product.data else ''
+        floyds = is_floyds_frame(product.product_id)
+        base = product.product_id if floyds else os.path.splitext(file_name)[0] or f'dataproduct_{product.pk}'
+        if base in used:
+            base = f'{base}_{product.pk}'
+        used.add(base)
+        reduced_file = ('file', f'reduced/{base}{os.path.splitext(file_name)[1]}', product.data.name)
+        if not versions:
+            if product.data and download_format != 'ascii':
+                items.append(reduced_file)
+            if include_raw and floyds:
+                items.append(('archive', f'raw/{base}/', product.product_id))
+            summaries.append(f'{base}: {product.get_type_display()}')
+            continue
+        current = default_version(versions)
+        if download_format != 'ascii' and fits_is_current(current):
+            items.append(reduced_file)
+        elif download_format != 'fits' and (content := spectrum_ascii(current)):
+            items.append(('text', f'reduced/{base}.ascii', content))
+        label = {version.pk: f'v{number}' for number, version in enumerate(versions, 1)}
+        for version in versions:
+            if version.pk != current.pk and download_format != 'fits' and (content := spectrum_ascii(version)):
+                items.append(('text', f'reduced/older_versions/{base}_{label[version.pk]}.ascii', content))
+        notes = []
+        if include_raw:
+            if floyds:
+                items.append(('archive', f'raw/{base}/', product.product_id))
+                notes.append('FLOYDS raw frames from the LCO archive')
+            bundles = {}
+            for version in versions:
+                bundle = reduction_files(version)
+                if bundle and bundle['path'] not in bundles:
+                    bundles[bundle['path']] = (label[version.pk], bundle)
+            for version_label, bundle in bundles.values():
+                folder = f'raw/{base}/' if len(bundles) == 1 else f'raw/{base}/{version_label}/'
+                items.append(('file', folder + bundle['name'], bundle['path']))
+            if bundles:
+                notes.append('uploaded reduction files for ' + ', '.join(version_label for version_label, _ in bundles.values()))
+        summaries.append(f'{base}: {current.timestamp:%Y-%m-%d %H:%M}, {len(versions)} version{"s" if len(versions) > 1 else ""} '
+                         f'(current {label[current.pk]})' + (f'; {"; ".join(notes)}' if notes else ('; no raw files' if include_raw else '')))
+    readme = ('reduced/: the current version of each spectrum (the one shown on the target page)\n'
+              'reduced/older_versions/: earlier versions, as ascii\n')
+    if include_raw:
+        readme += ('raw/<spectrum>/: raw frames for each spectrum. FLOYDS spectra include the arc, flat and, when chosen, '
+                   'that night\'s flux standard (see the table below). Reduction files uploaded with a spectrum are under '
+                   'raw/<spectrum>/<version>/ when versions were uploaded with different files.\n')
+    target_name = products[0].target.name.replace(' ', '')
+    response = StreamingHttpResponse(stream_zip(items, request.GET.get('standards') == '1', readme + '\n' + '\n'.join(summaries) + '\n'),
+                                     content_type='application/zip')
+    response['Content-Disposition'] = f'attachment; filename="{target_name}_spectra.zip"'
+    return response
+
+
+@require_http_methods(["POST"])
+def photometry_standards_view(request, pk):
+    target = _target_for_user(request, pk)
+    selected = photometry_datums(target, request.user).filter(
+        pk__in=json.loads(request.POST.get('datum_ids', '[]')), value__has_key='basename')
+    setups, chosen, nights = set(), set(), Q()
+    one_day = timedelta(days=1)
+    for value, bandpass, timestamp in selected.values_list('value', 'bandpass', 'timestamp'):
+        exact, _ = custom_code_tags._frame_setups(value['basename'], bandpass)
+        if exact and exact not in setups:
+            nights |= Q(timestamp__range=(timestamp - one_day, timestamp + one_day))
+        if exact:
+            setups.add(exact)
+            chosen.add(value['basename'])
+    basenames = set()
+    if setups:
+        standards = PhotometryReducedDatum.objects.filter(nights, target_id__in=standard_target_ids(), value__has_key='basename')
+        for value, bandpass in standards.values_list('value', 'bandpass'):
+            exact, _ = custom_code_tags._frame_setups(value['basename'], bandpass)
+            if exact in setups and value['basename'] not in chosen:
+                basenames.add(value['basename'])
+    return JsonResponse({'basenames': sorted(basenames)})
 
 
 @require_http_methods(["POST"])
 def get_frame_ids_view(request):
     basenames = set(json.loads(request.POST.get('basenames', '[]')))
-    token = settings.FACILITIES['LCO']['api_key']
-    url = settings.FACILITIES['LCO']['archive_url']
-
-    def lookup(basename):
-        return requests.get(url, headers={'Authorization': f'Token {token}'},
-                            params={'basename_exact': basename, 'include_related_frames': False})
-
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        responses = list(pool.map(lookup, basenames))
+    lookup = partial(requests.get, settings.FACILITIES['LCO']['archive_url'], timeout=(10, 60),
+                     headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"})
+    params = [{'basename_exact': basename, 'include_related_frames': False} for basename in basenames]
+    try:
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            responses = list(pool.map(lookup, params))
+    except requests.RequestException as e:
+        logger.error(f'LCO archive frame lookup failed: {e}')
+        return JsonResponse({'error': f'Could not reach the LCO archive: {e}'}, status=502)
 
     frame_ids = set()
     for response in responses:
@@ -1590,28 +1727,13 @@ def sync_targetextra_view(request):
     
     return HttpResponse(json.dumps({'success': 'Synced'}), content_type='application/json')
 
-def change_broker_target_status_view(request):
-    
-    try:
-        target_id = request.GET.get('target_id', '')
-        brokertarget = BrokerTarget.objects.get(id=target_id)
-        new_status = request.GET.get('new_status')
-        brokertarget.status = new_status
-        brokertarget.save()
+class SNExTNSSpectrumView(TNSFormView):
 
-        context = {'update': 'Success'}
-    
-    except:
-        context = {'update': 'Failed'} 
-    
-    return HttpResponse(json.dumps(context), content_type='application/json')
-
-
-class SNEx2SpectroscopyTNSSharePassthrough(RedirectView):
-
-    def get_redirect_url(self, *args, **kwargs):
-        target, datum = _spectrum_for_user(self.request, kwargs['pk'], kwargs['datum_pk'])
-        return reverse('tns:report-tns', kwargs={'pk': target.pk, 'datum_pk': datum.pk})
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['datum'] = _spectrum_for_user(self.request, kwargs['pk'], kwargs['datum_pk'])[1]
+        context['default_form'] = 'classify'
+        return context
 
 
 class SNExTNSClassifySubmitView(TNSSubmitView):
@@ -1635,7 +1757,7 @@ class SNExTNSClassifySubmitView(TNSSubmitView):
     def form_valid(self, form):
         spectrum = self._generated_spectrum()
         if spectrum is not None and not form.cleaned_data.get('ascii_file_override'):
-            form.cleaned_data['ascii_file_override'] = ContentFile(spectrum_ascii(spectrum), name=spectrum_ascii_name(spectrum))
+            form.cleaned_data['ascii_file_override'] = ContentFile(spectrum_ascii(spectrum, header=False), name=spectrum_ascii_name(spectrum))
         return super().form_valid(form)
 
 
@@ -1646,7 +1768,7 @@ class FloydsInboxView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         inbox_rows = []
-        raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', reduceddatum__isnull=True,
+        raw_spectra = DataProduct.objects.filter(data_product_type='raw_spectrum', spectroscopyreduceddatum__isnull=True,
                                                  target__in=Target.objects.filter(standard=False))
         for dp in raw_spectra.select_related('target').order_by('-created'):
             img = ''
@@ -1659,6 +1781,8 @@ class FloydsInboxView(TemplateView):
                 logger.warning(f'FLOYDS inbox entry {dp.product_id} is incomplete: {e}')
                 info = {}
             inbox_rows.append({'targetid': dp.target_id,
+                               'dp_id': dp.id,
+                               'raw_available': is_floyds_frame(dp.product_id),
                                'targetnames': custom_code_tags.smart_name_list(dp.target),
                                'propid': info.get('propid', ''),
                                'dateobs': info.get('dateobs', ''),
@@ -1679,13 +1803,7 @@ def download_photometry_view(request, targetid):
     user = request.user
     target = Target.objects.get(id=int(targetid))
 
-    if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
-
-    else:
-        datums = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-            target=target,
-            data_type=photometry_data_type(target)))
+    datums = photometry_datums(target, user)
 
     if 'datum_ids' in request.POST:
         datums = datums.filter(pk__in=json.loads(request.POST['datum_ids']))
@@ -1696,9 +1814,8 @@ def download_photometry_view(request, targetid):
     newfile.write('mjd mag err filter subtracted?\n')
 
     for d in datums:
-        value = datum_value(d)
-        if all(k in value.keys() for k in ['magnitude', 'error', 'filter']) and measured(value['magnitude']) is not None:
-            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 4), value['magnitude'], value['error'], value['filter'], value.get('background_subtracted', False)))
+        if measured(d.brightness) is not None and d.brightness_error is not None and d.bandpass:
+            newfile.write('{} {} {} {} {}\n'.format(round(Time(d.timestamp).mjd, 4), d.brightness, d.brightness_error, d.bandpass, d.value.get('background_subtracted', False)))
 
     response = HttpResponse(newfile.getvalue(), content_type='text/plain')
     response['Content-Disposition'] = 'attachment; filename={}.txt'.format(target.name.replace(' ',''))
@@ -1839,25 +1956,25 @@ class TargetFilterForm(forms.Form):
                         Row(
                             Column('apply_name_filter', css_class='col-auto'),
                             Column('target_name',         css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_ra_filter', css_class='col-auto'),
                             Column('min_ra',           css_class='col'),
                             Column('max_ra',           css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_mag_bright_filter', css_class='col-auto'),
                             Column('mag_bright_mode',         css_class='col-4'),
                             HTML('<div class="col-auto text-center align-self-center">&lt;</div>'),
                             Column('mag_bright_threshold',    css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         Row(
                             Column('apply_proposal_filter', css_class='col-auto'),
                             Column('proposal_choice',       css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
 
                         css_class='col-lg-4 col-md-6 mb-3'
@@ -1870,22 +1987,22 @@ class TargetFilterForm(forms.Form):
                             Column('apply_dec_filter', css_class='col-auto'),
                             Column('min_dec',          css_class='col'),
                             Column('max_dec',          css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_class_filter', css_class='col-auto'),
                             Column('class_name',         css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_class_exclude_filter', css_class='col-auto'),
                             Column('class_exclude_name',         css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         Row( 
                             Column('apply_spectra_count_filter', css_class='col-auto'),
                             Column('min_spectra_points',         css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         css_class='col-lg-4 col-md-6 mb-3'
                     ),
@@ -1895,39 +2012,39 @@ class TargetFilterForm(forms.Form):
                             Column('apply_redshift_filter', css_class='col-auto'),
                             Column('min_red',               css_class='col'),
                             Column('max_red',               css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_date_created_filter', css_class='col-auto'),
                             Column('date_created_min',          css_class='col'),
                             Column('date_created_max',          css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         Row(
                             Column('apply_photometry_count_filter', css_class='col-auto'),
                             Column('min_photometry_points',         css_class='col'),
-                            css_class='form-row align-items-center mb-2'
+                            css_class='row g-2 align-items-center mb-2'
                         ),
                         Row(
                             Column('apply_recent_date_filter', css_class='col-auto'),
                             Column('recent_date_kind',         css_class='col-4'),
                             HTML('<div class="col-auto text-center align-self-center">≥</div>'),
                             Column('recent_date_threshold',    css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         Row(
                             Column('apply_recent_date_before_filter', css_class='col-auto'),
                             Column('recent_date_before_kind',         css_class='col-4'),
                             HTML('<div class="col-auto text-center align-self-center">≤</div>'),
                             Column('recent_date_before_threshold',    css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
 
                         Row(
                             Column('apply_recent_obs_filter', css_class='col-auto'),
                             Column('recent_obs_kind',         css_class='col-4'),
                             Column('recent_obs_days',         css_class='col'),
-                            css_class='form-row align-items-center'
+                            css_class='row g-2 align-items-center'
                         ),
                         css_class='col-lg-4 col-md-6 mb-3'
                     ),
@@ -1950,31 +2067,26 @@ class TargetFilteringView(FormView):
         cd = form.cleaned_data
         filters = Q()
 
-        # Use SNExTarget since redshift and classification are direct fields on it
-        photometry_q = Q(reduceddatum__data_type='photometry') & Q(reduceddatum__value__has_key='magnitude')
-        spectroscopy_q = Q(reduceddatum__data_type='spectroscopy')
+        photometry_q = Q(photometryreduceddatum__brightness__isnull=False)
 
-        # Start with only targets the user has permission to view
         if self.request.user.is_authenticated:
             qs = get_objects_for_user(
                 self.request.user,
                 'custom_code.view_target',
                 accept_global_perms=True
             ).annotate(
-                phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
-                spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
+                phot_count=Count('photometryreduceddatum', filter=photometry_q, distinct=True),
+                spectra_count=Count('spectroscopyreduceddatum', distinct=True),  
             )
         else:
-            # Anonymous users get empty queryset
             qs = Target.objects.none().annotate(
-                phot_count=Count('reduceddatum', filter=photometry_q, distinct=True),
-                spectra_count=Count('reduceddatum', filter=spectroscopy_q, distinct=True),  
+                phot_count=Count('photometryreduceddatum', filter=photometry_q, distinct=True),
+                spectra_count=Count('spectroscopyreduceddatum', distinct=True),  
             )
 
         if not (cd.get('apply_name_filter') and cd.get('target_name', '').strip()):
             qs = qs.exclude(standard=True)
 
-        # name filter
         if cd.get('apply_name_filter'):
             name = cd.get('target_name','').strip()
             if name:
@@ -1987,15 +2099,13 @@ class TargetFilteringView(FormView):
                 filters &= name_q
 
 
-        # RA filter
         if cd.get('apply_ra_filter'):
             h_min = cd.get('min_ra'); h_max = cd.get('max_ra')
             if h_min is not None:
                 filters &= Q(ra__gte=h_min * 15.0)
             if h_max is not None:
                 filters &= Q(ra__lte=h_max * 15.0)
-        
-        # dec filter
+
         if cd.get('apply_dec_filter'):
             d_min = cd.get('min_dec'); d_max = cd.get('max_dec')
             if d_min is not None:
@@ -2003,28 +2113,24 @@ class TargetFilteringView(FormView):
             if d_max is not None:
                 filters &= Q(dec__lte=d_max)
 
-        # Date-created filter
         if cd.get('apply_date_created_filter'):
-            min_date = cd.get('date_created_min')    # this is already a date or None
+            min_date = cd.get('date_created_min')
             if min_date:
                 qs = qs.filter(created__date__gte=min_date)
             max_date = cd.get('date_created_max')
             if max_date:
                 qs = qs.filter(created__date__lte=max_date)
                 
-        # classification contains
         if cd.get('apply_class_filter'):
             cls = cd.get('class_name','').strip()
             if cls:
                 filters &= Q(classification__icontains=cls)
 
-        # Classification doesn't contain
         if cd.get('apply_class_exclude_filter'):
             excl = cd.get('class_exclude_name','').strip()
             if excl:
                 filters &= ~Q(classification__icontains=excl)
 
-        # Redshift range
         if cd.get('apply_redshift_filter'):
             min_z = cd.get('min_red'); max_z = cd.get('max_red')
             if min_z is not None:
@@ -2032,7 +2138,6 @@ class TargetFilteringView(FormView):
             if max_z is not None:
                 filters &= Q(redshift__lte=max_z)
 
-        # Photometry count threshold
         if cd.get('apply_photometry_count_filter'):
             nmin = cd.get('min_photometry_points')
             if nmin is not None:
@@ -2043,7 +2148,6 @@ class TargetFilteringView(FormView):
             if nmin is not None:
                 filters &= Q(spectra_count__gte=nmin)
 
-        # --- Recent observations in last N days (Any/Phot/Spec)
         if cd.get('apply_recent_obs_filter'):
             kind = (cd.get('recent_obs_kind') or 'any').lower()
             ndays = cd.get('recent_obs_days')
@@ -2051,26 +2155,22 @@ class TargetFilteringView(FormView):
             if ndays:
                 cutoff = timezone.now() - timedelta(days=ndays)
 
-                # Build dynamic kwarg for timestamp field
-                ts_kw = {f'timestamp__gte': cutoff}
+                ts_kw = {'timestamp__gte': cutoff}
 
-                # Subqueries for Exists(...)
                 recent_any_sq = ReducedDatum.objects.filter(
                     target=OuterRef('pk'),
                     **ts_kw
                 )
-                recent_phot_sq = ReducedDatum.objects.filter(
+                recent_phot_sq = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='photometry',
+                    brightness__isnull=False,
                     **ts_kw
-                ).filter(value__has_key='magnitude')  # keep consistent with your photometry count
-                recent_spec_sq = ReducedDatum.objects.filter(
+                )
+                recent_spec_sq = SpectroscopyReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='spectroscopy',
                     **ts_kw
                 )
 
-                # Annotate booleans once; then filter on them
                 qs = qs.annotate(
                     has_recent_any = Exists(recent_any_sq),
                     has_recent_phot = Exists(recent_phot_sq),
@@ -2078,13 +2178,12 @@ class TargetFilteringView(FormView):
                 )
 
                 if kind == 'any':
-                    filters &= Q(has_recent_any=True)
+                    filters &= Q(has_recent_any=True) | Q(has_recent_phot=True) | Q(has_recent_spec=True)
                 elif kind == 'phot':
                     filters &= Q(has_recent_phot=True)
                 elif kind == 'spec':
                     filters &= Q(has_recent_spec=True)
 
-        # --- On/after (≥) ---
         if cd.get('apply_recent_date_filter'):
             kind = (cd.get('recent_date_kind') or 'any').lower()
             date_cut = cd.get('recent_date_threshold')
@@ -2093,14 +2192,13 @@ class TargetFilteringView(FormView):
                     target=OuterRef('pk'),
                     timestamp__date__gte=date_cut,
                 )
-                recent_phot_sq = ReducedDatum.objects.filter(
+                recent_phot_sq = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='photometry',
+                    brightness__isnull=False,
                     timestamp__date__gte=date_cut,
-                ).filter(value__has_key='magnitude')
-                recent_spec_sq = ReducedDatum.objects.filter(
+                )
+                recent_spec_sq = SpectroscopyReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='spectroscopy',
                     timestamp__date__gte=date_cut,
                 )
 
@@ -2110,12 +2208,11 @@ class TargetFilteringView(FormView):
                     has_since_spec = Exists(recent_spec_sq),
                 )
                 filters &= {
-                    'any':  Q(has_since_any=True),
+                    'any':  Q(has_since_any=True) | Q(has_since_phot=True) | Q(has_since_spec=True),
                     'phot': Q(has_since_phot=True),
                     'spec': Q(has_since_spec=True),
                 }[kind]
 
-        # --- On/before (≤) ---
         if cd.get('apply_recent_date_before_filter'):
             kind = (cd.get('recent_date_before_kind') or 'any').lower()
             date_cut = cd.get('recent_date_before_threshold')
@@ -2124,14 +2221,13 @@ class TargetFilteringView(FormView):
                     target=OuterRef('pk'),
                     timestamp__date__lte=date_cut,
                 )
-                recent_phot_sq = ReducedDatum.objects.filter(
+                recent_phot_sq = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='photometry',
+                    brightness__isnull=False,
                     timestamp__date__lte=date_cut,
-                ).filter(value__has_key='magnitude')
-                recent_spec_sq = ReducedDatum.objects.filter(
+                )
+                recent_spec_sq = SpectroscopyReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='spectroscopy',
                     timestamp__date__lte=date_cut,
                 )
 
@@ -2141,50 +2237,29 @@ class TargetFilteringView(FormView):
                     has_before_spec = Exists(recent_spec_sq),
                 )
                 filters &= {
-                    'any':  Q(has_before_any=True),
+                    'any':  Q(has_before_any=True) | Q(has_before_phot=True) | Q(has_before_spec=True),
                     'phot': Q(has_before_phot=True),
                     'spec': Q(has_before_spec=True),
                 }[kind]
 
-
-        # --- Any/Last observation with apparent mag brighter than X (any filter)
-        ## TODO: this is very slow for some reason
         if cd.get('apply_mag_bright_filter'):
             mode = (cd.get('mag_bright_mode') or 'any').lower()
             X = cd.get('mag_bright_threshold')
 
             if X is not None:
-                # Base photometry queryset: has numeric magnitude in JSON
-                base_phot = ReducedDatum.objects.filter(
+                base_phot = PhotometryReducedDatum.objects.filter(
                     target=OuterRef('pk'),
-                    data_type='photometry',
-                    value__has_key='magnitude',
+                    brightness__isnull=False,
                 )
 
-                # ANY obs: fast Exists()
                 if mode == 'any':
-                    any_bright_sq = base_phot.annotate(
-                        mag_txt=KeyTextTransform('magnitude', F('value')),
-                        mag=Cast('mag_txt', FloatField()),
-                    ).filter(mag__lt=X)
+                    any_bright_sq = base_phot.filter(brightness__lt=X)
 
                     qs = qs.annotate(has_any_bright=Exists(any_bright_sq))
                     filters &= Q(has_any_bright=True)
 
-                # LAST obs: get latest row id, then its mag
                 else:
-                    latest_phot_id_sq = base_phot.order_by('-timestamp').values('pk')[:1]
-
-                    qs = qs.annotate(
-                        latest_phot_id=Subquery(latest_phot_id_sq)
-                    )
-
-                    last_mag_sq = ReducedDatum.objects.filter(
-                        pk=OuterRef('latest_phot_id')
-                    ).annotate(
-                        mag_txt=KeyTextTransform('magnitude', F('value')),
-                        mag=Cast('mag_txt', FloatField()),
-                    ).values('mag')[:1]
+                    last_mag_sq = base_phot.order_by('-timestamp').values('brightness')[:1]
 
                     qs = qs.annotate(last_mag=Subquery(last_mag_sq))
                     filters &= Q(last_mag__lt=X)
@@ -2200,15 +2275,11 @@ class TargetFilteringView(FormView):
                 qs = qs.annotate(has_proposal=Exists(base))
                 filters &= Q(has_proposal=True)
 
-        # apply query
         target_match_list = qs.filter(filters).distinct()
 
-        # compute totals for photometry and spectra across all matched targets
         tot_phot = target_match_list.aggregate(total=Sum('phot_count'))['total'] or 0
         tot_spec = target_match_list.aggregate(total=Sum('spectra_count'))['total'] or 0
 
-
-        # return result
         return self.render_to_response(
             self.get_context_data(
                 form=form,

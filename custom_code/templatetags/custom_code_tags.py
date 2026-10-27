@@ -1,9 +1,10 @@
 from plotly import offline
 import plotly.graph_objs as go
+import requests
 from django import template, forms
 from django.conf import settings
-from django.db.models.functions import Cast, Lower
-from django.db.models import IntegerField, Max
+from django.db.models.functions import Cast, Coalesce, Lower
+from django.db.models import IntegerField, Max, Min
 from django.shortcuts import reverse
 from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
@@ -15,7 +16,7 @@ from django.core.paginator import Paginator
 from tom_targets.models import Target, TargetList
 from tom_targets.permissions import targets_for_user
 from tom_observations import facility
-from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, SpectroscopyReducedDatum
 from tom_dataproducts.forms import DataShareForm
 from tom_dataproducts.templatetags.dataproduct_extras import dataproduct_list_for_target
 from tom_observations.models import ObservationRecord, ObservationGroup
@@ -35,7 +36,8 @@ import matplotlib.pyplot as plt
 from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
-from custom_code.utils import photometry_data_type, viewable_reduceddatums, datum_value, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, viewable_dataproducts
+from custom_code.raw_spectra import is_floyds_frame, reduction_files
+from custom_code.utils import FILTER_TRANSLATE, get_color, default_version, fits_is_current, observed_spectra, standard_spectra, photometry_datums, spectrum_ascii, upload_extras, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, standard_target_ids, viewable_dataproducts, viewable_datums
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -50,6 +52,7 @@ TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED',
 LIGHTCURVE_CONTROLS_HEIGHT = 580
 
 register = template.Library()
+
 
 @register.inclusion_tag('custom_code/airmass_collapse.html')
 def airmass_collapse(target):
@@ -233,75 +236,40 @@ def get_24hr_airmass(target, interval, airmass_limit, halimit=4.8):
     return plot_data
 
 
-def get_color(filter_name, filter_translate):
-    colors = {'U': 'rgb(59,0,113)',
-        'B': 'rgb(0,87,255)',
-        'V': 'rgb(120,255,0)',
-        'g': 'rgb(0,204,255)',
-        'r': 'rgb(255,124,0)',
-        'i': 'rgb(144,0,43)',
-        'g_ZTF': 'rgb(0,204,255)',
-        'r_ZTF': 'rgb(255,124,0)',
-        'i_ZTF': 'rgb(144,0,43)',
-        'UVW2': '#FE0683',
-        'UVM2': '#BF01BC',
-        'UVW1': '#8B06FF',
-        'cyan': 'rgb(0,128,128)',
-        'orange': 'rgb(250,128,114)',
-        'other': 'rgb(0,0,0)'}
-    try: color = colors[filter_translate[filter_name]]
-    except: color = colors['other']
-    return color
 
 
 def generic_lightcurve_plot(target, user, subtracted=None):
     """
     Writing a generic function to return the data to plot
-    for the different light curve applications SNEx2 uses
+    for the different light curve applications SNEx uses
     """
     
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
-        'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
-        'UVW1': 'UVW1'}
     photometry_data = {}
 
-    if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
-    
-    else:
-        datums = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-            target=target,
-            data_type=photometry_data_type(target)))
+    datums = photometry_datums(target, user)
     for rd in datums:
-        value = rd.value
-        if not value:  # empty
+        if measured(rd.brightness) is None:
             continue
-        if isinstance(value, str):
-            value = json.loads(value)
-
-        if measured(value.get('magnitude')) is None:
+        if subtracted is not None and (rd.value.get('background_subtracted') == True) != subtracted:
             continue
-        if subtracted is not None and (value.get('background_subtracted') == True) != subtracted:
-            continue
-        filt = filter_translate.get(value.get('filter', ''), '')
+        filt = FILTER_TRANSLATE.get(rd.bandpass, '')
    
         photometry_data.setdefault(filt, {})
         photometry_data[filt].setdefault('time', []).append(rd.timestamp)
-        photometry_data[filt].setdefault('magnitude', []).append(value.get('magnitude',None))
-        photometry_data[filt].setdefault('error', []).append(value.get('error', None))
+        photometry_data[filt].setdefault('magnitude', []).append(rd.brightness)
+        photometry_data[filt].setdefault('error', []).append(rd.brightness_error)
 
     plot_data = [
         go.Scatter(
             x=filter_values['time'],
             y=filter_values['magnitude'], mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate)),
-            name=filter_translate.get(filter_name, ''),
+            marker=dict(color=get_color(filter_name)),
+            name=FILTER_TRANSLATE.get(filter_name, ''),
             error_y=dict(
                 type='data',
                 array=filter_values['error'],
                 visible=True,
-                color=get_color(filter_name, filter_translate)
+                color=get_color(filter_name)
             )
         ) for filter_name, filter_values in photometry_data.items()]
 
@@ -313,9 +281,7 @@ def lightcurve_collapse(target, user):
     
     plot_data = generic_lightcurve_plot(target, user)   
 
-    spec = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-        target=target,
-        data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0])) 
+    spec = observed_spectra(target, user)
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -425,8 +391,7 @@ def bin_spectra(waves, fluxes, b):
 def spectra_plot(context, target, dataproduct=None):
     user = context['request'].user
     spectra = []
-    spectral_dataproducts = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-        target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectral_dataproducts = observed_spectra(target, user)
     
     if dataproduct:
         spectral_dataproducts = DataProduct.objects.get(dataproduct=dataproduct)
@@ -441,7 +406,7 @@ def spectra_plot(context, target, dataproduct=None):
 
     for spectrum in spectral_dataproducts:
         name = str(spectrum.timestamp).split(' ')[0]
-        wavelength, flux = extract_spectrum_arrays(spectrum)
+        wavelength, flux = spectrum.wavelength, spectrum.flux
         if not wavelength or not flux:
             continue
 
@@ -492,22 +457,9 @@ def spectra_plot(context, target, dataproduct=None):
 @register.inclusion_tag('custom_code/spectra_collapse.html')
 def spectra_collapse(target,user):
     spectra = []
-    spectral_dataproducts = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-        target=target, data_type='spectroscopy')).order_by('-timestamp')
+    spectral_dataproducts = observed_spectra(target, user)[::-1]
     for spectrum in spectral_dataproducts:
-        datum = spectrum.value
-        wavelength = []
-        flux = []
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(float(value['wavelength']))
-                flux.append(float(value['flux']))
+        wavelength, flux = spectrum.wavelength, spectrum.flux
         
         binned_wavelength, binned_flux = bin_spectra(wavelength, flux, 5)
         spectra.append((binned_wavelength, binned_flux))
@@ -559,7 +511,8 @@ def target_data_with_user(context, target):
     user = context['request'].user
     return {
         'target': target,
-        'user': user
+        'user': user,
+        'sharing': getattr(settings, 'DATA_SHARING', None)
     }
 
 
@@ -606,6 +559,13 @@ def snex_dataproduct_list(context, target):
     if not settings.TARGET_PERMISSIONS_ONLY:
         dataproduct_context['products'] = viewable_dataproducts(
             context['request'].user, target.dataproduct_set.exclude(data_product_type__in=('difference_image', 'template_image')))
+    dataproduct_context['products'] = list(dataproduct_context['products'].annotate(
+        observed=Coalesce(Min('spectroscopyreduceddatum__timestamp'), 'created')).order_by('observed'))
+    for product in dataproduct_context['products']:
+        versions = list(product.spectroscopyreduceddatum_set.all())
+        product.spectrum = default_version(versions) if versions else None
+        product.standards = standard_entries(product.spectrum) if product.spectrum else []
+        product.raw_available = is_floyds_frame(product.product_id) or bool(reduction_files(product.spectrum))
     telescopes, instruments = set(), set()
     for p in dataproduct_context['products']:
         rde = p.reduceddatumextra_set.first()
@@ -619,7 +579,7 @@ def snex_dataproduct_list(context, target):
     dataproduct_context['is_admin'] = context['request'].user.is_superuser
     dataproduct_context['telescopes'] = sorted(telescopes)
     dataproduct_context['instruments'] = sorted(instruments)
-    dates = [timezone.localtime(p.created).date() for p in dataproduct_context['products'] if p.data]
+    dates = [timezone.localtime(p.observed).date() for p in dataproduct_context['products'] if p.data]
     one_day = datetime.timedelta(days=1)
     dataproduct_context['date_min'] = (min(dates) - one_day).isoformat() if dates else ''
     dataproduct_context['date_max'] = (max(dates) + one_day).isoformat() if dates else ''
@@ -628,9 +588,7 @@ def snex_dataproduct_list(context, target):
 
 @register.inclusion_tag('custom_code/custom_upload_dataproduct.html', takes_context=True)
 def custom_upload_dataproduct(context, obj):
-    user = context['user']
     initial = {}
-    choices = {}
     if isinstance(obj, Target):
         initial['target'] = obj
         initial['referrer'] = reverse('tom_targets:detail', args=(obj.id,))
@@ -655,8 +613,12 @@ def submit_lco_observations(context, target):
                     'facility': 'LCO',
                     'observation_type': 'SPECTRA',
                     'name': get_best_name(target)}
-    phot_form = SnexPhotometricSequenceForm(initial=phot_initial, auto_id='phot_%s')
-    spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
+    try:
+        phot_form = SnexPhotometricSequenceForm(initial=phot_initial, auto_id='phot_%s')
+        spec_form = SnexSpectroscopicSequenceForm(initial=spec_initial, auto_id='spec_%s')
+    except requests.RequestException as e:
+        logger.warning(f'Could not build the LCO observation forms: {e}')
+        return {'object': target, 'portal_error': 'The LCO observing portal could not be reached, so observations cannot be submitted right now.'}
     bind_observation_form_htmx(phot_form, 'LCO', 'IMAGING')
     bind_observation_form_htmx(spec_form, 'LCO', 'SPECTRA')
 
@@ -716,13 +678,12 @@ def dash_lightcurve(context, target, height):
     except (TypeError, ValueError):
         frame_height = f'{400 + LIGHTCURVE_CONTROLS_HEIGHT}px'
 
-    frames = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target), value__has_key='basename')
-    viewable = frames if settings.TARGET_PERMISSIONS_ONLY else viewable_reduceddatums(user, frames)
-    viewable_ids = set(viewable.values_list('pk', flat=True))
+    frames = PhotometryReducedDatum.objects.filter(target=target, value__has_key='basename')
+    viewable_ids = set(photometry_datums(target, user).values_list('pk', flat=True))
     raw_frames, reduced_frames, viewable_frames = set(), set(), set()
-    for pk, value in frames.values_list('pk', 'value'):
+    for pk, value, brightness in frames.values_list('pk', 'value', 'brightness'):
         raw_frames.add(value['basename'])
-        if measured(value.get('magnitude')) is not None:
+        if measured(brightness) is not None:
             reduced_frames.add(value['basename'])
             if pk in viewable_ids:
                 viewable_frames.add(value['basename'])
@@ -746,8 +707,7 @@ def dash_spectra(context, target):
 
     ### Send the min and max flux values 
     user = User.objects.get(username=request.user)
-    spectral_dataproducts = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-        target=target, data_type='spectroscopy'))
+    spectral_dataproducts = observed_spectra(target, user)
     dash_context = {'target_id': {'value': target.id},
                     'user_id': {'value': user.id},
                     'target_redshift': {'value': z},
@@ -759,32 +719,11 @@ def dash_spectra(context, target):
         return {'dash_context': dash_context,
                 'request': request
             }
-    colormap = plt.cm.gist_rainbow
-    colors = [colormap(i) for i in np.linspace(0, 0.99, len(spectral_dataproducts))]
-    rgb_colors = ['rgb({r}, {g}, {b})'.format(
-        r=int(color[0]*255),
-        g=int(color[1]*255),
-        b=int(color[2]*255),
-    ) for color in colors]
-    all_data = []
     max_flux = 0
     min_flux = 0
     for i in range(len(spectral_dataproducts)):
         spectrum = spectral_dataproducts[i]
-        datum = spectrum.value
-        wavelength = []
-        flux = []
-        name = str(spectrum.timestamp).split(' ')[0]
-        if datum.get('photon_flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('photon_flux')
-        elif datum.get('flux'):
-            wavelength = datum.get('wavelength')
-            flux = datum.get('flux')
-        else:
-            for key, value in datum.items():
-                wavelength.append(value['wavelength'])
-                flux.append(float(value['flux']))
+        flux = spectrum.flux
         if max(flux) > max_flux: max_flux = max(flux)
         if min(flux) < min_flux: min_flux = min(flux)
 
@@ -801,31 +740,28 @@ def dash_spectra(context, target):
 @register.inclusion_tag('custom_code/partials/target/photometry_data_list.html', takes_context=True)
 def photometry_data_list(context, target):
     user = context['request'].user
-    datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
-    if not settings.TARGET_PERMISSIONS_ONLY:
-        datums = viewable_reduceddatums(user, datums)
+    datums = photometry_datums(target, user)
     visible = reduceddatum_view_groups(datums) if user.is_superuser else {}
-    datums = list(datums.order_by('-timestamp'))
+    datums = list(datums.order_by('timestamp'))
     rows = []
     for d in datums:
-        v = datum_value(d)
+        v = d.value
         basename = v.get('basename') or ''
         rows.append({'datum': d, 'groups': visible.get(d.pk, []), 'basename': basename,
-                     'magnitude': measured(v.get('magnitude')),
-                     'filter': v.get('filter') or '',
-                     'subtracted': v.get('background_subtracted') == True,
+                     'brightness': measured(d.brightness),
+                     'subtracted': (v.get('subtraction_algorithm') or 'Y') if v.get('background_subtracted') == True else '',
                      'wcs': v.get('wcs'),
                      'exptime': v.get('exptime'),
                      'fwhm': measured(v.get('fwhm')),
                      'uploaded_by': v.get('uploaded_by') or '',
-                     'instrument': v.get('instrument') or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
+                     'instrument': d.instrument or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
     dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
     one_day = datetime.timedelta(days=1)
     return {'target': target,
             'rows': rows,
             'date_min': (min(dates) - one_day).isoformat() if dates else '',
             'date_max': (max(dates) + one_day).isoformat() if dates else '',
-            'filters': sorted({r['filter'] for r in rows if r['filter']}),
+            'filters': sorted({r['datum'].bandpass for r in rows if r['datum'].bandpass}),
             'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
             'groups': list(Group.objects.values_list('name', flat=True)),
             'is_admin': user.is_superuser,
@@ -862,12 +798,10 @@ def _frame_setups(basename, filt):
 @register.inclusion_tag('custom_code/partials/target/photometric_standards_list.html', takes_context=True)
 def photometric_standards_list(context, target):
     user = context['request'].user
-    photometry = ReducedDatum.objects.filter(target=target, data_type='photometry', value__has_key='basename')
-    if not settings.TARGET_PERMISSIONS_ONLY:
-        photometry = viewable_reduceddatums(user, photometry)
+    photometry = photometry_datums(target, user).filter(value__has_key='basename')
     exact_setups, site_setups, times = set(), set(), []
-    for value, timestamp in photometry.values_list('value', 'timestamp'):
-        exact, site = _frame_setups(value['basename'], value.get('filter'))
+    for value, bandpass, timestamp in photometry.values_list('value', 'bandpass', 'timestamp'):
+        exact, site = _frame_setups(value['basename'], bandpass)
         if exact:
             exact_setups.add(exact)
             site_setups.add(site)
@@ -876,21 +810,21 @@ def photometric_standards_list(context, target):
     rows = []
     one_day = datetime.timedelta(days=1)
     if site_setups:
-        standards = ReducedDatum.objects.filter(data_type='photometric_standard', value__has_key='basename',
-                                                timestamp__gte=min(times) - one_day, timestamp__lte=max(times) + one_day)
-        for rd in standards.select_related('target').order_by('-timestamp'):
-            v = rd.value
-            exact, site = _frame_setups(v['basename'], v.get('filter'))
+        standards = PhotometryReducedDatum.objects.filter(target_id__in=standard_target_ids(), value__has_key='basename',
+                                                          timestamp__gte=min(times) - one_day, timestamp__lte=max(times) + one_day)
+        for rd in standards.select_related('target').order_by('timestamp'):
+            basename = rd.value['basename']
+            exact, site = _frame_setups(basename, rd.bandpass)
             if site in site_setups:
-                rows.append({'datum': rd, 'name': rd.target.name, 'basename': v['basename'], 'filter': v.get('filter') or '',
+                rows.append({'datum': rd, 'name': rd.target.name, 'basename': basename,
                              'same_telescope': exact in exact_setups,
-                             'telescope': v.get('telescope') or '', 'instrument': v.get('instrument') or v['basename'].split('-')[1]})
+                             'instrument': rd.instrument or basename.split('-')[1]})
     dates = [timezone.localtime(r['datum'].timestamp).date() for r in rows]
     return {'target': target,
             'rows': rows,
             'date_min': (min(dates) - one_day).isoformat() if dates else '',
             'date_max': (max(dates) + one_day).isoformat() if dates else '',
-            'filters': sorted({r['filter'] for r in rows if r['filter']}),
+            'filters': sorted({r['datum'].bandpass for r in rows if r['datum'].bandpass}),
             'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
             'is_admin': user.is_superuser,
             'archive_root': settings.FACILITIES['LCO']['archive_url'],
@@ -1442,15 +1376,12 @@ def spectra_list(context, target):
         'submitter': request.user,
         'target': target,
         'data_type': 'spectroscopy',
-        'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'SNEx2')}."
+        'share_title': f"Updated data for {target.name} from {getattr(settings, 'TOM_NAME', 'SNEx')}."
     }
     form = DataShareForm(initial=initial)
     form.fields['data_type'].widget = forms.HiddenInput()
 
-    sharing = getattr(settings, "DATA_SHARING", None)
-    hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
-
-    spectra = viewable_reduceddatums(request.user, ReducedDatum.objects.filter(target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectra = observed_spectra(target, request.user)
 
     extras = {
         row.data_product_id: row.value or {}
@@ -1473,34 +1404,13 @@ def spectra_list(context, target):
         'spectra_metadata': spectra_metadata,
         'target_data_share_form': form,
         'sharing_destinations': form.fields['share_destination'].choices,
-        'hermes_sharing': hermes_sharing,
         'request': request,
         'user': request.user,
     }
 
 
-def extract_spectrum_arrays(spectrum):
-    datum = spectrum.value or {}
-    wavelength = []
-    flux = []
-    if datum.get('photon_flux'):
-        wavelength = list(datum.get('wavelength') or [])
-        flux = list(datum.get('photon_flux'))
-    elif datum.get('flux'):
-        wavelength = list(datum.get('wavelength') or [])
-        flux = list(datum.get('flux'))
-    else:
-        for value in datum.values():
-            try:
-                wavelength.append(float(value['wavelength']))
-                flux.append(float(value['flux']))
-            except (KeyError, TypeError, ValueError):
-                continue
-    return wavelength, flux
-
-
 def build_spectrum_plot(spectrum, bin_factor=5):
-    wavelength, flux = extract_spectrum_arrays(spectrum)
+    wavelength, flux = spectrum.wavelength, spectrum.flux
     if not wavelength or not flux:
         return ''
 
@@ -1527,7 +1437,7 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
     if redshift is None:
         redshift = getattr(target, 'redshift', 0) or 0
 
-    _, flux = extract_spectrum_arrays(spectrum)
+    flux = spectrum.flux
 
     max_flux = max(flux) if flux else 0
     min_flux = min(flux) if flux else 0
@@ -1542,10 +1452,12 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         spec_extras['site'] = '(COJ 2m)'
         spec_extras['instrument'] += ' (FLOYDS)'
 
-    content_type = ContentType.objects.get_for_model(ReducedDatum)
+    spec_extras['reducer'] = spectrum.value.get('reducer')
+    commented = spectrum.data_product or spectrum
     comments = Comment.objects.filter(
-        object_pk=spectrum.id, content_type=content_type).order_by('id').select_related('user')
+        object_pk=commented.id, content_type=ContentType.objects.get_for_model(commented)).order_by('id').select_related('user')
     spec_extras['comments'] = comments
+    versions = SpectroscopyReducedDatum.objects.filter(data_product=spectrum.data_product).order_by('-pk') if spectrum.data_product else []
     spec_extras['comments_list'] = [
         '{}: {}'.format(comment.user.first_name, comment.comment) for comment in comments]
 
@@ -1560,8 +1472,25 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         'time': str(spectrum.timestamp).split('+')[0],
         'spec_extras': spec_extras,
         'spectrum': spectrum,
+        'comment_table': 'spec' if spectrum.data_product else 'spectrum',
+        'comment_object_id': commented.id,
+        'versions': [{'id': version.id, 'final': bool(version.value.get('final_reduction')),
+                      'reducer': version.value.get('reducer') or 'Unknown reducer',
+                      'uploaded': (version.value.get('uploaded') or '')[:10],
+                      'hash': version.reduction_version[:7]} for version in versions],
+        'can_delete': bool(user and user.is_superuser),
+        'has_fits': fits_is_current(spectrum),
         'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
+        'standards': standard_entries(spectrum) if include_plot else [],
+        'raw_available': bool(spectrum.data_product_id and is_floyds_frame(spectrum.data_product.product_id)),
+        'bundle': reduction_files(spectrum),
     }
+
+
+def standard_entries(spectrum):
+    return [{'spectrum': standard, 'name': standard.target.name,
+             'hours': (standard.timestamp - spectrum.timestamp).total_seconds() / 3600}
+            for standard in standard_spectra(spectrum)]
 
 
 @register.filter
@@ -1849,48 +1778,33 @@ def image_slideshow(context, target):
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
     
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
-        'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
-        'UVW1': 'UVW1'}
     photometry_data = {}
 
-    if settings.TARGET_PERMISSIONS_ONLY:
-        datums = ReducedDatum.objects.filter(target=target, data_type=photometry_data_type(target))
-    else:
-        datums = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-            target=target,
-            data_type=photometry_data_type(target)))
+    datums = photometry_datums(target, user)
 
     for rd in datums:
-        value = rd.value
-        if not value:  # empty
+        if measured(rd.brightness) is None:
             continue
-        if isinstance(value, str):
-            value = json.loads(value)
-
-        if measured(value.get('magnitude')) is None:
+        if (rd.value.get('background_subtracted') == True) != subtracted:
             continue
-        if (value.get('background_subtracted') == True) != subtracted:
-            continue
-        current_filt = filter_translate.get(value.get('filter', ''), '')
+        current_filt = FILTER_TRANSLATE.get(rd.bandpass, '')
    
         photometry_data.setdefault(current_filt, {})
         photometry_data[current_filt].setdefault('time', []).append(rd.timestamp)
-        photometry_data[current_filt].setdefault('magnitude', []).append(value.get('magnitude',None))
-        photometry_data[current_filt].setdefault('error', []).append(value.get('error', None))        
+        photometry_data[current_filt].setdefault('magnitude', []).append(rd.brightness)
+        photometry_data[current_filt].setdefault('error', []).append(rd.brightness_error)
 
     plot_data = [
         go.Scatter(
             x=filter_values['time'],
             y=filter_values['magnitude'], mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate)),
-            name=filter_translate.get(filter_name, ''),
+            marker=dict(color=get_color(filter_name)),
+            name=FILTER_TRANSLATE.get(filter_name, ''),
             error_y=dict(
                 type='data',
                 array=filter_values['error'],
                 visible=True,
-                color=get_color(filter_name, filter_translate)
+                color=get_color(filter_name)
             )
         ) for filter_name, filter_values in photometry_data.items()] 
      
@@ -1998,14 +1912,8 @@ def lightcurve_fits(target, user, filt=False, days=None, subtracted=False):
 @register.inclusion_tag('custom_code/lightcurve_collapse.html')
 def lightcurve_with_extras(target, user, subtracted=False):
     
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
-        'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 
-        'UVW1': 'UVW1'}
     plot_data = generic_lightcurve_plot(target, user, subtracted)
-    spec = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-        target=target,
-        data_type=settings.DATA_PRODUCT_TYPES['spectroscopy'][0]))
+    spec = observed_spectra(target, user)
 
     layout = go.Layout(
         xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
@@ -2041,7 +1949,7 @@ def lightcurve_with_extras(target, user, subtracted=False):
                     go.Scatter(
                         x=[Time(float(jd), format='jd', scale='utc').isot],
                         y=[float(value['mag'])], mode='markers',
-                        marker=dict(color=get_color(value['filt'], filter_translate), size=12, symbol=symbols[i]),
+                        marker=dict(color=get_color(value['filt']), size=12, symbol=symbols[i]),
                         name=names[i]
                     )
                 )
@@ -2133,122 +2041,29 @@ def urgency_converter(urgency):
     return round(urgency.total_seconds()/(24*60*60), 1)
 
 
-@register.inclusion_tag('custom_code/lightcurve_collapse.html')
-def broker_target_lightcurve(target):
-
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V',
-        'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2',
-        'UVW1': 'UVW1', 'cyan': 'cyan', 'orange': 'orange'}
-     
-    photometry_data = {}
-    nondetection_data = {}
-    
-    detections = json.loads(target.detections)
-
-    for filt in detections:
-        if not detections[filt]:
-            continue
-
-        photometry_data.setdefault(filt, {})
-
-        for mjd, phot in detections[filt].items():
-            photometry_data[filt].setdefault('time', []).append(Time(mjd, format='mjd').to_value('iso'))
-            photometry_data[filt].setdefault('magnitude', []).append(phot[0])
-            photometry_data[filt].setdefault('magerr', []).append(phot[1])
-
-    plot_data = [
-        go.Scatter(
-            x=filter_values['time'],
-            y=filter_values['magnitude'], mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate)),
-            name=filter_translate.get(filter_name, filter_name),
-            error_y=dict(
-                type='data',
-                array=filter_values['magerr'],
-                visible=True,
-                color=get_color(filter_name, filter_translate)
-            )
-        ) for filter_name, filter_values in photometry_data.items()] 
-
-
-    nondetections = json.loads(target.nondetections)
-
-    for filt in nondetections:
-        if not nondetections[filt]:
-            continue
-        nondetection_data.setdefault(filt, {})
-
-        for mjd, mag in nondetections[filt].items():
-            nondetection_data[filt].setdefault('time', []).append(Time(mjd, format='mjd').to_value('iso'))
-            nondetection_data[filt].setdefault('magnitude', []).append(mag)
-
-    plot_data += [
-        go.Scatter(
-            x=filter_values['time'],
-            y=filter_values['magnitude'], mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate), symbol='arrow-down'),
-            name=filter_translate.get(filter_name, filter_name) + ' upper limit',
-        ) for filter_name, filter_values in nondetection_data.items()] 
-
-    layout = go.Layout(
-        xaxis=dict(gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
-        yaxis=dict(autorange='reversed',gridcolor='#D3D3D3',showline=True,linecolor='#D3D3D3',mirror=True),
-        margin=dict(l=30, r=10, b=10, t=40),
-        hovermode='closest',
-        plot_bgcolor='white',
-        height=300,
-        width=500
-    )
-
-
-    if plot_data:
-      return {
-          'target': target,
-          'plot': offline.plot(go.Figure(data=plot_data, layout=layout), output_type='div',
-                               show_link=False, include_plotlyjs=False)
-      }
-    else:
-        return {
-            'target': target,
-            'plot': 'No photometry for this target yet.'
-        }
-
-
 @register.inclusion_tag('tom_dataproducts/partials/photometry_datalist_for_target.html', takes_context=True)
 def snex2_get_photometry_data(context, target, target_share=False):
 
     user = context['request'].user
-    photometry = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-        target=target,
-        data_type=photometry_data_type(target),
-        value__has_key='filter')).order_by('timestamp')
+    photometry = photometry_datums(target, user).order_by('timestamp')
     data = []
     for reduced_datum in photometry:
-        if 'limit' not in reduced_datum.value and measured(reduced_datum.value.get('magnitude')) is None:
+        if reduced_datum.limit is None and measured(reduced_datum.brightness) is None:
             continue
         rd_data = {'id': reduced_datum.pk,
                    'timestamp': reduced_datum.timestamp,
                    'source': reduced_datum.source_name,
-                   'filter': reduced_datum.value.get('filter', ''),
-                   'telescope': reduced_datum.value.get('telescope', ''),
-                   'error': reduced_datum.value.get('error', reduced_datum.value.get('magnitude_error', ''))
+                   'filter': reduced_datum.bandpass,
+                   'telescope': reduced_datum.telescope,
+                   'error': reduced_datum.brightness_error
                    }
 
-        if 'limit' in reduced_datum.value.keys():
-            rd_data['magnitude'] = reduced_datum.value['limit']
+        if reduced_datum.limit is not None:
+            rd_data['magnitude'] = reduced_datum.limit
             rd_data['limit'] = True
         else:
-            rd_data['magnitude'] = reduced_datum.value['magnitude']
+            rd_data['magnitude'] = reduced_datum.brightness
             rd_data['limit'] = False
-
-        messages = []
-        for message in reduced_datum.message.all():
-            if message.exchange_status == 'published':
-                messages.append(message.exchange_status + ' to ' + message.topic)
-            else:
-                messages.append(message.exchange_status + ' from ' + message.topic)
-        rd_data['messages'] = messages
 
         data.append(rd_data)
 
@@ -2261,15 +2076,11 @@ def snex2_get_photometry_data(context, target, target_share=False):
     form.fields['share_title'].widget = forms.HiddenInput()
     form.fields['data_type'].widget = forms.HiddenInput()
 
-    sharing = getattr(settings, "DATA_SHARING", None)
-    hermes_sharing = sharing and sharing.get('hermes', {}).get('HERMES_API_KEY')
-
     context = {'data': data,
                'target': target,
                'target_data_share_form': form,
                'sharing_destinations': form.fields['share_destination'].choices,
-               'hermes_sharing': hermes_sharing,
-               'target_share': target_share}
+                      'target_share': target_share}
     return context
 
 
@@ -2327,17 +2138,25 @@ def time_usage_bars(context, telescope):
 def tns_generated_ascii_choice(context, form):
     request = context.request
     kwargs = request.resolver_match.kwargs
-    spectrum = viewable_reduceddatums(request.user, ReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'], data_type='spectroscopy')).first()
-    if spectrum is not None and spectrum_ascii(spectrum) is not None:
+    spectrum = viewable_datums(request.user, SpectroscopyReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'])).first()
+    if spectrum is None:
+        return ''
+    facts = upload_extras(spectrum.data_product)
+    choices = list(form.fields['ascii_file'].choices)
+    if spectrum.data_product_id in [choice[0] for choice in choices if choice[0]] and fits_is_current(spectrum):
+        form.initial['ascii_file'] = spectrum.data_product_id
+    elif spectrum_ascii(spectrum) is not None:
         value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'
-        form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + list(form.fields['ascii_file'].choices)
+        form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + choices
         form.initial['ascii_file'] = value
+    form.initial['reducer'] = spectrum.value.get('reducer') or ''
+    form.initial['observer'] = facts.get('observer') or ''
     return ''
 
 
 @register.simple_tag
 def tns_author_placeholder(form, field_name):
-    if not settings.DATA_SHARING['hermes']['DEFAULT_AUTHORS']:
+    if not settings.DATA_SERVICES['TNS']['default_authors']:
         form.initial[field_name] = ''
         form.fields[field_name].widget.attrs['placeholder'] = 'Your default author list here'
     return ''

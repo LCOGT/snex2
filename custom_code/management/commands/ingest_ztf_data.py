@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 import requests
 import logging
 from astropy.time import Time, TimezoneInfo
-from tom_dataproducts.models import ReducedDatum, DataProduct
+from tom_dataproducts.models import PhotometryReducedDatum, DataProduct
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
 from guardian.shortcuts import assign_perm
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_ztf_data(target):
-    logger.info(f'starting ztf ingestion')
+    logger.info('starting ztf ingestion')
     filters = {1: 'g_ZTF', 2: 'r_ZTF', 3: 'i_ZTF'}
     
     ztf_name = next((name for name in target.names if 'ZTF' in name), None)
@@ -71,25 +71,21 @@ def get_ztf_data(target):
             continue
 
         jd = Time(alert['mjd'], format = 'mjd', scale = 'utc')
-        value = {
-            'magnitude': alert['magpsf'],
-            'filter': filters[alert['fid']],
-            'error': alert['sigmapsf']
-        }
-        rd, rd_created = ReducedDatum.objects.get_or_create(
+        rd, rd_created = PhotometryReducedDatum.objects.get_or_create(
             timestamp = jd.to_datetime(timezone = TimezoneInfo()),
-            value = value,
+            brightness = alert['magpsf'],
+            brightness_error = alert['sigmapsf'],
+            bandpass = filters[alert['fid']],
             source_name = ztf_name,
             source_location = url,
-            data_type = 'photometry',
             target = target,
             data_product = dp
         )
         if rd_created:
             for group in Group.objects.all():
-                assign_perm('tom_dataproducts.view_reduceddatum', group, rd)
-                assign_perm('tom_dataproducts.change_reduceddatum', group, rd)
-                assign_perm('tom_dataproducts.delete_reduceddatum', group, rd)
+                assign_perm('tom_dataproducts.view_photometryreduceddatum', group, rd)
+                assign_perm('tom_dataproducts.change_photometryreduceddatum', group, rd)
+                assign_perm('tom_dataproducts.delete_photometryreduceddatum', group, rd)
 
     logger.info(f'Finished ingesting ZTF photometry for {ztf_name} ({target.name}) ({len(detections)} detections)')
     return []
@@ -108,7 +104,7 @@ def delete_ztf_data(target):
 
 class Command(BaseCommand):
 
-    help = 'Imports ZTF photometry into SNEx2'
+    help = 'Imports ZTF photometry into SNEx'
 
     def add_arguments(self, parser):
         parser.add_argument('--target_id', help = 'Ingest data for this target')

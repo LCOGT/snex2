@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load static gw_tags bootstrap4 crispy_forms_tags targets_extras custom_code_tags %}
+{% load static gw_tags django_bootstrap5 crispy_forms_tags targets_extras custom_code_tags %}
 {% block title %}Galaxy List{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -19,7 +19,7 @@
 {% if user|has_gw_permissions %}
 <div class="row">
   <div class="col-md-6">
-    <span class="float-left">{% crispy obs_form %}</span>
+    <span class="float-start">{% crispy obs_form %}</span>
   </div>
   <div class="col-md-6" id="btn-div">
     <div class="row">
@@ -38,7 +38,7 @@
 <div class="row">
   <div class="col-md-6">
     {% bootstrap_pagination page_obj extra=request.GET.urlencode %}
-    <span class="float-left">{{ galaxy_count }} Galaxies &nbsp;</span>
+    <span class="float-start">{{ galaxy_count }} Galaxies &nbsp;</span>
   </div>
 </div>
 <table class="table">

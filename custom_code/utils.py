@@ -8,11 +8,17 @@ from django.core.exceptions import NON_FIELD_ERRORS
 from django.urls import reverse
 from django.utils import timezone
 
-import json
+import datetime
+import hashlib
 import logging
+import re
 import requests
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError
+from tess_stars2px import TESS_Spacecraft_Pointing_Data, tess_stars2px_function_entry
+from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum, SpectroscopyReducedDatum
+from tom_dataservices.data_services.tns import TNSDataService
+from tom_targets.models import Target, TargetName
 from custom_code.match_managers import TNS_PREFIX_RE
 
 logger = logging.getLogger(__name__)
@@ -20,6 +26,21 @@ logger = logging.getLogger(__name__)
 OBSERVATION_FORM_PREFIXES = {('SOAR', 'SPECTRA'): 'soar',
                              ('LCO', 'IMAGING'): 'phot',
                              ('LCO', 'SPECTRA'): 'spec'}
+
+TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target'))
+DATUM_MODELS = (ReducedDatum, PhotometryReducedDatum, SpectroscopyReducedDatum)
+MEASURED_KEYS = ('magnitude', 'error', 'psfmag', 'psfdmag', 'apmag', 'dapmag', 'fwhm', 'psfx', 'psfy')
+GENERATED_ASCII_PREFIX = 'spectrum-'
+TESS_SECTOR_HALF_DAYS = 13.7
+FILTER_TRANSLATE = {'U': 'U', 'B': 'B', 'V': 'V', 'R': 'R', 'I': 'I', 'up': 'u', 'u': 'u',
+                    'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i', 'zs': 'zs', 'z': 'zs', 'w': 'w',
+                    'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 'UVW1': 'UVW1',
+                    'cyan': 'cyan', 'orange': 'orange'}
+FILTER_COLORS = {'U': 'rgb(59,0,113)', 'u': 'rgb(59,0,113)', 'B': 'rgb(0,87,255)', 'V': 'rgb(120,255,0)',
+                 'g': 'rgb(0,204,255)', 'r': 'rgb(255,124,0)', 'i': 'rgb(144,0,43)', 'R': 'rgb(224,27,27)',
+                 'I': 'rgb(125,10,60)', 'zs': 'rgb(101,42,42)', 'w': 'rgb(120,120,120)', 'g_ZTF': 'rgb(0,204,255)',
+                 'r_ZTF': 'rgb(255,124,0)', 'i_ZTF': 'rgb(144,0,43)', 'UVW2': '#FE0683', 'UVM2': '#BF01BC',
+                 'UVW1': '#8B06FF', 'cyan': 'rgb(0,128,128)', 'orange': 'rgb(250,128,114)', 'other': 'rgb(0,0,0)'}
 
 
 def observation_form_prefix(facility, observation_type):
@@ -68,8 +89,6 @@ def apply_proposal_rollover(observation_payload, start_keyword='start'):
             observation_payload['proposal'] = rollover['new_id']
     return observation_payload
 
-TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target'))
-
 def get_target_permission_groups(target_id):
     best = Group.objects.none()
     for app_label, model in TARGET_CONTENT_TYPES:
@@ -116,37 +135,92 @@ def sync_group_permissions_to_target(obs_group, records, target):
             assign_perm(f'tom_observations.change_{codename_model}', group, obj)
             assign_perm(f'tom_observations.delete_{codename_model}', group, obj)
 
+def view_datum_perm(model):
+    return f'tom_dataproducts.view_{model._meta.model_name}'
+
+
+def _viewable_datums(model, target, user):
+    datums = model.objects.filter(target=target)
+    if user is None or settings.TARGET_PERMISSIONS_ONLY or target.standard:
+        return datums
+    return get_objects_for_user(user, view_datum_perm(model), klass=datums)
+
+
+def photometry_datums(target, user=None):
+    return _viewable_datums(PhotometryReducedDatum, target, user)
+
+
+def default_version(versions):
+    versions = sorted(versions, key=lambda spectrum: spectrum.pk)
+    final = [spectrum for spectrum in versions if spectrum.value.get('final_reduction')]
+    return (final or versions)[-1]
+
+
+def observed_spectra(target, user=None):
+    observations = {}
+    for spectrum in _viewable_datums(SpectroscopyReducedDatum, target, user):
+        observations.setdefault(spectrum.data_product_id or f'spectrum-{spectrum.pk}', []).append(spectrum)
+    return sorted((default_version(versions) for versions in observations.values()), key=lambda spectrum: spectrum.timestamp)
+
+
+def frame_night(product_id):
+    parts = (product_id or '').split('-')
+    if len(parts) >= 3 and len(parts[2]) == 8 and parts[2].isdigit():
+        return parts[0], parts[2]
+    return None
+
+
+def standard_spectra(spectrum):
+    if standard_target_ids().filter(pk=spectrum.target_id).exists():
+        return []
+    window = datetime.timedelta(days=1)
+    candidates = SpectroscopyReducedDatum.objects.filter(
+        target_id__in=standard_target_ids(), timestamp__range=(spectrum.timestamp - window, spectrum.timestamp + window))
+    night = frame_night(spectrum.data_product.product_id) if spectrum.data_product_id else None
+    if spectrum.instrument:
+        candidates = candidates.filter(Q(instrument=spectrum.instrument) | Q(instrument=''))
+    observations = {}
+    for candidate in candidates.select_related('target', 'data_product'):
+        if night and frame_night(candidate.data_product.product_id if candidate.data_product_id else '') != night:
+            continue
+        observations.setdefault(candidate.data_product_id or f'spectrum-{candidate.pk}', []).append(candidate)
+    return sorted((default_version(versions) for versions in observations.values()),
+                  key=lambda standard: abs(standard.timestamp - spectrum.timestamp))
+
+
 def standard_target_ids():
-    from tom_targets.models import Target
     return Target.objects.filter(standard=True).values('pk')
 
 
-def viewable_reduceddatums(user, queryset):
-    viewable = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum', klass=queryset)
+def viewable_datums(user, queryset):
+    viewable = get_objects_for_user(user, view_datum_perm(queryset.model), klass=queryset)
     return queryset.filter(Q(pk__in=viewable.values('pk')) | Q(target_id__in=standard_target_ids()))
 
 
 def viewable_dataproducts(user, queryset):
-    from tom_dataproducts.models import ReducedDatum
-    direct = get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset)
-    via_datums = get_objects_for_user(user, 'tom_dataproducts.view_reduceddatum',
-                                      klass=ReducedDatum.objects.filter(data_product__in=queryset))
-    return queryset.filter(Q(pk__in=direct.values('pk')) | Q(pk__in=via_datums.values('data_product_id'))
-                           | Q(target_id__in=standard_target_ids()))
+    viewable = Q(pk__in=get_objects_for_user(user, 'tom_dataproducts.view_dataproduct', klass=queryset).values('pk'))
+    for model in DATUM_MODELS:
+        via_datums = get_objects_for_user(user, view_datum_perm(model), klass=model.objects.filter(data_product__in=queryset))
+        viewable |= Q(pk__in=via_datums.values('data_product_id'))
+    return queryset.filter(viewable | Q(target_id__in=standard_target_ids()))
 
 
 def dataproduct_view_groups(dp):
-    from tom_dataproducts.models import ReducedDatum
-    datum_pks = [str(pk) for pk in dp.reduceddatum_set.values_list('pk', flat=True)]
-    perms = GroupObjectPermission.objects.filter(
-        Q(content_type=ContentType.objects.get_for_model(dp), object_pk=str(dp.pk),
-          permission__codename='view_dataproduct') |
-        Q(content_type=ContentType.objects.get_for_model(ReducedDatum), object_pk__in=datum_pks,
-          permission__codename='view_reduceddatum'))
-    return set(perms.values_list('group__name', flat=True))
+    perms = Q(content_type=ContentType.objects.get_for_model(dp), object_pk=str(dp.pk),
+              permission__codename='view_dataproduct')
+    for model in DATUM_MODELS:
+        datum_pks = [str(pk) for pk in model.objects.filter(data_product=dp).values_list('pk', flat=True)]
+        perms |= Q(content_type=ContentType.objects.get_for_model(model), object_pk__in=datum_pks,
+                   permission__codename=f'view_{model._meta.model_name}')
+    return set(GroupObjectPermission.objects.filter(perms).values_list('group__name', flat=True))
 
 
-def _set_view_groups(codename, queryset, groups):
+def dataproduct_datums(dp):
+    return [model.objects.filter(data_product=dp) for model in DATUM_MODELS]
+
+
+def _set_view_groups(queryset, groups):
+    codename = f'view_{queryset.model._meta.model_name}'
     for group in groups:
         assign_perm(f'tom_dataproducts.{codename}', group, queryset)
     current = GroupObjectPermission.objects.filter(
@@ -157,25 +231,32 @@ def _set_view_groups(codename, queryset, groups):
 
 
 def set_dataproduct_view_groups(dp, groups):
-    _set_view_groups('view_dataproduct', type(dp).objects.filter(pk=dp.pk), groups)
-    _set_view_groups('view_reduceddatum', dp.reduceddatum_set.all(), groups)
+    _set_view_groups(type(dp).objects.filter(pk=dp.pk), groups)
+    for datums in dataproduct_datums(dp):
+        _set_view_groups(datums, groups)
 
 
 def set_reduceddatum_view_groups(datums, groups):
-    from tom_dataproducts.models import DataProduct
     for dp in DataProduct.objects.filter(pk__in=datums.exclude(data_product=None).values('data_product')):
         set_dataproduct_view_groups(dp, groups)
-    _set_view_groups('view_reduceddatum', datums.filter(data_product=None), groups)
+    _set_view_groups(datums.filter(data_product=None), groups)
 
 
 def reduceddatum_view_groups(datums):
     perms = GroupObjectPermission.objects.filter(
-        content_type=ContentType.objects.get_for_model(datums.model), permission__codename='view_reduceddatum',
+        content_type=ContentType.objects.get_for_model(datums.model),
+        permission__codename=f'view_{datums.model._meta.model_name}',
         object_pk__in=[str(pk) for pk in datums.values_list('pk', flat=True)]).values_list('object_pk', 'group__name')
     visible = {}
     for pk, name in perms:
         visible.setdefault(int(pk), []).append(name)
     return {pk: sorted(names) for pk, names in visible.items()}
+
+
+def default_target_groups(user):
+    if user.is_superuser:
+        return Group.objects.filter(name__in=settings.DEFAULT_GROUPS)
+    return user.groups.all()
 
 
 def groups_from_payload(groups):
@@ -189,12 +270,20 @@ def groups_from_payload(groups):
     return found
 
 
+def get_color(filter_name):
+    return FILTER_COLORS.get(FILTER_TRANSLATE.get(filter_name), FILTER_COLORS['other'])
+
+
 def measured(value):
     try:
         value = float(value)
     except (TypeError, ValueError):
         return None
     return None if value >= 9000 else value
+
+
+def without_sentinels(value):
+    return {key: measured(item) if key in MEASURED_KEYS else item for key, item in value.items()}
 
 
 def unsubtracted_q():
@@ -204,14 +293,14 @@ def unsubtracted_q():
 def download_archive_frame(basename):
     response = requests.get(settings.FACILITIES['LCO']['archive_url'],
                             headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"},
-                            params={'basename_exact': basename, 'include_related_frames': False})
+                            params={'basename_exact': basename, 'include_related_frames': False}, timeout=(30, 120))
     if not response.ok:
         logger.error(f'LCO archive lookup for {basename} failed: {response.status_code} {response.text[:200]}')
         return None
     results = response.json().get('results', [])
     if not results:
         return None
-    download = requests.get(results[0]['url'])
+    download = requests.get(results[0]['url'], timeout=(30, None))
     if not download.ok:
         logger.error(f'LCO archive download of {basename} failed: {download.status_code}')
         return None
@@ -273,7 +362,6 @@ def _normalize_view_object_name(name: str) -> str:
 
     # Apply suffix letter casing rule.
     # We only look at the initial contiguous letter run.
-    import re
     m = re.match(r'([A-Za-z]+)', suffix_raw)
     letters = m.group(1) if m else ''
     rest = suffix_raw[len(letters):] if letters else suffix_raw
@@ -298,22 +386,33 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
     return s
 
 
-GENERATED_ASCII_PREFIX = 'spectrum-'
+def upload_extras(product):
+    extra = product.reduceddatumextra_set.first() if product else None
+    return dict(extra.value) if extra and isinstance(extra.value, dict) else {}
 
 
-def spectrum_ascii(rd):
-    if not rd or not isinstance(rd.value, dict):
+def fits_is_current(spectrum):
+    product = spectrum.data_product
+    return bool(product and product.data) and upload_extras(product).get('file_version') in (None, spectrum.reduction_version)
+
+
+def spectrum_ascii(rd, header=True):
+    if not rd or not rd.wavelength or not rd.flux or len(rd.wavelength) != len(rd.flux):
         return None
-    if rd.value.get('photon_flux'):
-        wavelength, flux = rd.value.get('wavelength'), rd.value['photon_flux']
-    elif rd.value.get('flux'):
-        wavelength, flux = rd.value.get('wavelength'), rd.value['flux']
-    else:
-        points = [point for point in rd.value.values() if isinstance(point, dict) and 'wavelength' in point and 'flux' in point]
-        wavelength, flux = [point['wavelength'] for point in points], [point['flux'] for point in points]
-    if not wavelength or not flux or len(wavelength) != len(flux):
-        return None
-    lines = [f'{w} {f}' for w, f in zip(wavelength, flux)]
+    columns = [rd.wavelength, rd.flux] + ([rd.error] if len(rd.error) == len(rd.flux) else [])
+    lines = []
+    if header:
+        facts = dict(upload_extras(rd.data_product), telescope=rd.telescope, instrument=rd.instrument)
+        if rd.exposure_time is not None:
+            facts['exptime'] = rd.exposure_time
+        labels = [('OBJECT', rd.target.name), ('DATE-OBS', rd.timestamp.strftime('%Y-%m-%dT%H:%M:%S'))]
+        labels += [(key.upper(), facts.get(key)) for key in ('telescope', 'instrument', 'exptime', 'slit', 'grism', 'airmass', 'observer')]
+        labels += [('REDUCER', rd.value.get('reducer')),
+                   ('FINAL', 'yes' if rd.value.get('final_reduction') else 'no'),
+                   ('WAVELENGTH_UNIT', rd.wavelength_unit), ('FLUX_UNIT', rd.flux_unit)]
+        lines = ['# ' + ' '.join(['wavelength', 'flux', 'error'][:len(columns)])]
+        lines += [f'# {label} = {item}' for label, item in labels if item not in (None, '')]
+    lines += [' '.join(str(item) for item in row) for row in zip(*columns)]
     return ('\n'.join(lines)).encode('utf-8')
 
 
@@ -321,9 +420,82 @@ def spectrum_ascii_name(datum):
     return '{}_{}.ascii'.format(datum.target.name.replace(' ', '_'), datum.timestamp.strftime('%Y%m%dT%H%M%S'))
 
 
-def datum_value(datum):
-    return json.loads(datum.value) if isinstance(datum.value, str) else datum.value
+def upload_reduction_version(data_product_id):
+    return f'upload-{data_product_id}'
 
 
-def photometry_data_type(target):
-    return 'photometric_standard' if getattr(target, 'standard', False) else 'photometry'
+def file_version(uploaded):
+    digest = hashlib.md5()
+    for chunk in uploaded.chunks():
+        digest.update(chunk)
+    uploaded.seek(0)
+    return digest.hexdigest()
+
+
+def photometry_reduction_version(value, data_product_id=None):
+    if data_product_id:
+        return upload_reduction_version(data_product_id)
+    if not value.get('basename'):
+        return ''
+    if not value.get('background_subtracted'):
+        return 'unsubtracted'
+    return '{}-{}'.format(value.get('subtraction_algorithm') or 'subtracted', value.get('template_source') or '')
+
+
+def tns_object(name):
+    name = name.replace(' ', '')
+    return TNS_PREFIX_RE.sub('', name).lower() if TNS_PREFIX_RE.match(name) else None
+
+
+def tess_sectors(ra, dec):
+    pointings = TESS_Spacecraft_Pointing_Data()
+    midtimes = dict(zip(pointings.sectors, pointings.midtimes))
+    found = tess_stars2px_function_entry(1, ra, dec, scInfo=pointings)
+    return [{'sector': int(sector), 'camera': int(camera), 'ccd': int(ccd), 'column': round(float(column)),
+             'row': round(float(row)), 'mid_jd': float(midtimes[sector])}
+            for sector, camera, ccd, column, row in zip(*found[3:8]) if 0 < sector < 1000]
+
+
+def query_tns(objname):
+    service = TNSDataService()
+    tns = service.query_service(service.build_query_parameters({'objname': objname}), url=service.get_urls('object_url'))
+    if not tns.get('objname') or not tns.get('name_prefix'):
+        raise ValueError(f'TNS has no object named {objname}')
+    return tns
+
+
+def update_target_from_tns(target):
+
+    objname = next((tns_object(name) for name in target.names if tns_object(name)), None)
+    if objname is None:
+        raise ValueError('this target has no AT or SN name to look up')
+    tns = query_tns(objname)
+
+    tns_name = tns['name_prefix'] + tns['objname']
+    if Target.objects.filter(name__iexact=tns_name).exclude(pk=target.pk).exists():
+        raise ValueError(f'another target is already named {tns_name}')
+    changes = []
+    other_names = [name for name in target.names if tns_object(name) != objname]
+    target.aliases.exclude(name__in=other_names).delete()
+    if target.name != tns_name:
+        changes.append(f'name {target.name} to {tns_name}')
+        target.name = tns_name
+    classification = (tns.get('object_type') or {}).get('name')
+    if classification and classification != target.classification and not target.standard:
+        changes.append(f'classification to {classification}')
+        target.classification = classification
+    if tns.get('redshift') is not None and float(tns['redshift']) != target.redshift:
+        changes.append(f'redshift to {tns["redshift"]}')
+        target.redshift = float(tns['redshift'])
+    target.save()
+
+    known = {name.lower() for name in target.names}
+    internal_names = [name.strip() for name in (tns.get('internal_names') or '').split(',')
+                      if name.strip() and tns_object(name) != objname]
+    for name in other_names + internal_names:
+        taken = Target.objects.filter(name__iexact=name).exists() or TargetName.objects.filter(name__iexact=name).exists()
+        if name.lower() not in known and not taken:
+            TargetName.objects.create(target=target, name=name)
+            known.add(name.lower())
+            changes.append(f'added name {name}')
+    return changes

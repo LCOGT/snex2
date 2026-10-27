@@ -18,23 +18,27 @@ from django.conf import settings
 
 from django.urls import include
 from custom_code.views import *
-from custom_code.api_views import SNExDataProductViewSet, SNExReducedDatumViewSet, SNExTargetViewSet
+from custom_code.api_views import SNExDataProductViewSet, SNExPhotometryViewSet, SNExReducedDatumViewSet, SNExTargetViewSet
 from rest_framework.routers import DefaultRouter
 from custom_code.dash_apps import lightcurve, spectra, spectra_individual
 from gw.views import *
-from django.contrib.auth import views as auth_views
-from custom_code.forms import SafeAuthenticationForm
 
 api_router = DefaultRouter()
 api_router.register(r'targets', SNExTargetViewSet, basename='targets')
 api_router.register(r'reduceddatums', SNExReducedDatumViewSet, basename='reduceddatums')
+api_router.register(r'photometry', SNExPhotometryViewSet, basename='photometry')
 api_router.register(r'dataproducts', SNExDataProductViewSet, basename='dataproducts')
 urlpatterns = [
-    path('accounts/register/', SNEx2ApprovalRegistrationView.as_view(), name='register'),
-    path('accounts/login/', auth_views.LoginView.as_view(authentication_form=SafeAuthenticationForm), name='login'),
-    path('accounts/', include('django.contrib.auth.urls')),
+    path('users/<int:pk>/approve/', SNExUserApprovalView.as_view(), name='user-approve'),
     path('api/', include(api_router.urls)),
     path('targets/', TargetListView.as_view(), name='list'),
+    path('targets/create/', CustomTargetCreateView.as_view()),
+    path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
+    path('targets/merge/<int:pk1>/<int:pk2>', SNExTargetMergeView.as_view()),
+    path('targets/<int:pk>/delete/', SNExTargetDeleteView.as_view()),
+    path('dataproducts/data/<int:pk>/delete/', SNExDataProductDeleteView.as_view()),
+    path('observations/<int:pk>/cancel/', observation_record_disabled_view),
+    path('observations/<int:pk>/update/', observation_record_disabled_view),
     path('', include('tom_common.urls')),
     path('view_object/', view_object_view, name='view-object'),
     path('redirect/', target_redirect_view, name='redirect'),
@@ -45,7 +49,6 @@ urlpatterns = [
     path('custom-data-upload/', CustomDataProductUploadView.as_view(), name='custom-data-upload'),
     path('save_dataproduct_groups/', save_dataproduct_groups_view, name='save_dataproduct_groups'),
     path('set-target-standard/', set_target_standard_view, name='set-target-standard'),
-    path('create-api-token/', create_api_token_view, name='create-api-token'),
     path('change-target-known-to/', change_target_known_to_view, name='change-target-known-to'),
     path('change-interest/', change_interest_view, name='change-interest'),
     path('name-search/', search_name_view, name='name-search'),
@@ -53,6 +56,9 @@ urlpatterns = [
     path('remove-target-from-group/', remove_target_from_group_view, name='remove-target-from-group'),
     path('change-observing-priority/', change_observing_priority_view, name='change-observing-priority'),
     path('make-tns-request/', make_tns_request_view, name='make-tns-request'),
+    path('targets/<int:pk>/update-from-tns/', update_from_tns_view, name='update-from-tns'),
+    path('targets/resolve-tns/', resolve_tns_view, name='resolve-tns'),
+    path('targets/<int:pk>/tess/', tess_sectors_view, name='tess-sectors'),
     path('fit-lightcurve/', fit_lightcurve_view, name='fit-lightcurve'),
     path('save-lightcurve-params/', save_lightcurve_params_view, name='save-lightcurve-params'),
     path('scheduling/', CustomObservationListView.as_view(), name='scheduling'),
@@ -73,12 +79,18 @@ urlpatterns = [
     path('targets/<int:pk>/plot/thumbnail/', load_thumbnail_view, name='load-thumbnail'),
     path('targets/<int:pk>/plot/airmass/', load_airmass_plot_view, name='load-airmass-plot'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/', load_single_spectrum_view, name='load-single-spectrum'),
+    path('targets/<int:pk>/spectrum/<int:spectrum_id>/delete/', delete_spectrum_version_view, name='delete-spectrum-version'),
+    path('targets/<int:pk>/photometry/<int:datum_id>/delete/', delete_photometry_view, name='delete-photometry'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/download/<str:file_format>/', download_spectrum_view, name='download-spectrum'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/interactive/', load_spectrum_interactive_view, name='load-spectrum-interactive'),
+    path('targets/<int:pk>/spectrum/<int:spectrum_id>/data/', spectrum_data_view, name='spectrum-data'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),
     path('cache-frame/', cache_frame_view, name='cache-frame'),
     path('get-frame-ids/', get_frame_ids_view, name='get-frame-ids'),
+    path('spectra/raw-download/', download_raw_spectra_view, name='download-raw-spectra'),
+    path('spectra/download/', download_spectra_view, name='download-spectra'),
+    path('targets/<int:pk>/photometry/standards/', photometry_standards_view, name='photometry-standards'),
     path('update-photometry-groups/', update_photometry_groups_view, name='update-photometry-groups'),
     path('interesting-targets/', InterestingTargetsView.as_view(), name='interesting-targets'),
     path('load-upcoming-reminders/', async_scheduling_page_view, name='load-upcoming-reminders'),
@@ -86,19 +98,13 @@ urlpatterns = [
     path('delete-comment/', delete_comment_view, name='delete-comment'),
     path('sync-targetextra/', sync_targetextra_view, name='sync_targetextra'),
     path('scheduling/<str:key>/', ObservationListExtrasView.as_view(), name='observation-list'),
-    path('alerts/broker-targets/', BrokerTargetView.as_view(), name='broker-targets'),
-    path('change-broker-target-status/', change_broker_target_status_view, name='change-broker-target-status'),
     path('nonlocalizedevents/<int:id>/galaxies/', GWFollowupGalaxyListView.as_view(), name='nonlocalizedevents-galaxies'),
     path('submit-gw-obs/', submit_galaxy_observations_view, name='submit-gw-obs'),
     path('cancel-gw-obs/', cancel_galaxy_observations_view, name='cancel-gw-obs'),
     path('floyds-inbox/', FloydsInboxView.as_view(), name='floyds-inbox'),
     path('nonlocalizedevents/sequence/<int:id>/obs/', EventSequenceGalaxiesImagesView.as_view(), name='nonlocalizedevents-sequence-images'),
-    path('snex2/accounts/approve/<int:pk>/', SNEx2UserApprovalView.as_view(), name="snex2-approve-user"),
     path('snex2/', include('custom_code.urls')),
-    path('nonlocalizedevents/', include('tom_nonlocalizedevents.urls', namespace='nonlocalizedevents')),
     path('django_plotly_dash/', include('django_plotly_dash.urls')),
-    path('tns/<int:pk>/classify', SNExTNSClassifySubmitView.as_view()),
-    path('tns/', include('tom_tns.urls', namespace='tns')),
 ]
 
 if settings.DEBUG:

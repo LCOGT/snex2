@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 targets_extras static %}
+{% load django_bootstrap5 targets_extras static %}
 {% block title %}New target{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -22,20 +22,23 @@
     <h3>Create a New Target</h3>
   </div>
 </nav>
-<a href="{% url 'tom_catalogs:query' %}" class="btn btn-primary float-right">Search online sources</a>
+<a href="{% url 'dataservices:query_list' %}" class="btn btn-primary float-end">Search online sources</a>
 {% endif %}
+  {% bootstrap_form_errors form type='non_fields' %}
+  {% bootstrap_formset_errors names_form %}
+  {% bootstrap_formset_errors extra_form %}
   {% if object %}
   <nav class="navbar navbar-expand-md fixed-top fixed-top-2">
     <div class="collapse navbar-collapse" id="targetInfo">
-      <ul class="nav mr-auto">
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.name }}</a></li>
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.ra|deg_to_sexigesimal:"hms" }} {{ target.dec|deg_to_sexigesimal:"dms" }}<br>{{ target.ra|floatformat:6 }} {{ target.dec|floatformat:6 }}</a></li>
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ target.classification }}</a></li>
-        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">z = {{ target.redshift }}</a></li>
+      <ul class="nav me-auto">
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ object.name }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ object.ra|deg_to_sexigesimal:"hms" }} {{ object.dec|deg_to_sexigesimal:"dms" }}<br>{{ object.ra|floatformat:6 }} {{ object.dec|floatformat:6 }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">{{ object.classification }}</a></li>
+        <li style="float: left;"><a style="display: inline-block; list-style-type: none;">z = {{ object.redshift }}</a></li>
     </div>
   </nav>
   <form action="{% url 'targets:update' pk=object.id %}" method="post" class="form">
-  {% bootstrap_form form exclude='tweet,epoch,pm_ra,pm_dec,galactic_lng,galactic_lat,distance,distance_err' %}
+  {% bootstrap_form form exclude='tweet,epoch,pm_ra,pm_dec,galactic_lng,galactic_lat,distance,distance_err,shared_by,shared_from' %}
   {% else %}
   <form action="" method="POST" class="form">
   {% bootstrap_form form exclude='tweet,redshift,classification,epoch,pm_ra,pm_dec,galactic_lng,galactic_lat,distance,distance_err,groups,sciencetags,reference,observing_run_priority,last_nondetection,first_detection,maximum,target_description' %}
@@ -55,8 +58,62 @@
       {% bootstrap_formset extra_form %} 
   </div>
   {% csrf_token %}
-  {% buttons %}
+  <div class="mb-3">
   <button type="submit" formaction="" method="POST" class="btn btn-primary">Submit</button>
-  {% endbuttons %}
+  </div>
   </form>
+{% if not object %}
+<div class="mb-3" id="tns-resolve">
+  <button type="button" class="btn btn-outline-primary btn-sm" id="tns-resolve-button">Resolve from TNS</button>
+  <span class="ms-2 text-muted" id="tns-resolve-status">Type a name such as 23ixf, then resolve it to fill in the name, RA and Dec from TNS</span>
+</div>
+<script>
+(function () {
+  const nameInput = document.getElementById('id_name');
+  const panel = document.getElementById('tns-resolve');
+  nameInput.closest('.mb-3').after(panel);
+  const button = document.getElementById('tns-resolve-button');
+  const status = document.getElementById('tns-resolve-status');
+  function resolve() {
+    status.className = 'ms-2 text-muted';
+    status.textContent = 'Looking up ' + nameInput.value + ' on TNS...';
+    button.disabled = true;
+    fetch('{% url "resolve-tns" %}?name=' + encodeURIComponent(nameInput.value))
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        if (data.error) {
+          status.className = 'ms-2 text-danger';
+          status.textContent = data.error;
+          return;
+        }
+        nameInput.value = data.name;
+        document.getElementById('id_ra').value = data.ra;
+        document.getElementById('id_dec').value = data.dec;
+        status.className = 'ms-2 text-success';
+        status.textContent = 'Resolved ' + data.name + ': RA ' + data.ra + ', Dec ' + data.dec;
+        if (data.existing) {
+          status.className = 'ms-2 text-warning';
+          status.innerHTML = '';
+          const link = document.createElement('a');
+          link.href = data.existing.url;
+          link.textContent = data.existing.name;
+          status.append(data.name + ' is already in SNEx as ', link);
+        }
+      })
+      .catch(function () {
+        status.className = 'ms-2 text-danger';
+        status.textContent = 'Could not reach SNEx';
+      })
+      .finally(function () { button.disabled = false; });
+  }
+  button.addEventListener('click', resolve);
+  nameInput.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && !document.getElementById('id_ra').value) {
+      event.preventDefault();
+      resolve();
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

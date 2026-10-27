@@ -13,8 +13,19 @@
 
 body {
   font-family: 'Open Sans', sans-serif;
-  padding-top: 0;
+  padding-top: 0 !important;
   overflow-x: hidden;
+}
+
+.time-usage-bars,
+.time-usage-bars table,
+.time-usage-bars thead,
+.time-usage-bars tbody,
+.time-usage-bars tr,
+.time-usage-bars td {
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
 }
 
 .nav-link {
@@ -109,4 +120,27 @@ body {
     position: absolute;
     z-index: 9999;
   }
+}
+
+.row > :not(.col, [class*="col-"]) {
+  --bs-gutter-x: 0;
+}
+
+.row > :not([class]) {
+  padding-left: revert;
+  padding-right: revert;
+}
+
+.row > :where(:not(.col, [class*="col-"], .form-control, .form-select, .input-group, .table)) {
+  width: auto;
+  max-width: none;
+  flex-shrink: 1;
+}
+
+a {
+  text-decoration: none;
+}
+
+a:not(.btn):hover {
+  text-decoration: underline;
 }

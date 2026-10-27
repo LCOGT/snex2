@@ -2,10 +2,23 @@
 <table>
   <tbody>
     <tr valign="top">
-      <td width="1200">
+      <td width="1200" id="spectra-overview-tools">
         {% plotly_app name="Spectra" ratio=0.5 initial_arguments=dash_context %}
       </td>
     </tr>
   </tbody>
 </table>
-
+<script>
+(function () {
+  const frame = document.querySelector('#spectra-overview-tools iframe');
+  function resize() {
+    const lines = frame.contentDocument.querySelector('#line-plotting-checklist input:checked');
+    frame.parentElement.style.paddingBottom = 0;
+    frame.parentElement.style.height = (410 + (lines ? 270 : 0)) + 'px';
+  }
+  frame.addEventListener('load', function () {
+    frame.contentDocument.addEventListener('change', resize);
+    resize();
+  });
+})();
+</script>

@@ -3,14 +3,13 @@ import dash_bootstrap_components as dbc
 from dash import html
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output
-import json
 import numpy as np
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import DataProduct, ReducedDatum
+from tom_dataproducts.models import DataProduct
 from django.contrib.auth.models import User
 from tom_targets.models import Target
 from custom_code.models import ReducedDatumExtra
-from custom_code.utils import measured, photometry_data_type, viewable_dataproducts, viewable_reduceddatums
+from custom_code.utils import FILTER_TRANSLATE, get_color, measured, observed_spectra, photometry_datums, viewable_dataproducts
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
@@ -205,37 +204,13 @@ def update_template_value(selected_subtraction):
          Input('magnitude-type-radio', 'value'),
          Input('final-only-checklist', 'value')])
 def update_graph(selected_telescope, subtracted_value, selected_algorithm, selected_template, selected_groups, target_id, user_id, height, magnitude_type, final_only):
-    def get_color(filter_name, filter_translate):
-        colors = {'U': 'rgb(59,0,113)',
-            'u': 'rgb(59,0,113)',
-            'B': 'rgb(0,87,255)',
-            'V': 'rgb(120,255,0)',
-            'g': 'rgb(0,204,255)',
-            'r': 'rgb(255,124,0)',
-            'i': 'rgb(144,0,43)',
-            'g_ZTF': 'rgb(0,204,255)',
-            'r_ZTF': 'rgb(255,124,0)',
-            'i_ZTF': 'rgb(144,0,43)',
-            'R': 'rgb(224,27,27)',
-            'I': 'rgb(125,10,60)',
-            'zs': 'rgb(101,42,42)',
-            'w': 'rgb(120,120,120)',
-            'UVW2': '#FE0683',
-            'UVM2': '#BF01BC',
-            'UVW1': '#8B06FF',
-            'other': 'rgb(0,0,0)'}
-        try: color = colors[filter_translate[filter_name]]
-        except: color = colors['other']
-        return color
+
+    if not target_id:
+        return {'data': [], 'layout': {}}
 
     logger.info('Plotting dash lightcurve for target %s', target_id)
 
-    filter_translate = {'U': 'U', 'B': 'B', 'V': 'V', 'R': 'R', 'I': 'I',
-        'up': 'u', 'u': 'u', 'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i',
-        'zs': 'zs', 'z': 'zs', 'w': 'w',
-        'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2',
-        'UVW1': 'UVW1'}
-    magnitude_key, error_key = {'PSF': ('psfmag', 'psfdmag'), 'Aperture': ('apmag', 'dapmag')}.get(magnitude_type, ('magnitude', 'error'))
+    magnitude_keys = {'PSF': ('psfmag', 'psfdmag'), 'Aperture': ('apmag', 'dapmag')}.get(magnitude_type)
     photometry_data = {}
     subtracted_photometry_data = {}
     target = Target.objects.get(id=target_id)
@@ -255,30 +230,25 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
 
         if de_value.get('instrument', '') in selected_telescope and de_value.get('reducer_group', '') in selected_groups:
             dp_id = de.data_product_id
-            datums.append(viewable_reduceddatums(user, ReducedDatum.objects.filter(
-                target=target, data_type=photometry_data_type(target),
-                data_product_id=dp_id, value__has_key='filter')))
+            datums.append(photometry_datums(target, user).filter(data_product_id=dp_id))
 
     ### Finally, get the data that was uploaded by the pipeline
     if 'LCO' in selected_telescope and '' in selected_groups:
         uploaded_products = [de.data_product_id for de in datumextras if de.value.get('instrument')]
-        datums.append(viewable_reduceddatums(user, ReducedDatum.objects.filter(
-            target=target, data_type=photometry_data_type(target),
-            value__has_key='filter').exclude(data_product_id__in=uploaded_products)))
+        datums.append(photometry_datums(target, user).exclude(data_product_id__in=uploaded_products))
     
     ### Plot the data
-    spec = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-        target=target, data_type='spectroscopy'))
+    spec = observed_spectra(target, user)
         
     for data in datums:
         for rd in data:
             value = rd.value
-            if not value:
-                continue
-            if isinstance(value, str):
-                value = json.loads(value)
+            if magnitude_keys:
+                magnitude, error = value.get(magnitude_keys[0]), value.get(magnitude_keys[1])
+            else:
+                magnitude, error = rd.brightness, rd.brightness_error
 
-            if measured(value.get(magnitude_key)) is None:
+            if measured(magnitude) is None:
                 continue
 
             if final_only and not (value.get('final_reduction') or rd.data_product_id in final_products):
@@ -287,22 +257,22 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             if value.get('background_subtracted', '') == True:
                 if value.get('subtraction_algorithm', '') in selected_algorithm and value.get('template_source', '') in selected_template:
                     
-                    raw_filter = value.get('filter', '')
-                    subtracted_filt = filter_translate.get(raw_filter, raw_filter or 'other')
+                    raw_filter = rd.bandpass
+                    subtracted_filt = FILTER_TRANSLATE.get(raw_filter, raw_filter or 'other')
 
                     subtracted_photometry_data.setdefault(subtracted_filt, {})
                     subtracted_photometry_data[subtracted_filt].setdefault('time', []).append(rd.timestamp)
-                    subtracted_photometry_data[subtracted_filt].setdefault('magnitude', []).append(value.get(magnitude_key))
-                    subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(measured(value.get(error_key)) or 0)
+                    subtracted_photometry_data[subtracted_filt].setdefault('magnitude', []).append(magnitude)
+                    subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(measured(error) or 0)
             else:
 
-                raw_filter = value.get('filter', '')
-                filt = filter_translate.get(raw_filter, raw_filter or 'other')
+                raw_filter = rd.bandpass
+                filt = FILTER_TRANSLATE.get(raw_filter, raw_filter or 'other')
 
                 photometry_data.setdefault(filt, {})
                 photometry_data[filt].setdefault('time', []).append(rd.timestamp)
-                photometry_data[filt].setdefault('magnitude', []).append(value.get(magnitude_key))
-                photometry_data[filt].setdefault('error', []).append(measured(value.get(error_key)) or 0)
+                photometry_data[filt].setdefault('magnitude', []).append(magnitude)
+                photometry_data[filt].setdefault('error', []).append(measured(error) or 0)
 
     if subtracted_value == 'Unsubtracted':
         selected_photometry = photometry_data
@@ -314,15 +284,15 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
             x=[(datetime.now(timezone.utc) - t.replace(tzinfo=timezone.utc)).total_seconds()/(24*3600) for t in filter_values['time']],
             y=filter_values['magnitude'], 
             mode='markers',
-            marker=dict(color=get_color(filter_name, filter_translate),
+            marker=dict(color=get_color(filter_name),
                         line=dict(color='black', width=1)
             ),
-            name=filter_translate.get(filter_name, filter_name or 'other'),
+            name=FILTER_TRANSLATE.get(filter_name, filter_name or 'other'),
             error_y=dict(
                 type='data',
                 array=filter_values['error'],
                 visible=True,
-                color=get_color(filter_name, filter_translate)
+                color=get_color(filter_name)
             ),
             text=['{} (MJD {})'.format(t.strftime('%m/%d/%Y'), str(round(Time(t).mjd, 2))) for t in filter_values['time']],
         ) for filter_name, filter_values in selected_photometry.items()]

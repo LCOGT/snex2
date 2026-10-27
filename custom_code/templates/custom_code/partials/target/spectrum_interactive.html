@@ -1,2 +1,19 @@
 {% load plotly_dash %}
-{% plotly_app name="Spectra_Individual" ratio=0.6 initial_arguments=entry.dash_context %}
+<div id="spectrum-tools-{{ entry.spectrum.id }}">
+  {% plotly_app name="Spectra_Individual" ratio=0.45 initial_arguments=entry.dash_context %}
+</div>
+<script>
+(function () {
+  const frame = document.querySelector('#spectrum-tools-{{ entry.spectrum.id }} iframe');
+  function resize() {
+    const lines = frame.contentDocument.querySelector('#line-plotting-checklist input:checked');
+    const compare = frame.contentDocument.querySelector('#compare-spectra-checklist input:checked');
+    frame.parentElement.style.paddingBottom = 0;
+    frame.parentElement.style.height = (490 + (lines ? 300 : 0) + (compare ? 60 : 0)) + 'px';
+  }
+  frame.addEventListener('load', function () {
+    frame.contentDocument.addEventListener('change', resize);
+    resize();
+  });
+})();
+</script>

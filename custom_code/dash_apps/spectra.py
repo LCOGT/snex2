@@ -5,7 +5,6 @@ from dash import html
 import plotly.graph_objs as go
 import numpy as np
 import json
-from custom_code.utils import viewable_reduceddatums
 from tom_targets.models import Target
 from django.contrib.auth.models import User
 import logging
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 ### Jamie: "lots of help from https://community.plot.ly/t/django-and-dash-eads-method/7717"
 
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import ReducedDatum
+from custom_code.utils import observed_spectra
 from custom_code.templatetags.custom_code_tags import bin_spectra
 from django.templatetags.static import static
 import matplotlib.pyplot as plt
@@ -136,7 +135,8 @@ app.layout = html.Div([
         dcc.Checklist(
             id='line-plotting-checklist',
             options=[{'label': 'Show line plotting interface', 'value': 'display'}],
-            value=''
+            value='',
+            style={'fontSize': 18}
         ),
         html.Div(
             children=[],
@@ -166,26 +166,25 @@ app.layout = html.Div([
     ], style={'overflow-y': 'auto'})
 ])
 
+line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]
+line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]
+line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]
+
 @app.callback(
     Output('table-container-div', 'style'),
     [Input('line-plotting-checklist', 'value')])
 def show_table(value, *args, **kwargs):
     if 'display' in value:
-        return {'display': 'block'}
+        return {'display': 'block', 'maxHeight': '300px', 'overflowY': 'auto'}
     else:
         return {'display': 'none'}
 
-line_plotting_input = [Input('standalone-checkbox-'+elem.replace(' ', '-'), 'value') for elem in elements]
-line_plotting_input += [Input('v-'+elem.replace(' ', '-'), 'value') for elem in elements]
-line_plotting_input += [Input('z-'+elem.replace(' ', '-'), 'value') for elem in elements]
 @app.callback(
     Output('checked-rows', 'children'),
     line_plotting_input)
 def checked_boxes(*args, **kwargs):
     
     all_rows = [item for item in line_plotting_input if 'standalone-checkbox' in item.component_id]
-    velocity_rows = [item for item in line_plotting_input if 'v-' in item.component_id]
-    redshift_rows = [item for item in line_plotting_input if 'z-' in item.component_id]
     
     checked_rows = []
     for i in range(len(all_rows)):
@@ -310,6 +309,9 @@ def display_output(selected_rows,
     #   Fix dataproducts so they're correctly serialized
     #   Correctly display message when there are no spectra
     
+    if not target_id:
+        return {'data': [], 'layout': {}}
+
     user = User.objects.get(id=user_id)
     target = Target.objects.get(id=target_id)
 
@@ -321,8 +323,7 @@ def display_output(selected_rows,
                       'layout': []}
 
     # If the page just loaded, plot all the spectra
-    spectral_dataproducts = viewable_reduceddatums(user, ReducedDatum.objects.filter(
-        target=target, data_type='spectroscopy')).order_by('timestamp')
+    spectral_dataproducts = observed_spectra(target, user)
     if not spectral_dataproducts:
         return 'No spectra yet'
 
@@ -334,23 +335,10 @@ def display_output(selected_rows,
             g=int(color[1]*255),
             b=int(color[2]*255),
         ) for color in colors]
-        all_data = []
         for i in range(len(spectral_dataproducts)):
             spectrum = spectral_dataproducts[i]
-            datum = spectrum.value
-            wavelength = []
-            flux = []
             name = str(spectrum.timestamp).split(' ')[0]
-            if datum.get('photon_flux'):
-                wavelength = datum.get('wavelength')
-                flux = datum.get('photon_flux')
-            elif datum.get('flux'):
-                wavelength = datum.get('wavelength')
-                flux = datum.get('flux')
-            else:
-                for key, value in datum.items():
-                    wavelength.append(float(value['wavelength']))
-                    flux.append(float(value['flux']))
+            wavelength, flux = spectrum.wavelength, spectrum.flux
             
             binned_wavelength, binned_flux = bin_spectra(wavelength, flux, 5)
             scatter_obj = go.Scatter(
