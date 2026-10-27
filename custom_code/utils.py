@@ -407,7 +407,7 @@ def spectrum_ascii(rd, header=True):
             facts['exptime'] = rd.exposure_time
         labels = [('OBJECT', rd.target.name), ('DATE-OBS', rd.timestamp.strftime('%Y-%m-%dT%H:%M:%S'))]
         labels += [(key.upper(), facts.get(key)) for key in ('telescope', 'instrument', 'exptime', 'slit', 'grism', 'airmass', 'observer')]
-        labels += [('REDUCER', rd.value.get('reducer') or facts.get('reducer')),
+        labels += [('REDUCER', rd.value.get('reducer')),
                    ('FINAL', 'yes' if rd.value.get('final_reduction') else 'no'),
                    ('WAVELENGTH_UNIT', rd.wavelength_unit), ('FLUX_UNIT', rd.flux_unit)]
         lines = ['# ' + ' '.join(['wavelength', 'flux', 'error'][:len(columns)])]

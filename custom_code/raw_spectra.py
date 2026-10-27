@@ -76,8 +76,8 @@ def _copy(source, destination, buffer):
         yield buffer.take()
 
 
-def stream_zip(items, include_standard=False):
-    buffer, nights = _Buffer(), {}
+def stream_zip(items, include_standard=False, readme=None):
+    buffer, nights, rows = _Buffer(), {}, []
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_STORED, allowZip64=True) as archive:
         for kind, name, source in items:
             if kind == 'text':
@@ -86,7 +86,7 @@ def stream_zip(items, include_standard=False):
                 with default_storage.open(source, 'rb') as stored, archive.open(name, 'w', force_zip64=True) as destination:
                     yield from _copy(iter(lambda: stored.read(1 << 20), b''), destination, buffer)
             elif kind == 'archive':
-                science, standard, is_standard = [], [], False
+                science, standard, is_standard, borrowed = [], [], False, set()
                 try:
                     found = _archive({'basename_exact': source})
                     if found:
@@ -106,14 +106,35 @@ def stream_zip(items, include_standard=False):
                         if offsets:
                             standard = sorted((f for f in nights[key] if f['observation_id'] == min(offsets)[1]),
                                               key=lambda f: f['basename'])
+                        for block in (science, standard):
+                            spectra = [f for f in block if f.get('OBSTYPE') == 'SPECTRUM']
+                            for obstype in ('ARC', 'LAMPFLAT'):
+                                candidates = [f for f in nights[key] if f.get('OBSTYPE') == obstype]
+                                if spectra and candidates and not any(f.get('OBSTYPE') == obstype for f in block):
+                                    when = parse(spectra[0]['DATE_OBS'])
+                                    closest = min(candidates, key=lambda f: abs(parse(f['DATE_OBS']) - when))
+                                    block.append(closest)
+                                    borrowed.add(closest['basename'])
                 except requests.RequestException as e:
                     archive.writestr(name + 'MISSING.txt', f'Could not look up {source} in the LCO archive: {e}\n')
                     continue
                 if not science:
                     archive.writestr(name + 'MISSING.txt', f'{source} was not found in the LCO archive.\n')
-                elif include_standard and not standard and not is_standard:
-                    archive.writestr(name + 'NO_STANDARD.txt', f'No FLOYDS standard was found for the night of {source}.\n')
-                for frame in science + standard:
+                    continue
+                calibrations = [', '.join(f['basename'] + ('*' if f['basename'] in borrowed else '')
+                                          for f in science if f.get('OBSTYPE') == obstype) or 'none that night'
+                                for obstype in ('ARC', 'LAMPFLAT')]
+                if is_standard:
+                    standard_cell = 'is a standard'
+                elif not include_standard:
+                    standard_cell = 'not requested'
+                elif standard:
+                    standard_cell = standard[0]['OBJECT'] + ': ' + ', '.join(
+                        f['basename'] + ('*' if f['basename'] in borrowed else '') for f in standard)
+                else:
+                    standard_cell = 'none that night'
+                rows.append((source, *calibrations, standard_cell))
+                for frame in {f['basename']: f for f in science + standard}.values():
                     try:
                         response = requests.get(frame['url'], stream=True, timeout=(10, 300))
                         response.raise_for_status()
@@ -123,4 +144,15 @@ def stream_zip(items, include_standard=False):
                     with response, archive.open(name + frame['filename'], 'w', force_zip64=True) as destination:
                         yield from _copy(response.iter_content(1 << 20), destination, buffer)
             yield buffer.take()
+        if readme is not None:
+            if rows:
+                table = [('Spectrum', 'Arc', 'Flat', 'Flux standard')] + rows
+                widths = [max(len(row[column]) for row in table) for column in range(4)]
+                readme += ('\nFLOYDS calibrations. Each spectrum uses the arc and flat from its own observation block. '
+                           'When the block has none, the closest in time from the same night is included instead and '
+                           'marked *. Flats mainly correct red-arm fringing, which shifts with telescope pointing, so a '
+                           'flat from another block corrects it less well.\n\n' +
+                           '\n'.join('  '.join(cell.ljust(width) for cell, width in zip(row, widths)).rstrip()
+                                     for row in table) + '\n')
+            archive.writestr('README.txt', readme)
     yield buffer.take()

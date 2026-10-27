@@ -141,6 +141,6 @@ a {
   text-decoration: none;
 }
 
-a:hover {
+a:not(.btn):hover {
   text-decoration: underline;
 }

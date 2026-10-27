@@ -1540,7 +1540,8 @@ def download_raw_spectra_view(request):
         raise Http404('Spectrum not found or not visible to this user')
     target_name = product.target.name.replace(' ', '')
     if is_floyds_frame(product.product_id):
-        response = StreamingHttpResponse(stream_zip([('archive', '', product.product_id)], request.GET.get('standards') == '1'),
+        response = StreamingHttpResponse(stream_zip([('archive', '', product.product_id)], request.GET.get('standards') == '1',
+                                                    f'Raw frames for {product.product_id} from the LCO archive.\n'),
                                          content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="{target_name}_{product.product_id}_raw.zip"'
         return response
@@ -1605,11 +1606,11 @@ def download_spectra_view(request):
               'reduced/older_versions/: earlier versions, as ascii\n')
     if include_raw:
         readme += ('raw/<spectrum>/: raw frames for each spectrum. FLOYDS spectra include the arc, flat and, when chosen, '
-                   'that night\'s flux standard. Reduction files uploaded with a spectrum are under raw/<spectrum>/<version>/ '
-                   'when versions were uploaded with different files.\n')
-    items.insert(0, ('text', 'README.txt', readme + '\n' + '\n'.join(summaries) + '\n'))
+                   'that night\'s flux standard (see the table below). Reduction files uploaded with a spectrum are under '
+                   'raw/<spectrum>/<version>/ when versions were uploaded with different files.\n')
     target_name = products[0].target.name.replace(' ', '')
-    response = StreamingHttpResponse(stream_zip(items, request.GET.get('standards') == '1'), content_type='application/zip')
+    response = StreamingHttpResponse(stream_zip(items, request.GET.get('standards') == '1', readme + '\n' + '\n'.join(summaries) + '\n'),
+                                     content_type='application/zip')
     response['Content-Disposition'] = f'attachment; filename="{target_name}_spectra.zip"'
     return response
 

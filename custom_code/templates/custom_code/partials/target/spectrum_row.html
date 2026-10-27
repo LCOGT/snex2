@@ -49,14 +49,12 @@
       hx-swap="beforebegin"
       hx-on::after-request="if(event.detail.successful) this.value=''">
     <div class="d-flex" style="gap: .25rem; margin-bottom: .25rem;">
-      <button type="button" class="btn btn-sm btn-outline-primary"{% if not entry.has_fits %} disabled title="The FITS file is kept for the most recently uploaded version only"{% else %} title="Download FITS"{% endif %} onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
-      <button type="button" class="btn btn-sm btn-outline-primary" title="Download ASCII" onclick="downloadSpectrum('{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
+      <button type="button" class="btn btn-sm btn-outline-primary"{% if not entry.has_fits %} disabled title="The FITS file is kept for the most recently uploaded version only"{% else %} title="Download FITS"{% endif %} onclick="downloadSpectrum(this, '{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
+      <button type="button" class="btn btn-sm btn-outline-primary" title="Download ASCII" onclick="downloadSpectrum(this, '{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
       {% if entry.raw_available %}
-      <a class="btn btn-sm btn-outline-primary" href="{% url 'download-raw-spectra' %}?dp={{ entry.spectrum.data_product_id }}&standards=1" title="Raw spectrum, arc and flat, plus the flux standard's from the same night">Raw</a>
+      <button type="button" class="btn btn-sm btn-outline-primary" title="Raw spectrum, arc and flat, plus the flux standard's from the same night" onclick="downloadSpectrum(this, '{% url 'download-raw-spectra' %}?dp={{ entry.spectrum.data_product_id }}&amp;standards=1', 'No raw files were found for this spectrum.')">Raw</button>
       {% elif entry.bundle %}
-      <a class="btn btn-sm btn-outline-primary" href="{% url 'download-raw-spectra' %}?spectrum={{ entry.spectrum.id }}" title="Reduction files uploaded with this version ({{ entry.bundle.name }})">Raw</a>
-      {% else %}
-      <span class="d-inline-block" tabindex="0" title="No raw files: only FLOYDS spectra, or spectra uploaded with reduction files, have them"><button type="button" class="btn btn-sm btn-outline-primary" disabled>Raw</button></span>
+      <button type="button" class="btn btn-sm btn-outline-primary" title="Reduction files uploaded with this version ({{ entry.bundle.name }})" onclick="downloadSpectrum(this, '{% url 'download-raw-spectra' %}?spectrum={{ entry.spectrum.id }}', 'No reduction files were found for this spectrum.')">Raw</button>
       {% endif %}
       <a href="{% url 'custom_code:tns-share-spectrum' pk=entry.spectrum.target.id datum_pk=entry.spectrum.id %}" title="Submit TNS classification" class="btn btn-sm btn-outline-info flex-grow-1">Classify on TNS</a>
     </div>

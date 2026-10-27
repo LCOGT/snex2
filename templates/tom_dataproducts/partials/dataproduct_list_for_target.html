@@ -32,16 +32,16 @@
 </div>
 <form action="{% url 'download-spectra' %}" method="GET" id="bulkDownloadForm">
   <div class="mb-3 d-inline-block">
-    <select name="download_format" class="form-control d-inline-block w-auto">
+    <select name="format" class="form-control d-inline-block w-auto">
       <option value="any">Any (default fits)</option>
       <option value="fits">fits</option>
       <option value="ascii">ascii</option>
     </select>
     <label class="ms-2" title="FLOYDS raw frames from the LCO archive, or reduction files uploaded with a spectrum">
-      <input type="checkbox" id="rawFiles"> Include raw / reduction files
+      <input type="checkbox" id="rawFiles" name="raw" value="1"> Include raw / reduction files
     </label>
     <label class="ms-2 text-muted" id="rawStandardsLabel" title="Adds the FLOYDS standard from the same night to each FLOYDS spectrum">
-      <input type="checkbox" id="rawStandards" checked disabled> Include flux standards (FLOYDS)
+      <input type="checkbox" id="rawStandards" name="standards" value="1" disabled> Include flux standards (FLOYDS)
     </label>
     <button type="submit" class="btn btn-success ms-2" id="bulkDownloadSubmit">Download</button>
   </div>
@@ -71,7 +71,7 @@
           data-dp="{{ product.id }}" data-raw="{% if product.raw_available %}1{% endif %}"{% if product.spectrum %}
           data-spectrum-url="{% url 'spectrum-data' target.id product.spectrum.id %}"{% endif %}>
         <td>
-          <input type="checkbox" name="selected_products" value="{{ product.id }}" class="product-checkbox" checked>
+          <input type="checkbox" name="dp" value="{{ product.id }}" class="product-checkbox" checked>
         </td>
         {% if not product.featured %}
         <td><a href="{% url 'tom_dataproducts:feature' pk=product.id %}?target_id={{ target.id }}" title="Make Featured Image" class="btn btn-primary">Feature</a></td>
@@ -171,6 +171,7 @@
     const t = ev.target;
     if (t.id === 'rawFiles') {
       document.getElementById('rawStandards').disabled = !t.checked;
+      if (!t.checked) { document.getElementById('rawStandards').checked = false; }
       document.getElementById('rawStandardsLabel').classList.toggle('text-muted', !t.checked);
       document.getElementById('bulkDownloadHint').textContent = t.checked
         ? 'Reduced spectra in reduced/, raw or reduction files in raw/<spectrum>/'
@@ -212,29 +213,16 @@
     }
   });
   document.addEventListener('submit', function (ev) {
-    if (ev.target.id !== 'bulkDownloadForm') return;
-    ev.preventDefault();
-    if (ev.submitter && ev.submitter.id !== 'bulkDownloadSubmit') return;
-    const form = ev.target;
-    if (!document.querySelectorAll('.product-checkbox:checked').length) {
-      alert("No items selected. Please check at least one data product before downloading.");
+    if (ev.target.id !== 'bulkDownloadForm') { return; }
+    if (!ev.target.querySelector('.product-checkbox:checked')) {
+      ev.preventDefault();
+      alert('No items selected. Please check at least one data product before downloading.');
       return;
     }
-    const checked = Array.from(document.querySelectorAll('.product-row')).filter(function (row) {
-      return row.style.display !== 'none' && row.querySelector('.product-checkbox').checked;
-    });
-    const params = new URLSearchParams(checked.map(function (row) { return ['dp', row.dataset.dp]; }));
-    params.append('format', form.download_format.value);
-    const raw = document.getElementById('rawFiles').checked;
-    if (raw) {
-      params.append('raw', '1');
-      if (document.getElementById('rawStandards').checked) { params.append('standards', '1'); }
-      const missing = checked.filter(function (row) { return row.dataset.raw !== '1'; }).length;
-      document.getElementById('bulkDownloadHint').textContent = 'Downloading ' + checked.length + ' data products' +
-        (missing ? ' (' + missing + ' have no raw files)' : '') + '...';
-    }
-    window.location.href = form.action + '?' + params.toString();
-  });
+    const button = document.getElementById('bulkDownloadSubmit');
+    button.disabled = true;
+    button.textContent = 'Downloading...';
+    button.title = 'Reload the page to start another download';
   });
 })();
 </script>

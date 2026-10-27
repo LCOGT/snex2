@@ -55,7 +55,7 @@
     load(url).then(function (data) {
       title.textContent = data.label;
       link.href = data.target_url;
-      link.classList.remove('d-none');
+      link.classList.toggle('d-none', window.location.pathname.startsWith(data.target_url));
       if (!data.wavelength.length) { plot.innerHTML = '<div class="text-muted p-3">No plottable data for this spectrum.</div>'; return; }
       setTimeout(function () {
         Plotly.newPlot(plot, [{ x: data.wavelength, y: data.flux, mode: 'lines', line: { color: 'black' }, name: data.label }],

@@ -3,8 +3,8 @@ import plotly.graph_objs as go
 import requests
 from django import template, forms
 from django.conf import settings
-from django.db.models.functions import Coalesce, Lower
-from django.db.models import Max, Min
+from django.db.models.functions import Cast, Coalesce, Lower
+from django.db.models import IntegerField, Max, Min
 from django.shortcuts import reverse
 from guardian.shortcuts import get_objects_for_user, get_groups_with_perms
 from django.contrib.auth.models import User, Group
@@ -779,6 +779,14 @@ def snex_recent_targets(context, limit=10):
     }
 
 
+@register.inclusion_tag('comments/list.html', takes_context=True)
+def snex_recent_comments(context, limit=10):
+    targets = targets_for_user(context['request'].user, Target.objects.filter(standard=False), 'view_target')
+    return {'comment_list': Comment.objects.filter(content_type__model__in=('target', 'snextarget')).annotate(
+        object_pk_as_int=Cast('object_pk', output_field=IntegerField())).filter(
+        object_pk_as_int__in=targets.values('pk')).order_by('-submit_date')[:limit]}
+
+
 def _frame_setups(basename, filt):
     parts = (basename or '').split('-')
     if len(parts) < 3 or len(parts[0]) < 6:
@@ -1444,8 +1452,7 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         spec_extras['site'] = '(COJ 2m)'
         spec_extras['instrument'] += ' (FLOYDS)'
 
-    if spectrum.value.get('reducer'):
-        spec_extras['reducer'] = spectrum.value['reducer']
+    spec_extras['reducer'] = spectrum.value.get('reducer')
     commented = spectrum.data_product or spectrum
     comments = Comment.objects.filter(
         object_pk=commented.id, content_type=ContentType.objects.get_for_model(commented)).order_by('id').select_related('user')
@@ -2142,7 +2149,7 @@ def tns_generated_ascii_choice(context, form):
         value = f'{GENERATED_ASCII_PREFIX}{spectrum.pk}'
         form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + choices
         form.initial['ascii_file'] = value
-    form.initial['reducer'] = spectrum.value.get('reducer') or facts.get('reducer') or ''
+    form.initial['reducer'] = spectrum.value.get('reducer') or ''
     form.initial['observer'] = facts.get('observer') or ''
     return ''
 
