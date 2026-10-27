@@ -65,7 +65,7 @@ from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSFormView, TNSSubmitView
-from custom_code.utils import default_version, fits_is_current, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import default_version, fits_is_current, query_tns, tns_object, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -326,6 +326,17 @@ class CustomTargetCreateView(TargetCreateView):
             'groups': Group.objects.filter(name__in=settings.DEFAULT_GROUPS),
             **dict(self.request.GET.items())
         }
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        if response.status_code == 302 and any(tns_object(name) for name in self.object.names):
+            try:
+                changes = update_target_from_tns(self.object)
+                if changes:
+                    messages.success(self.request, 'Added from TNS: ' + ', '.join(changes))
+            except (ValueError, KeyError, requests.RequestException) as e:
+                messages.warning(self.request, f'Created the target, but could not add its TNS information: {e}')
+        return response
 
     def get_success_url(self):
         return f'{super().get_success_url()}?new=1'
@@ -1110,6 +1121,25 @@ def update_from_tns_view(request, pk):
     except (ValueError, KeyError, requests.RequestException) as e:
         messages.error(request, f'Could not update from TNS: {e}')
     return HttpResponse(status=204, headers={'HX-Refresh': 'true'})
+
+
+def resolve_tns_view(request):
+    objname = TNS_PREFIX_RE.sub('', request.GET.get('name', '').replace(' ', '')).lower()
+    if re.fullmatch(r'\d{2}[a-z]{1,4}', objname):
+        objname = '20' + objname
+    if not re.fullmatch(r'\d{4}[a-z]{1,4}', objname):
+        return JsonResponse({'error': 'Enter a TNS name such as 24abc, 2024abc or AT2024abc'}, status=400)
+    try:
+        tns = query_tns(objname)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=404)
+    except requests.RequestException as e:
+        logger.warning(f'TNS lookup of {objname} failed: {e}')
+        return JsonResponse({'error': 'Could not reach TNS, try again later'}, status=502)
+    name = tns['name_prefix'] + tns['objname']
+    existing = Target.matches.match_name(name).first()
+    return JsonResponse({'name': name, 'ra': tns['radeg'], 'dec': tns['decdeg'],
+                         'existing': {'name': existing.name, 'url': reverse('tom_targets:detail', args=(existing.id,))} if existing else None})
 
 
 def _render_target_partial(request, pk, template):

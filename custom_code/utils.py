@@ -445,15 +445,20 @@ def tns_object(name):
     return TNS_PREFIX_RE.sub('', name).lower() if TNS_PREFIX_RE.match(name) else None
 
 
+def query_tns(objname):
+    service = TNSDataService()
+    tns = service.query_service(service.build_query_parameters({'objname': objname}), url=service.get_urls('object_url'))
+    if not tns.get('objname') or not tns.get('name_prefix'):
+        raise ValueError(f'TNS has no object named {objname}')
+    return tns
+
+
 def update_target_from_tns(target):
 
     objname = next((tns_object(name) for name in target.names if tns_object(name)), None)
     if objname is None:
         raise ValueError('this target has no AT or SN name to look up')
-    service = TNSDataService()
-    tns = service.query_service(service.build_query_parameters({'objname': objname}), url=service.get_urls('object_url'))
-    if not tns.get('objname') or not tns.get('name_prefix'):
-        raise ValueError(f'TNS has no object named {objname}')
+    tns = query_tns(objname)
 
     tns_name = tns['name_prefix'] + tns['objname']
     if Target.objects.filter(name__iexact=tns_name).exclude(pk=target.pk).exists():
@@ -465,7 +470,7 @@ def update_target_from_tns(target):
         changes.append(f'name {target.name} to {tns_name}')
         target.name = tns_name
     classification = (tns.get('object_type') or {}).get('name')
-    if classification and classification != target.classification:
+    if classification and classification != target.classification and not target.standard:
         changes.append(f'classification to {classification}')
         target.classification = classification
     if tns.get('redshift') is not None and float(tns['redshift']) != target.redshift:
