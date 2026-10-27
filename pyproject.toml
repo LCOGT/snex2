@@ -31,7 +31,8 @@ dependencies = [
     "gevent>1.4",
     "gunicorn", 
     "dpd_static_support",
-    "slack_sdk"
+    "slack_sdk",
+    "tess-point"
 ]
 
 [project.optional-dependencies]

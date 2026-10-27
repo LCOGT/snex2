@@ -51,10 +51,10 @@ from tom_targets.permissions import targets_for_user
 from tom_targets.tables import TargetTable
 from tom_targets.views import TargetCreateView, TargetDeleteView, TargetListView as TOMTargetListView, TargetMergeView
 from custom_code.facilities.soar_facility import user_can_access_soar
-from custom_code.filters import BrokerTargetFilter, TNSTargetFilter
+from custom_code.filters import TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params
-from custom_code.models import BrokerTarget, InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.models import InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
@@ -65,7 +65,7 @@ from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSFormView, TNSSubmitView
-from custom_code.utils import default_version, fits_is_current, query_tns, tns_object, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import TESS_SECTOR_HALF_DAYS, default_version, fits_is_current, query_tns, tess_sectors, tns_object, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -1147,6 +1147,21 @@ def _render_target_partial(request, pk, template):
     return render(request, template, {'target': target, 'object': target})
 
 
+def tess_sectors_view(request, pk):
+    target = _target_for_user(request, pk)
+    if target.ra is None or target.dec is None:
+        return HttpResponse('<p>This target has no coordinates.</p>')
+    now = Time.now().jd
+    sectors = []
+    for sector in tess_sectors(target.ra, target.dec):
+        start, end = sector['mid_jd'] - TESS_SECTOR_HALF_DAYS, sector['mid_jd'] + TESS_SECTOR_HALF_DAYS
+        sector['start'] = Time(start, format='jd').datetime.date()
+        sector['end'] = Time(end, format='jd').datetime.date()
+        sector['status'] = 'observed' if end < now else ('observing now' if start <= now else 'upcoming')
+        sectors.append(sector)
+    return render(request, 'custom_code/partials/target/tess_sectors.html', {'sectors': sectors})
+
+
 def load_details_tab_view(request, pk):
     return _render_target_partial(request, pk, 'custom_code/partials/target/tab_details.html')
 
@@ -1394,51 +1409,6 @@ class ObservationGroupDetailView(DetailView):
 
         context['parameters'] = parameters
         context['records'] = self.object.observation_records.all().order_by('created')
-        return context
-
-
-class BrokerTargetView(FilterView):
- 
-    template_name = 'custom_code/broker_query_targets.html'
-    model = BrokerTarget
-    paginate_by = 10
-    context_object_name = 'brokertargets'
-    strict = False
-    filterset_class = BrokerTargetFilter
-    ordering = ['-created']
-
-    def get_filterset_kwargs(self, filterset_class):
-        ### Initially filter so only new targets are displayed
-        kwargs = super(BrokerTargetView, self).get_filterset_kwargs(filterset_class)
-        if kwargs['data'] is None:
-            kwargs['data'] = {'status': 'New'}
-        elif 'status' not in kwargs['data']:
-            kwargs['data']._mutable = True
-            kwargs['data']['status'] = 'New'
-        return kwargs
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        #TNS_URL = "https://www.wis-tns.org/object/"
-        for target in context['object_list']:
-            target.coords = make_coords(target.ra, target.dec)
-            if target.tns_target is not None:
-                target.tns_name = target.tns_target.name
-
-            targetname_matchlist = Target.objects.filter(Q(name__icontains=target.name) | Q(aliases__name__icontains=target.name)).distinct().first()
-            if target.tns_target:
-                target_tnsname_matchlist = Target.objects.filter(Q(name__icontains=target.tns_target.name) | Q(aliases__name__icontains=target.tns_target.name)).distinct().first()
-
-            if targetname_matchlist:
-                target.existing_target = targetname_matchlist.id
-                target.exists = True
-            elif target.tns_target and target_tnsname_matchlist:
-                target.existing_target = target_tnsname_matchlist.id
-                target.exists = True
-            else:
-                target.exists = False
-            
-        #    target.link = TNS_URL + target.name
         return context
 
 
@@ -1755,23 +1725,6 @@ def sync_targetextra_view(request):
     target.save()
     
     return HttpResponse(json.dumps({'success': 'Synced'}), content_type='application/json')
-
-def change_broker_target_status_view(request):
-    
-    try:
-        target_id = request.GET.get('target_id', '')
-        brokertarget = BrokerTarget.objects.get(id=target_id)
-        new_status = request.GET.get('new_status')
-        brokertarget.status = new_status
-        brokertarget.save()
-
-        context = {'update': 'Success'}
-    
-    except:
-        context = {'update': 'Failed'} 
-    
-    return HttpResponse(json.dumps(context), content_type='application/json')
-
 
 class SNExTNSSpectrumView(TNSFormView):
 

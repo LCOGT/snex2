@@ -41,11 +41,7 @@
         <td>{{ target.source_group }}
         <td>{{ target.mag_recent }}</td>
         <td>{{ target.mag_lnd }}</td>
-        {% if target.tess_response %}
-  	<td><a href='#' data-bs-toggle='tooltip' title={{ target.tess_response }}>Yes</a>
-        {% else %}
-  	<td>No</td>
-        {% endif %}
+        <td>{% if target.TESS_sectors %}Yes (sector {{ target.TESS_sectors }}){% else %}No{% endif %}</td>
       </tr>
       <tr>
         <td colspan=6 style="border-top:none;">

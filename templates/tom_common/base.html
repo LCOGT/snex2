@@ -54,7 +54,6 @@
 	    <ul class="dropdown-menu">
               <li class="nav-item {% if request.resolver_match.namespace == 'dataservices' %}active{% endif %}">
 		<a class="nav-link" href="{% url 'dataservices:query_list' %}">Make a Query</a>
-		<a class="nav-link" href="{% url 'broker-targets' %}">Automatic Filters</a>
               </li>
 	    </ul>
 	  </li>

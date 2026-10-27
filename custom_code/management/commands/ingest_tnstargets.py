@@ -1,124 +1,78 @@
-from django.core.management.base import BaseCommand
-from datetime import datetime, timedelta
-import os
 import json
-import time
-from astropy.time import Time
-import requests
 import logging
-from custom_code.models import TNSTarget
+import time
+from datetime import datetime, timedelta
 
+from astropy.time import Time
+from django.core.management.base import BaseCommand
+from tom_dataservices.data_services.tns import TNSDataService
+
+from custom_code.models import TNSTarget
+from custom_code.utils import tess_sectors
 
 logger = logging.getLogger(__name__)
 
+SEARCH_WINDOW = timedelta(hours=1)
+TESS_LEAD_DAYS = 14
+TESS_FOLLOW_DAYS = 60
+TNS_PAUSE_SECONDS = 10
+
 
 class Command(BaseCommand):
-    
+
     help = 'Ingests TNS Targets into SNEx'
 
     def handle(self, *args, **kwargs):
-
-        ### Get list of recent candidates
-        
-        api_key = os.environ['TNS_APIKEY']
-        tns_id = os.environ['TNS_APIID']
-        days_ago = 0.042
-        search_url = "https://www.wis-tns.org/api/get/search"
-        obj_url = "https://www.wis-tns.org/api/get/object"
-
-        date = str(datetime.utcnow() - timedelta(days=days_ago))
-        json_list = {'public_timestamp': date}
-
-        obj_list = requests.post(search_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(json_list)})
-        obj_list = json.loads(obj_list.text)['data']
-
-        if not obj_list:
+        service = TNSDataService()
+        since = (datetime.utcnow() - SEARCH_WINDOW).strftime('%Y-%m-%d %H:%M:%S')
+        recent = service.query_service(service.build_query_parameters({'min_date': since}), url=service.get_urls('search_url'))
+        if not recent:
             logger.info('No TNS targets found, have a good day!')
-            return []
+            return
 
-        for obj in obj_list:
-            
-            is_target = TNSTarget.objects.filter(name=obj['objname']).first()
-            if is_target:
-                logger.info('{name} already ingested, skipping'.format(name=obj['objname']))
+        for obj in recent:
+            if TNSTarget.objects.filter(name=obj['objname']).exists():
+                logger.info(f'{obj["objname"]} already ingested, skipping')
                 continue
 
-            json_list = {'objname': obj['objname'], 'photometry': 1, 'spectra': 0}
-            obj_data = requests.post(obj_url, headers={'User-Agent': 'tns_marker{"tns_id":'+str(tns_id)+', "type":"bot", "name":"SNEx_Bot1"}'}, data={'api_key': api_key, 'data': json.dumps(json_list)})
-            obj_data = json.loads(obj_data.text)['data']
+            query = {'api_key': service.get_credentials(),
+                     'data': json.dumps({'objname': obj['objname'], 'photometry': 1, 'spectra': 0})}
+            obj_data = service.query_service(query, url=service.get_urls('object_url'))
+            logger.info(f'Ingesting {obj_data["objname"]} . . .')
 
-            name = obj_data['objname']
-            logger.info('Ingesting {name} . . .'.format(name=name))
-
-            ### Get discovery time and time of last non-detection
             try:
                 disc_jd = Time(obj_data['discoverydate'], format='iso', scale='utc').jd
-            except:
+            except (KeyError, TypeError, ValueError):
                 disc_jd = None
+            photometry = obj_data.get('photometry') or []
+            nondetections = [observation for observation in photometry
+                             if 'Last non detection' in (observation.get('remarks') or '')
+                             and disc_jd and observation['jd'] < disc_jd]
+            last_nondetection = max(nondetections, key=lambda observation: observation['jd'], default=None)
 
-            try:
-                disc_filt = obj_data['discmagfilter']['name']
-            except:
-                disc_filt = None
+            sectors = []
+            if obj_data.get('radeg') is not None and obj_data.get('decdeg') is not None:
+                reference_jd = disc_jd or Time.now().jd
+                sectors = [found['sector'] for found in tess_sectors(float(obj_data['radeg']), float(obj_data['decdeg']))
+                           if reference_jd - TESS_LEAD_DAYS <= found['mid_jd'] <= reference_jd + TESS_FOLLOW_DAYS]
 
-            phot_lnds = []
-            for observation in obj_data['photometry']:
-                if 'Last non detection' in observation['remarks']:
-                    phot_lnds.append(observation)
-
-            if phot_lnds:
-                lnd = 0
-                lnd_maglim = 0
-                lnd_filt = 0
-                for nondet in phot_lnds:
-                    if nondet['jd'] > lnd and nondet['jd'] < disc_jd:
-                        lnd = nondet['jd']
-                        lnd_maglim = nondet['limflux']
-                        lnd_filt = nondet['filters']['name']
-
-            else:
-                lnd = None
-                lnd_maglim = None
-                lnd_filt = None
-
-            all_phot = {}
-            counter = 0
-            for phot in obj_data['photometry']:
-                all_phot[str(counter)] = phot
-                counter += 1
-            all_phot = json.dumps(all_phot)
-
-            try:
-                source_group = obj_data['reporting_group']['group_name']
-            except:
-                source_group = None
-
-            try:
-                classification = obj_data['object_type']['name']
-            except:
-                classification = None
-            
-            newtarget = TNSTarget(
-                name=name,
-                name_prefix=obj_data.get('name_prefix', None),
-                ra=obj_data.get('radeg', None),
-                dec=obj_data.get('decdeg', None),
-                internal_name=obj_data.get('internal_name', None),
-                source_group=source_group,
-                lnd_jd=lnd,
-                lnd_maglim=lnd_maglim,
-                lnd_filter=lnd_filt,
+            TNSTarget.objects.create(
+                name=obj_data['objname'],
+                name_prefix=obj_data.get('name_prefix'),
+                ra=obj_data.get('radeg'),
+                dec=obj_data.get('decdeg'),
+                internal_name=(obj_data.get('internal_names') or '')[:100],
+                source_group=(obj_data.get('reporting_group') or {}).get('group_name'),
+                lnd_jd=last_nondetection['jd'] if last_nondetection else None,
+                lnd_maglim=last_nondetection['limflux'] if last_nondetection else None,
+                lnd_filter=last_nondetection['filters']['name'] if last_nondetection else None,
                 disc_jd=disc_jd,
-                disc_mag=obj_data.get('discoverymag', None),
-                disc_filter=disc_filt,
-                all_phot=all_phot,
-                redshift=obj_data.get('redshift', None),
-                classification=classification
+                disc_mag=obj_data.get('discoverymag'),
+                disc_filter=(obj_data.get('discmagfilter') or {}).get('name'),
+                all_phot=json.dumps({str(i): observation for i, observation in enumerate(photometry)}),
+                redshift=obj_data.get('redshift'),
+                classification=(obj_data.get('object_type') or {}).get('name'),
+                TESS_sectors=', '.join(str(sector) for sector in sectors),
             )
-            
-            newtarget.save()
-            
-            time.sleep(10) # To avoid maxing out the number of TNS calls within rolling 60s window
 
-        return []
-
+            time.sleep(TNS_PAUSE_SECONDS)

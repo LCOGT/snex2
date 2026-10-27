@@ -15,6 +15,7 @@ import re
 import requests
 from django.db.models import Q
 from rest_framework.exceptions import ValidationError
+from tess_stars2px import TESS_Spacecraft_Pointing_Data, tess_stars2px_function_entry
 from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, ReducedDatum, SpectroscopyReducedDatum
 from tom_dataservices.data_services.tns import TNSDataService
 from tom_targets.models import Target, TargetName
@@ -30,6 +31,7 @@ TARGET_CONTENT_TYPES = (('custom_code', 'snextarget'), ('tom_targets', 'target')
 DATUM_MODELS = (ReducedDatum, PhotometryReducedDatum, SpectroscopyReducedDatum)
 MEASURED_KEYS = ('magnitude', 'error', 'psfmag', 'psfdmag', 'apmag', 'dapmag', 'fwhm', 'psfx', 'psfy')
 GENERATED_ASCII_PREFIX = 'spectrum-'
+TESS_SECTOR_HALF_DAYS = 13.7
 FILTER_TRANSLATE = {'U': 'U', 'B': 'B', 'V': 'V', 'R': 'R', 'I': 'I', 'up': 'u', 'u': 'u',
                     'g': 'g', 'gp': 'g', 'r': 'r', 'rp': 'r', 'i': 'i', 'ip': 'i', 'zs': 'zs', 'z': 'zs', 'w': 'w',
                     'g_ZTF': 'g_ZTF', 'r_ZTF': 'r_ZTF', 'i_ZTF': 'i_ZTF', 'UVW2': 'UVW2', 'UVM2': 'UVM2', 'UVW1': 'UVW1',
@@ -443,6 +445,15 @@ def photometry_reduction_version(value, data_product_id=None):
 def tns_object(name):
     name = name.replace(' ', '')
     return TNS_PREFIX_RE.sub('', name).lower() if TNS_PREFIX_RE.match(name) else None
+
+
+def tess_sectors(ra, dec):
+    pointings = TESS_Spacecraft_Pointing_Data()
+    midtimes = dict(zip(pointings.sectors, pointings.midtimes))
+    found = tess_stars2px_function_entry(1, ra, dec, scInfo=pointings)
+    return [{'sector': int(sector), 'camera': int(camera), 'ccd': int(ccd), 'column': round(float(column)),
+             'row': round(float(row)), 'mid_jd': float(midtimes[sector])}
+            for sector, camera, ccd, column, row in zip(*found[3:8]) if 0 < sector < 1000]
 
 
 def query_tns(objname):

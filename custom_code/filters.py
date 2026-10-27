@@ -1,4 +1,4 @@
-from custom_code.models import TNSTarget, BrokerTarget
+from custom_code.models import TNSTarget
 from tom_dataproducts.models import PhotometryReducedDatum
 import django_filters
 from django.db.models import Q
@@ -61,56 +61,11 @@ class TNSTargetFilter(django_filters.FilterSet):
         )
 
     def filter_TESS(self, queryset, name, value):
-            if value == 'y':      bool_value = True
-            elif value == 'n':    bool_value = False
-            return queryset.filter(
-                ~Q(TESS_sectors__isnull = bool_value)
-            )
+        in_tess = Q(TESS_sectors__isnull=False) & ~Q(TESS_sectors='')
+        return queryset.filter(in_tess) if value == 'y' else queryset.exclude(in_tess)
 
     class Meta:
         model = TNSTarget
         fields = []
         form = TNSTargetForm
 
-class BrokerTargetForm(forms.Form): 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.helper = FormHelper()
-        self.helper.add_input(Submit('submit', 'Filter'))
-        self.helper.layout = Layout(
-            Div(
-                Div(PrependedText('name', 'Name like'), css_class='col-md-4'),
-                Div(PrependedText('stream_name', 'Name of Stream'), css_class='col-md-4'),
-                Div(PrependedText('status', 'Status'), css_class='col-md-4'),
-                css_class='row g-2'
-            ),
-        )
-
-class BrokerTargetFilter(django_filters.FilterSet):
-    
-    status_choices = [
-        ('New', 'New'),
-        ('Interesting', 'Interesting'),
-        ('Uninteresting', 'Uninteresting'),
-        ('Added', 'Added')
-    ]
-    
-    name = django_filters.CharFilter(field_name='name', method='filter_name', label='')
-    stream_name = django_filters.CharFilter(field_name='stream_name', lookup_expr='icontains',
-        label=''
-    )
-    status = django_filters.ChoiceFilter(field_name='status', method='filter_status',
-        label='', choices=status_choices, empty_label='')
-
-    def filter_status(self, queryset, name, status):
-        if not status:
-            status = ''
-        return queryset.filter(status=status)
-
-    def filter_name(self, queryset, name, value):
-        return queryset.filter(Q(name__icontains=value) | Q(tns_target__name__icontains=value))
-    
-    class Meta:
-        model = BrokerTarget
-        fields = []
-        form = BrokerTargetForm
