@@ -3,7 +3,7 @@ from tom_targets.models import BaseTarget
 
 class SNExTarget(BaseTarget):
     '''
-    Custom target modeling from BaseTarget for SNEx2 with attributes relating to the target details not included in BaseTarget.
+    Custom target modeling from BaseTarget for SNEx with attributes relating to the target details not included in BaseTarget.
     '''
     redshift = models.FloatField(null=True, blank=True)
     classification = models.CharField(max_length=30, default='', null=True, blank=True)

@@ -1,0 +1,25 @@
+{% if sectors %}
+<p>Yes, in {{ sectors|length }} TESS sector{{ sectors|length|pluralize }} observed or planned so far. Dates are approximate (sector midpoint &plusmn; 13.7 days).</p>
+<table class="detail-tab" style="width: 100%;">
+  <tr>
+    <th>Sector</th>
+    <th>Dates</th>
+    <th>Camera</th>
+    <th>CCD</th>
+    <th>Pixel (column, row)</th>
+    <th>Status</th>
+  </tr>
+  {% for sector in sectors %}
+  <tr{% if sector.status != 'observed' %} style="font-weight: bold;"{% endif %}>
+    <td>{{ sector.sector }}</td>
+    <td>{{ sector.start|date:'Y-m-d' }} to {{ sector.end|date:'Y-m-d' }}</td>
+    <td>{{ sector.camera }}</td>
+    <td>{{ sector.ccd }}</td>
+    <td>{{ sector.column }}, {{ sector.row }}</td>
+    <td>{{ sector.status }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No, it is not on the TESS detectors in any sector observed or planned so far.</p>
+{% endif %}

@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import requests
@@ -70,20 +69,3 @@ def submit_tm_pointings(sequence, pointings):
         logger.warning(f'Treasure Map warnings: {result["WARNINGS"]}')
 
     return not result.get('ERRORS')
-
-
-def cancel_tm_pointings(sequence, instrument_type):
-
-    return tm_request('POST', '/cancel_all', json={'graceid': sequence.nonlocalizedevent.event_id,
-                                                   'instrumentid': get_tm_instrument_id(instrument_type)})
-
-
-def query_tm_pointings(sequence, status, wl_low=1000, wl_high=20000, wl_unit='angstrom'):
-
-    params = {'graceid': sequence.nonlocalizedevent.event_id,
-              'status': status,
-              'wavelength_regime': json.dumps([wl_low, wl_high]),
-              'wavelength_unit': wl_unit
-    }
-
-    return tm_request('GET', '/pointings', params=params)

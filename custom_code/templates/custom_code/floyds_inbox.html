@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 static %}
+{% load django_bootstrap5 static %}
 {% block title %}Floyds Inbox{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -19,7 +19,8 @@
       <th style="width: 10;">Date</th>
       <th style="width: 25%;">Path</th>
       <th style="width: 10%;">File</th>
-      <th style="width: 30%;">Preview</th>
+      <th style="width: 25%;">Preview</th>
+      <th style="width: 5%;">Raw</th>
     </tr>
   </thead>
   <tbody>
@@ -35,6 +36,7 @@
     <td>{{ row.path }}</td>
     <td>{{ row.filename }}</td>
     <td>{% if row.img %}<img width="270" src="{{ row.img }}" alt="img">{% endif %}</td>
+    <td>{% if row.raw_available %}<a class="btn btn-sm btn-outline-primary" href="{% url 'download-raw-spectra' %}?dp={{ row.dp_id }}&standards=1" title="Raw spectrum, arc and flat, plus the flux standard's from the same night">Download</a>{% endif %}</td>
   </tr>
   {% endfor %}
 </table>

@@ -1,6 +1,4 @@
 import logging
-from hop.models import JSONBlob
-from hop.io import Metadata
 from tom_alertstreams.alertstreams.alertstream import AlertStream
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone as tz
@@ -122,7 +120,7 @@ class CustomHopskotchAlertStream(AlertStream):
                             last_check_time = tz.now()
                             public_topics = self.get_all_public_topics()
                             if set(public_topics) != set(self.public_topics):
-                                logger.info(f"New public topics found, restarting hop stream")
+                                logger.info("New public topics found, restarting hop stream")
                                 self.public_topics = public_topics
                                 self.stream_url = self.get_stream_url()
                                 break

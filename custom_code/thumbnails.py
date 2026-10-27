@@ -18,6 +18,9 @@ from custom_code.utils import download_archive_frame
 
 logger = logging.getLogger(__name__)
 
+FRAME_CACHE_SIZE = 50
+CACHE_SECONDS = 24 * 60 * 60
+
 
 # ************************************************************
 def getsky(data):
@@ -111,10 +114,6 @@ def make_depth_256(data, sky=None, sig=None, depth=256, zerosig=-1, spansig=6):
     return data
 
 
-FRAME_CACHE_SIZE = 50
-CACHE_SECONDS = 24 * 60 * 60
-
-
 def _evict(pattern, keep=None):
     ages = {}
     for path in glob.glob(pattern):
@@ -151,16 +150,6 @@ def cached_frame(basename):
     return path
 
 
-def frame_cutout(path, region):
-    with fits.open(path) as hdulist:
-        hdu = hdulist['SCI'] if 'SCI' in hdulist else hdulist[1 if path.endswith('.fz') else 0]
-        ny, nx = hdu.shape
-        x1, x2, y1, y2 = region
-        x1, y1, x2, y2 = max(x1, 0), max(y1, 0), min(x2, nx - 1), min(y2, ny - 1)
-        pixels = hdu.section if hasattr(hdu, 'section') else hdu.data
-        return np.array(pixels[y1:y2 + 1, x1:x2 + 1], dtype=np.float64)
-
-
 # ***************************************************************************
 def make_thumb(basenames, grow=1.0, x=900, y=900, width=250, height=250, ticks=False, spansig=4):
     """
@@ -179,7 +168,14 @@ def make_thumb(basenames, grow=1.0, x=900, y=900, width=250, height=250, ticks=F
             outfiles.append(newfile)
             continue
 
-        data = frame_cutout(cached_frame(basename), region)
+        path = cached_frame(basename)
+        with fits.open(path) as hdulist:
+            hdu = hdulist['SCI'] if 'SCI' in hdulist else hdulist[1 if path.endswith('.fz') else 0]
+            ny, nx = hdu.shape
+            x1, x2, y1, y2 = region
+            x1, y1, x2, y2 = max(x1, 0), max(y1, 0), min(x2, nx - 1), min(y2, ny - 1)
+            pixels = hdu.section if hasattr(hdu, 'section') else hdu.data
+            data = np.array(pixels[y1:y2 + 1, x1:x2 + 1], dtype=np.float64)
         data = make_depth_256(data, zerosig=0, spansig=spansig)
 
         im = Image.fromarray(data.astype(np.uint8), mode='L')

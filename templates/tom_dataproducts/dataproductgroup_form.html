@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 static %}
+{% load django_bootstrap5 static %}
 {% block title %}Create Data Group {% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -13,8 +13,8 @@
 <form method="POST">
   {% csrf_token %}
   {% bootstrap_form form %}
-  {% buttons %}
+  <div class="mb-3">
   <input type="submit" class="btn btn-primary" value="Save">
-  {% endbuttons %}
+  </div>
 </form>
 {% endblock %}

@@ -8,7 +8,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def cancel_gw_obs(galaxy_ids=[], sequence_id=None):
+def cancel_gw_obs(galaxy_ids=(), sequence_id=None):
     """
     Hook to cancel observations for galaxies corresponding to a GW EventSequence
     Takes as input either a list of GWFollowupGalaxy IDs or an EventSequence ID

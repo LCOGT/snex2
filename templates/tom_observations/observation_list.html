@@ -1,5 +1,5 @@
 {% extends 'tom_common/base.html' %}
-{% load bootstrap4 observation_extras targets_extras static custom_code_tags %}
+{% load django_bootstrap5 observation_extras targets_extras static custom_code_tags %}
 {% block title %}Observations{% endblock %}
 {% block additional_css %}
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
@@ -138,7 +138,7 @@
         hx-swap="outerHTML"
         hx-trigger="click once"
         hx-disabled-elt="this">Load Upcoming Reminders
-        <span class="htmx-indicator spinner-border spinner-border-sm ml-1"></span>
+        <span class="htmx-indicator spinner-border spinner-border-sm ms-1"></span>
       </button>
     </div>
     {% bootstrap_pagination page_obj extra=request.GET.urlencode %}

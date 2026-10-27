@@ -1,4 +1,26 @@
-{% load bootstrap4 %}
+{% load django_bootstrap5 static %}
+<script src="{% static 'custom_code/spectrum_view.js' %}"></script>
+<style>
+  .comment-row { transition: background-color .15s; margin-bottom: .25rem; }
+  .comment-row:has(.comment-delete:hover) { background-color: #f8d7da; }
+  #spectra-tbody > tr > td:first-child .btn-sm,
+  #spectra-tbody > tr > td:first-child .form-select-sm,
+  #spectra-tbody > tr > td:first-child .form-control-sm {
+    font-size: 1rem;
+    padding-top: .15rem;
+    padding-bottom: .15rem;
+  }
+  #spectra-tbody > tr > td:first-child .btn-sm {
+    padding-left: .35rem;
+    padding-right: .35rem;
+  }
+  #spectra-tbody .btn:disabled {
+    color: #6c757d;
+    border-color: #6c757d;
+    pointer-events: auto;
+    cursor: not-allowed;
+  }
+</style>
 
 <form method="POST" action="{% url 'tom_dataproducts:share_all' tg_pk=target.id %}" enctype="multipart/form-data" id="spectroscopy-data-share-form">
   {% csrf_token %}
@@ -14,7 +36,7 @@
       hx-swap="outerHTML">
       <td colspan="2" style="text-align: center; padding: 30px; color: #999;">
         <div class="spinner-border spinner-border-sm" role="status" style="margin-right: 10px;">
-          <span class="sr-only">Loading...</span>
+          <span class="visually-hidden">Loading...</span>
         </div>
         Loading spectrum for {{ spectrum_meta.time }} ({{ spectrum_meta.telescope }} - {{ spectrum_meta.instrument }})...
       </td>
@@ -26,26 +48,22 @@
   </table>
   <div class="card mt-4 mb-4">
     <div class="card-header d-flex align-items-center">
-        <span>Share selected spectra <span class="text-muted ml-2" id="selected-spectra-count">(none selected)</span></span>
-        <span class="ml-4 d-inline-flex align-items-center">
+        <span>Share selected spectra <span class="text-muted ms-2" id="selected-spectra-count">(none selected)</span></span>
+        <span class="ms-4 d-inline-flex align-items-center">
             <input type="checkbox" id="select-all-spectra" onchange="select_all_spectra(this.checked)">
-            <label class="form-check-label ml-1 mb-0" for="select-all-spectra">Select all</label>
+            <label class="form-check-label ms-1 mb-0" for="select-all-spectra">Select all</label>
         </span>
     </div>
     <div class="card-body">
     {% if sharing_destinations %}
         {% bootstrap_field target_data_share_form.share_title %}
         {% bootstrap_field target_data_share_form.share_message %}
-        <div class="form-row align-items-end">
+        <div class="row g-2 align-items-end">
             <div class="col-sm-5">
                 {% bootstrap_field target_data_share_form.share_destination %}
             </div>
             <div class="col-sm-7 mb-3">
                 <input type="submit" class="btn btn-primary" id="submit_selected_spectra" value="Submit" name="share_targetdata_form" disabled onclick="setTargetOnSpectroscopyForm('')">
-                {% if hermes_sharing %}
-                <span class="mx-3">or</span>
-                <button class="btn btn-info" type="submit" formaction="{% url 'tom_targets:hermes-preload' pk=target.id %}" onclick="setTargetOnSpectroscopyForm('_blank')">Open in Hermes &#x1F5D7;</button>
-                {% endif %}
             </div>
         </div>
     {% else %}
@@ -58,7 +76,8 @@
 </form>
 
 <script>
-function downloadSpectrum(url, missingMessage) {
+function downloadSpectrum(button, url, missingMessage) {
+  button.disabled = true;
   fetch(url).then(function (response) {
     if (response.status === 404) { alert(missingMessage); return; }
     if (!response.ok) { alert('Download failed: ' + response.status); return; }
@@ -72,6 +91,10 @@ function downloadSpectrum(url, missingMessage) {
       link.remove();
       URL.revokeObjectURL(link.href);
     });
+  }).catch(function (error) {
+    alert('Download failed: ' + error.message);
+  }).finally(function () {
+    button.disabled = false;
   });
 }
 function setTargetOnSpectroscopyForm(val) {
