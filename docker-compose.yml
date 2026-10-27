@@ -1,4 +1,3 @@
-version: '2'
 services:
     snex2-db:
         image: postgis/postgis:15-3.3-alpine
@@ -62,9 +61,6 @@ services:
         network_mode: bridge
         links:
             - "snex2-db:snex2-db"
-            - "snex2:snex2"
-        ports:
-            - 8898:8080
         restart: "always"
         entrypoint: [ "bash", "-c", "python manage.py readstreams"]
         environment:
