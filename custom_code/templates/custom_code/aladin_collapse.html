@@ -2,8 +2,9 @@
 <link rel="stylesheet" href="//aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.css" />
 <!-- insert this snippet where you want Aladin Lite viewer to appear and after the loading of jQuery -->
   <div id="aladin-lite-{{ target.name }}" style="width:200px;height:200px;" class="panel-body"></div>
-<script type="text/javascript" src="//aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.js" charset="utf-8"></script>
+<script type="text/javascript" src="//aladin.u-strasbg.fr/AladinLite/api/v2/latest/aladin.min.js" charset="utf-8" async></script>
 <script type="text/javascript">
+  window.addEventListener('load', function () {
     var aladin = A.aladin('#aladin-lite-{{ target.name }}', {
       survey: "P/PanSTARRS/DR1/color/z/zg/g",
       fov:0.03,
@@ -19,4 +20,5 @@
     hipsCats['gdr2'].hide();
     aladin.addCatalog(hipsCats['ps1']);
     aladin.addCatalog(hipsCats['gdr2']);
+  });
 </script>

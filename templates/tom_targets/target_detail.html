@@ -258,8 +258,8 @@
 </div>
 {% endblock %}
 {% block extra_javascript %}
-<script src="//aladin.cds.unistra.fr/AladinLite/api/v3/3.8.2/aladin.js" charset="utf-8" defer></script>
-<script src="{% static 'tom_targets/js/aladin_finderchart.js' %}" defer></script>
+<script src="//aladin.cds.unistra.fr/AladinLite/api/v3/3.8.2/aladin.js" charset="utf-8" async
+  onload="document.body.appendChild(Object.assign(document.createElement('script'), {src: '{% static 'tom_targets/js/aladin_finderchart.js' %}'}))"></script>
 {% if request.GET.new %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
