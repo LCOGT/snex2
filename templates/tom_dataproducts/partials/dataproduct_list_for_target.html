@@ -67,11 +67,10 @@
     <tbody>
     {% for product in products %}
       {% if product.data %}
-      {% with extra=product.reduceddatumextra_set.first %}
       <tr class="product-row"
           data-observed="{{ product.observed|date:'Y-m-d' }}"
-          data-telescope="{{ extra.value.telescope|default:'' }}"
-          data-instrument="{{ extra.value.instrument|default:'' }}"
+          data-telescope="{{ product.telescope }}"
+          data-instrument="{{ product.instrument }}"
           data-dp="{{ product.id }}" data-raw="{% if product.raw_available %}1{% endif %}"{% if product.spectrum %}
           data-spectrum-url="{% url 'spectrum-data' target.id product.spectrum.id %}"{% endif %}>
         <td>
@@ -111,7 +110,6 @@
         {% if is_admin %}<td>{% dataproduct_update product %}</td>{% endif %}
         {% if is_admin %}<td><a href="{% url 'tom_dataproducts:delete' product.id %}" class="btn btn-danger">Delete</a></td>{% endif %}
       </tr>
-      {% endwith %}
       {% endif %}
     {% endfor %}
     </tbody>

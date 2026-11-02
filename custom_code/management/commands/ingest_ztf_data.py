@@ -4,7 +4,6 @@ import logging
 from astropy.time import Time, TimezoneInfo
 from tom_dataproducts.models import PhotometryReducedDatum, DataProduct
 from tom_targets.models import Target
-from custom_code.models import ReducedDatumExtra
 from guardian.shortcuts import assign_perm
 from django.contrib.auth.models import Group
 
@@ -48,18 +47,6 @@ def get_ztf_data(target):
             assign_perm('tom_dataproducts.view_dataproduct', group, dp)
             assign_perm('tom_dataproducts.change_dataproduct', group, dp)
             assign_perm('tom_dataproducts.delete_dataproduct', group, dp)
-        datum_extra_value = {
-            'data_product_id': dp.id,
-            'instrument': 'ZTF',
-            'data_product_product_id': f'{ztf_name}_photometry'
-        }
-        rd_extra, _ = ReducedDatumExtra.objects.get_or_create(
-            target = target,
-            data_product = dp,
-            data_type = 'photometry',
-            key = 'upload_extras',
-            value = datum_extra_value
-        )
 
     for alert in detections:
         if alert.get('dubious'):
@@ -79,7 +66,9 @@ def get_ztf_data(target):
             source_name = ztf_name,
             source_location = url,
             target = target,
-            data_product = dp
+            data_product = dp,
+            instrument = 'ZTF',
+            unit = 'mag'
         )
         if rd_created:
             for group in Group.objects.all():

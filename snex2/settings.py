@@ -98,7 +98,6 @@ DATA_SHARING = {
         'DEFAULT_AUTHORS': os.getenv('HERMES_DEFAULT_AUTHORS', ''),
         'USER_TOPICS': ['hermes.test', 'hermes.message', 'hermes.discovery', 'hermes.photometry', 'hermes.spectroscopy'],  # You must have write permissions on these topics
         'GROUP_NAMES': ['Global SN Project', 'Hermes_group', 'SNEX'],
-        'DATA_CONVERTER_CLASS': 'custom_code.hermes_data_converter.SNEx2HermesDataConverter',
         'FILTER_MAPPING': {
             'B': 'B-astrodon',
             'V': 'V-Johnson',

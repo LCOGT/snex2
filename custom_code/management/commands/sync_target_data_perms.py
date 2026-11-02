@@ -8,7 +8,6 @@ from guardian.shortcuts import assign_perm
 
 from tom_targets.models import Target
 from tom_dataproducts.models import ReducedDatum, PhotometryReducedDatum, SpectroscopyReducedDatum, DataProduct
-from custom_code.models import ReducedDatumExtra
 
 ACTIONS = ('view', 'change', 'delete')
 
@@ -17,7 +16,6 @@ MODELS = [
     (PhotometryReducedDatum, 'target', 'tom_dataproducts', 'photometryreduceddatum'),
     (SpectroscopyReducedDatum, 'target', 'tom_dataproducts', 'spectroscopyreduceddatum'),
     (DataProduct,       'target', 'tom_dataproducts', 'dataproduct'),
-    (ReducedDatumExtra, 'target', 'custom_code',      'reduceddatumextra'),
 ]
 
 def _ct(app_label, model):

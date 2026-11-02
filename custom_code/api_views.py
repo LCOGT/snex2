@@ -19,7 +19,6 @@ from tom_targets.models import Target, TargetName
 from tom_targets.permissions import targets_for_user
 
 from custom_code.filters import SNExPhotometryFilter
-from custom_code.models import ReducedDatumExtra
 from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.processors.spectroscopy_processor import SpecProcessor
 from custom_code.scheduling import save_comments
@@ -166,7 +165,6 @@ class SNExDataProductViewSet(DataProductViewSet):
                 if not spectrum or replace:
                     for datums in dataproduct_datums(dp):
                         datums.delete()
-                ReducedDatumExtra.objects.filter(data_product=dp).delete()
                 dp.data_product_type = data['data_product_type']
                 if file:
                     dp.data = file
@@ -196,10 +194,7 @@ class SNExDataProductViewSet(DataProductViewSet):
                     logger.exception(f'Processing failed for uploaded data product {dp.data.name}')
                     return Response({'file': f'Could not process file: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 reduceddatums = list(reduced_data.values_list('id', flat=True))
-                if dp == uploaded:
-                    ReducedDatumExtra.objects.create(target_id=dp.target_id, data_product=dp, data_type=dp.data_product_type,
-                                                     key='upload_extras', value=rd_extras)
-                else:
+                if dp != uploaded:
                     groups = list(Group.objects.filter(name__in=dataproduct_view_groups(dp)))
                 if dp.data_product_type == 'spectroscopy':
                     DataProduct.objects.filter(pk=dp.pk).update(created=reduced_data.first().timestamp)

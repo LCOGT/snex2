@@ -12,7 +12,7 @@
         {% if entry.spec_extras.telescope %}<tr><th class="p-0 pe-2 fw-normal text-muted">Telescope</th><td class="p-0">{{ entry.spec_extras.telescope }} {{ entry.spec_extras.site }}</td></tr>{% endif %}
         {% if entry.spec_extras.instrument %}<tr><th class="p-0 pe-2 fw-normal text-muted">Instrument</th><td class="p-0">{{ entry.spec_extras.instrument }}</td></tr>{% endif %}
         {% if entry.spec_extras.exptime %}<tr><th class="p-0 pe-2 fw-normal text-muted">Exposure</th><td class="p-0">{{ entry.spec_extras.exptime|floatformat:0 }}s</td></tr>{% endif %}
-        {% if entry.spec_extras.slit %}<tr><th class="p-0 pe-2 fw-normal text-muted">Slit</th><td class="p-0">{{ entry.spec_extras.slit }}"</td></tr>{% endif %}
+        {% if entry.spec_extras.setup %}<tr><th class="p-0 pe-2 fw-normal text-muted">Setup</th><td class="p-0">{{ entry.spec_extras.setup }}</td></tr>{% endif %}
         {% if entry.spec_extras.airmass %}<tr><th class="p-0 pe-2 fw-normal text-muted">Airmass</th><td class="p-0">{{ entry.spec_extras.airmass|floatformat:2 }}</td></tr>{% endif %}
         {% if entry.spec_extras.reducer %}<tr><th class="p-0 pe-2 fw-normal text-muted">Reducer</th><td class="p-0">{{ entry.spec_extras.reducer }}</td></tr>{% endif %}
       </tbody>
@@ -36,6 +36,12 @@
       <option value="{{ version.id }}"{% if version.id == entry.spectrum.id %} selected{% endif %}>v{{ forloop.revcounter }}{% if version.final %} (final){% endif %} &middot; {{ version.uploaded }} &middot; {{ version.reducer }}</option>
       {% endfor %}
     </select>
+    {% if entry.can_mark_final and not entry.spectrum.value.final_reduction %}
+    <button type="button" class="btn btn-sm btn-outline-success w-100" style="margin-bottom: .25rem;" title="Use this version for the spectroscopy page, TNS and downloads"
+      hx-post="{% url 'mark-spectrum-final' entry.spectrum.target.id entry.spectrum.id %}"
+      hx-target="#spectrum-row-{{ entry.spectrum.id }}"
+      hx-swap="outerHTML">Mark as final</button>
+    {% endif %}
     {% endif %}
     {% for comment in entry.spec_extras.comments %}
     {% include 'custom_code/partials/target/comment_row.html' %}
@@ -49,7 +55,7 @@
       hx-swap="beforebegin"
       hx-on::after-request="if(event.detail.successful) this.value=''">
     <div class="d-flex" style="gap: .25rem; margin-bottom: .25rem;">
-      <button type="button" class="btn btn-sm btn-outline-primary"{% if not entry.has_fits %} disabled title="The FITS file is kept for the most recently uploaded version only"{% else %} title="Download FITS"{% endif %} onclick="downloadSpectrum(this, '{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
+      <button type="button" class="btn btn-sm btn-outline-primary"{% if not entry.has_fits %} disabled title="No FITS file was kept for this version"{% else %} title="Download FITS"{% endif %} onclick="downloadSpectrum(this, '{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'fits' %}', 'No FITS file was found for this spectrum.')">FITS</button>
       <button type="button" class="btn btn-sm btn-outline-primary" title="Download ASCII" onclick="downloadSpectrum(this, '{% url 'download-spectrum' entry.spectrum.target.id entry.spectrum.id 'ascii' %}', 'No data was found to write an ASCII file for this spectrum.')">ASCII</button>
       {% if entry.raw_available %}
       <button type="button" class="btn btn-sm btn-outline-primary" title="Raw spectrum, arc and flat, plus the flux standard's from the same night" onclick="downloadSpectrum(this, '{% url 'download-raw-spectra' %}?dp={{ entry.spectrum.data_product_id }}&amp;standards=1', 'No raw files were found for this spectrum.')">Raw</button>
