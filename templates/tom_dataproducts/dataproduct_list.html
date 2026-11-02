@@ -5,7 +5,6 @@
 <link rel="stylesheet" href="{% static 'tom_targets/css/targets_snexclone.css' %}">
 {% endblock %}
 {% block content %}
-{% include 'tom_dataproducts/partials/js9_scripts.html' %}
 <nav class="navbar navbar-expand-md fixed-top fixed-top-2">
   <div class="collapse navbar-collapse" id="targetInfo">
     <h3>Data Products</h3>
@@ -54,7 +53,6 @@
             {% cache None thumbnail product.id %}
             <img src="{{ product.get_preview }}" class="thumbnail"><br/>
             {% endcache %}
-            {% include 'tom_dataproducts/partials/js9_button.html' with url=product.data.url only %}
           </td>
           {% else %}
           <td></td>

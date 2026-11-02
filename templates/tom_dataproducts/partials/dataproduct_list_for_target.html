@@ -1,7 +1,6 @@
 {% load django_bootstrap5 static %}
 {% load custom_code_tags %}
 <script src="{% static 'custom_code/spectrum_view.js' %}"></script>
-{% include 'tom_dataproducts/partials/js9_scripts.html' %}
 <h4>Data</h4>
 <div class="row mb-3 bg-light p-3 rounded">
   <div class="col-md-3">
@@ -55,7 +54,6 @@
       <tr>
         <th><input type="checkbox" id="selectAll" checked></th>
         <th></th>
-        <th></th>
         <th>Filename</th>
         <th>Type</th>
         <th>Date</th>
@@ -81,12 +79,6 @@
         {% else %}
         <td><span class="btn btn-secondary active featured">Featured</span></td>
         {% endif %}
-        <td>
-          {% if 'fits' in product.get_file_name or product.data_product_type == 'fits_file' %}
-            {% url 'custom_code:download-dataproduct' pk=product.id as js9_url %}
-            {% include 'tom_dataproducts/partials/js9_button.html' with url=js9_url only %}
-          {% endif %}
-        </td>
         <td><a href="{% url 'custom_code:download-dataproduct' product.id %}">{{ product.get_file_name }}</a></td>
         <td>
           {% if product.data_product_type %}
