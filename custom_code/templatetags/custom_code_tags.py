@@ -754,6 +754,7 @@ def photometry_data_list(context, target):
                      'exptime': v.get('exptime'),
                      'fwhm': measured(v.get('fwhm')),
                      'uploaded_by': v.get('uploaded_by') or '',
+                     'color': get_color(d.bandpass),
                      'instrument': d.instrument or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
     dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
     one_day = datetime.timedelta(days=1)

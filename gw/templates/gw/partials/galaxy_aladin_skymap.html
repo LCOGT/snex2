@@ -1,20 +1,22 @@
-<!-- embedding Aladin Lite example code found at: https://aladin.cds.unistra.fr/AladinLite/doc/  -->
-<!-- include Aladin Lite CSS file in the head section of your page -->
 <div id="aladin-lite-skymap-div" style="width:700px; height:400px; margin:auto; margin-top: 20px;" ></div>
-<script type="text/javascript" src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
 <script type="text/javascript">
 
 let aladinSkymap;
-A.init.then(() => {
+window.addEventListener('load', () => {
+  let script = document.getElementById('aladin-js');
+  if (!script) {
+    script = Object.assign(document.createElement('script'), {id: 'aladin-js', src: '//aladin.cds.unistra.fr/AladinLite/api/v3/3.8.2/aladin.js'});
+    document.head.appendChild(script);
+  }
+  script.addEventListener('load', () => A.init.then(() => {
     aladinSkymap = A.aladin('#aladin-lite-skymap-div',
     {
     survey: "P/DSS2/color", 
     fov:360,
     }
     );
-        
-        
-    var targets = {{ targets|safe }}; //targets cannot be a queryset; here it is a list of dictionaries
+
+    var targets = {{ targets|safe }};
 
     for (var i = 0; i < targets.length; i++) {
         var target = targets[i];
@@ -23,6 +25,7 @@ A.init.then(() => {
         popup_info = ['RA: '.concat(target.ra, '<br>',  'Dec: ', target.dec, '<br>', 'Score: ', target.score.toFixed(4))];
         cat.addSources([A.marker(target.ra, target.dec, {popupTitle: target.name, popupDesc: popup_info})]);
     }
+  }));
 });
 
 </script>

@@ -258,8 +258,17 @@
 </div>
 {% endblock %}
 {% block extra_javascript %}
-<script src="//aladin.cds.unistra.fr/AladinLite/api/v3/3.8.2/aladin.js" charset="utf-8" defer></script>
-<script src="{% static 'tom_targets/js/aladin_finderchart.js' %}" defer></script>
+<script>
+window.addEventListener('load', function () {
+  const script = document.createElement('script');
+  script.src = '//aladin.cds.unistra.fr/AladinLite/api/v3/3.8.2/aladin.js';
+  script.onload = function () {
+    document.body.appendChild(Object.assign(document.createElement('script'), {src: '{% static 'tom_targets/js/aladin_finderchart.js' %}'}));
+  };
+  script.onerror = function () { document.getElementById('aladin-spinner').remove(); };
+  document.head.appendChild(script);
+});
+</script>
 {% if request.GET.new %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {

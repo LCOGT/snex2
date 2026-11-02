@@ -15,18 +15,22 @@
     <input type="search" id="phot-basename" class="form-control" placeholder="Search basename" autocomplete="off">
   </div>
   <div class="col-md-1">
-    <label for="phot-band" class="fw-bold">Filter:</label>
-    <select id="phot-band" class="form-control phot-filter">
-      <option value="">-- All --</option>
-      {% for f in filters %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
-    </select>
+    <label class="fw-bold d-block">Filter:</label>
+    <div class="dropdown">
+      <button type="button" class="btn btn-outline-secondary dropdown-toggle w-100 text-start text-truncate" data-bs-toggle="dropdown" data-bs-auto-close="outside" id="phot-bandLabel">All</button>
+      <div class="dropdown-menu" id="phot-band">
+        {% for f in filters %}<label class="dropdown-item"><input type="checkbox" class="form-check-input me-2 phot-filter" value="{{ f }}">{{ f }}</label>{% endfor %}
+      </div>
+    </div>
   </div>
   <div class="col-md-1">
-    <label for="phot-instrument" class="fw-bold">Instrument:</label>
-    <select id="phot-instrument" class="form-control phot-filter">
-      <option value="">-- All --</option>
-      {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
-    </select>
+    <label class="fw-bold d-block">Instrument:</label>
+    <div class="dropdown">
+      <button type="button" class="btn btn-outline-secondary dropdown-toggle w-100 text-start text-truncate" data-bs-toggle="dropdown" data-bs-auto-close="outside" id="phot-instrumentLabel">All</button>
+      <div class="dropdown-menu" id="phot-instrument">
+        {% for i in instruments %}<label class="dropdown-item"><input type="checkbox" class="form-check-input me-2 phot-filter" value="{{ i }}">{{ i }}</label>{% endfor %}
+      </div>
+    </div>
   </div>
   <div class="col-md-1">
     <label for="phot-type" class="fw-bold">Subtracted:</label>
@@ -96,7 +100,7 @@
   <tbody>
   {% for row in rows %}
     <tr class="phot-row" data-id="{{ row.datum.pk }}" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}"
-        data-band="{{ row.datum.bandpass }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-algorithm="{{ row.subtracted }}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}"
+        data-band="{{ row.datum.bandpass }}" data-color="{{ row.color }}" data-type="{% if row.subtracted %}subtracted{% else %}unsubtracted{% endif %}" data-algorithm="{{ row.subtracted }}" data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}"
         data-time="{{ row.datum.timestamp|date:'c' }}" data-mag="{% if row.brightness is not None %}{{ row.brightness|stringformat:'.4f' }}{% endif %}"
         data-err="{% if row.datum.brightness_error is not None %}{{ row.datum.brightness_error|stringformat:'.4f' }}{% endif %}"
         data-limit="{% if row.datum.limit is not None %}{{ row.datum.limit|stringformat:'.4f' }}{% endif %}">
@@ -171,8 +175,15 @@
   }
   table.querySelectorAll('.phot-groups').forEach((cell) => showGroups(cell, cell.dataset.groups ? cell.dataset.groups.split('|') : []));
 
+  function checkedValues(id) {
+    const values = Array.from(document.querySelectorAll('#' + id + ' input:checked')).map((cb) => cb.value);
+    document.getElementById(id + 'Label').textContent = values.length === 0 ? 'All' : values.length === 1 ? values[0] : values.length + ' selected';
+    return values;
+  }
+
   function applyFilters() {
-    const start = val('phot-start'), end = val('phot-end'), band = val('phot-band'), inst = val('phot-instrument'), type = val('phot-type');
+    const start = val('phot-start'), end = val('phot-end'), type = val('phot-type');
+    const bands = checkedValues('phot-band'), insts = checkedValues('phot-instrument');
     const basename = val('phot-basename').trim().toLowerCase();
     const algorithmGroup = document.getElementById('phot-algorithm-group');
     algorithmGroup.style.visibility = type === 'subtracted' ? 'visible' : 'hidden';
@@ -180,7 +191,7 @@
     rows().forEach(function (r) {
       const d = r.dataset.date;
       const show = (!start || d >= start) && (!end || d <= end) &&
-                   (!band || r.dataset.band === band) && (!inst || r.dataset.instrument === inst) &&
+                   (!bands.length || bands.includes(r.dataset.band)) && (!insts.length || insts.includes(r.dataset.instrument)) &&
                    (!type || r.dataset.type === type) && (!algorithm || r.dataset.algorithm === algorithm) &&
                    (!basename || r.dataset.basename.toLowerCase().includes(basename));
       r.style.display = show ? '' : 'none';
@@ -189,18 +200,18 @@
   }
   const plotDiv = document.getElementById('phot-plot');
   function plotSelected() {
-    const palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'];
-    const bands = [], traces = {};
+    const traces = {};
     selected().forEach(function (r) {
       const limit = r.dataset.mag === '';
       if (limit && r.dataset.limit === '') { return; }
       const band = r.dataset.band || '?';
-      if (bands.indexOf(band) === -1) { bands.push(band); }
-      const color = palette[bands.indexOf(band) % palette.length];
-      const key = band + (limit ? ' (limit)' : '');
+      const color = r.dataset.color;
+      const algorithm = r.dataset.type === 'subtracted' ? r.dataset.algorithm : '';
+      const symbol = limit ? 'triangle-down-open' : ({hotpants: 'triangle-up', pyzogy: 'square'}[algorithm.toLowerCase()] || (algorithm ? 'diamond' : 'circle'));
+      const key = band + (algorithm ? ' ' + algorithm : '') + (limit ? ' (limit)' : '');
       const trace = traces[key] || (traces[key] = {
         x: [], y: [], mode: 'markers', name: key, type: 'scatter',
-        marker: { color: color, symbol: limit ? 'triangle-down-open' : 'circle' },
+        marker: { color: color, symbol: symbol },
         error_y: { type: 'data', array: [], visible: !limit, color: color },
       });
       trace.x.push(r.dataset.time);
@@ -234,7 +245,8 @@
   document.getElementById('phot-basename').addEventListener('input', applyFilters);
   document.getElementById('phot-clear').addEventListener('click', function () {
     ['phot-start', 'phot-end'].forEach((id) => { const el = document.getElementById(id); el.value = el.defaultValue; });
-    ['phot-basename', 'phot-band', 'phot-instrument', 'phot-type', 'phot-algorithm'].forEach((id) => { document.getElementById(id).value = ''; });
+    ['phot-basename', 'phot-type', 'phot-algorithm'].forEach((id) => { document.getElementById(id).value = ''; });
+    document.querySelectorAll('#phot-band input, #phot-instrument input').forEach((cb) => { cb.checked = false; });
     applyFilters();
   });
   document.getElementById('phot-select-all').addEventListener('change', function (ev) {

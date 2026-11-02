@@ -66,18 +66,18 @@
     });
   }
 
-  function overlay(div, urls) {
+  function overlay(div, entries) {
     const request = ++overlayRequest;
-    if (!urls.length) {
+    if (!entries.length) {
       Plotly.purge(div);
       div.innerHTML = '<div class="text-muted p-3">No spectra selected.</div>';
       return;
     }
-    Promise.all(urls.map(function (url) { return load(url).catch(function () { return null; }); })).then(function (spectra) {
+    Promise.all(entries.map(function (entry) { return load(entry.url).catch(function () { return null; }); })).then(function (spectra) {
       if (request !== overlayRequest) { return; }
-      const traces = spectra.filter(function (data) { return data && data.wavelength.length; }).map(function (data) {
-        return { x: data.wavelength, y: data.flux, mode: 'lines', name: data.label };
-      });
+      const traces = spectra.map(function (data, i) {
+        return data && data.wavelength.length && { x: data.wavelength, y: data.flux, mode: 'lines', name: data.label, line: { color: entries[i].color } };
+      }).filter(Boolean);
       if (!div.querySelector('.plot-container')) { div.innerHTML = ''; }
       Plotly.react(div, traces, layout({ height: 450 }), { responsive: true });
     });

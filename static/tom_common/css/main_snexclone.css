@@ -144,3 +144,7 @@ a {
 a:not(.btn):hover {
   text-decoration: underline;
 }
+
+html, body {
+  overscroll-behavior-y: none;
+}
