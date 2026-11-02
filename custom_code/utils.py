@@ -5,6 +5,7 @@ from django.contrib.auth.models import Group
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
 from django.core.exceptions import NON_FIELD_ERRORS
+from django.core.files.storage import default_storage
 from django.urls import reverse
 from django.utils import timezone
 
@@ -386,14 +387,18 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
     return s
 
 
-def upload_extras(product):
-    extra = product.reduceddatumextra_set.first() if product else None
-    return dict(extra.value) if extra and isinstance(extra.value, dict) else {}
+def spectrum_setup(extras):
+    return ', '.join(f'{key} {extras[key]}' for key in ('grism', 'slit') if extras.get(key) not in (None, ''))
+
+
+def version_file(spectrum):
+    name = spectrum.value.get('file') or ''
+    return name if name and default_storage.exists(name) else ''
 
 
 def fits_is_current(spectrum):
     product = spectrum.data_product
-    return bool(product and product.data) and upload_extras(product).get('file_version') in (None, spectrum.reduction_version)
+    return bool(product and product.data and spectrum.value.get('file') == product.data.name)
 
 
 def spectrum_ascii(rd, header=True):
@@ -402,11 +407,9 @@ def spectrum_ascii(rd, header=True):
     columns = [rd.wavelength, rd.flux] + ([rd.error] if len(rd.error) == len(rd.flux) else [])
     lines = []
     if header:
-        facts = dict(upload_extras(rd.data_product), telescope=rd.telescope, instrument=rd.instrument)
-        if rd.exposure_time is not None:
-            facts['exptime'] = rd.exposure_time
-        labels = [('OBJECT', rd.target.name), ('DATE-OBS', rd.timestamp.strftime('%Y-%m-%dT%H:%M:%S'))]
-        labels += [(key.upper(), facts.get(key)) for key in ('telescope', 'instrument', 'exptime', 'slit', 'grism', 'airmass', 'observer')]
+        labels = [('OBJECT', rd.target.name), ('DATE-OBS', rd.timestamp.strftime('%Y-%m-%dT%H:%M:%S')),
+                  ('TELESCOPE', rd.telescope), ('INSTRUMENT', rd.instrument), ('EXPTIME', rd.exposure_time), ('SETUP', rd.setup),
+                  ('AIRMASS', rd.value.get('airmass')), ('OBSERVER', rd.value.get('observer'))]
         labels += [('REDUCER', rd.value.get('reducer')),
                    ('FINAL', 'yes' if rd.value.get('final_reduction') else 'no'),
                    ('WAVELENGTH_UNIT', rd.wavelength_unit), ('FLUX_UNIT', rd.flux_unit)]

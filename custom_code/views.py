@@ -54,7 +54,7 @@ from custom_code.facilities.soar_facility import user_can_access_soar
 from custom_code.filters import TNSTargetFilter
 from custom_code.forms import CustomDataProductUploadForm, CustomTargetCreateForm, PapersForm, PhotSchedulingForm, ReferenceStatusForm, SNEx2UserCreationForm, SpecSchedulingForm
 from custom_code.hooks import _get_tns_params
-from custom_code.models import InterestedPersons, Papers, ReducedDatumExtra, ScienceTags, TargetTags, TNSTarget
+from custom_code.models import InterestedPersons, Papers, ScienceTags, TargetTags, TNSTarget
 from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
@@ -65,7 +65,7 @@ from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
 from tom_tns.forms import TNSClassifyForm
 from tom_tns.views import TNSFormView, TNSSubmitView
-from custom_code.utils import TESS_SECTOR_HALF_DAYS, default_version, fits_is_current, query_tns, tess_sectors, tns_object, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
+from custom_code.utils import TESS_SECTOR_HALF_DAYS, default_version, version_file, query_tns, tess_sectors, tns_object, update_target_from_tns, photometry_datums, view_datum_perm, spectrum_ascii, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, _normalize_view_object_name, _format_prefixed_name_for_create, viewable_dataproducts, viewable_datums, standard_target_ids, set_dataproduct_view_groups, set_reduceddatum_view_groups, reduceddatum_view_groups, format_form_errors, get_target_permission_groups, bind_observation_form_htmx, observation_form_prefix
 import logging
 from urllib.parse import quote_plus
 
@@ -409,9 +409,6 @@ class CustomDataProductUploadView(DataProductUploadView):
             dp.save()
             uploaded = dp
             try:
-
-                ### ------------------------------------------------------------------
-                ### Create row in ReducedDatumExtras with the extra info
                 rdextra_value = {'data_product_id': int(dp.id)}
                 if dp_type == 'photometry':
                     extras = {'reduction_type': 'manual'}
@@ -445,18 +442,6 @@ class CustomDataProductUploadView(DataProductUploadView):
                         version.value = {**version.value, 'reduction_files': bundle}
                         version.save()
 
-                if dp == uploaded:
-                    reduced_datum_extra = ReducedDatumExtra(
-                        target = target,
-                        data_product = dp,
-                        data_type = dp_type,
-                        key = 'upload_extras',
-                        value = rdextra_value
-                    )
-                    reduced_datum_extra.save()
-
-                ### -------------------------------------------------------------------
-                
                 if not settings.TARGET_PERMISSIONS_ONLY:
                     if self.request.user.is_superuser:
                         user_groups = Group.objects.all()
@@ -1505,6 +1490,7 @@ def delete_spectrum_version_view(request, pk, spectrum_id):
     if request.method != 'POST' or not request.user.is_superuser:
         return HttpResponseForbidden('Only admins can delete this version')
     product = spectrum.data_product
+    Comment.objects.filter(content_type__model='spectroscopyreduceddatum', object_pk=str(spectrum.pk)).delete()
     spectrum.delete()
     remaining = SpectroscopyReducedDatum.objects.filter(data_product=product) if product else []
     if not remaining:
@@ -1515,18 +1501,32 @@ def delete_spectrum_version_view(request, pk, spectrum_id):
     return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
 
 
+@require_http_methods(['POST'])
+def mark_spectrum_final_view(request, pk, spectrum_id):
+    target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
+    if not targets_for_user(request.user, Target.objects.filter(pk=target.pk), 'change_target').exists():
+        return HttpResponseForbidden('You do not have permission to change this target')
+    versions = SpectroscopyReducedDatum.objects.filter(data_product=spectrum.data_product) if spectrum.data_product else [spectrum]
+    with transaction.atomic():
+        for version in versions:
+            value = {**version.value, 'final_reduction': version.pk == spectrum.pk}
+            SpectroscopyReducedDatum.objects.filter(pk=version.pk).update(value=value)
+    spectrum.refresh_from_db()
+    entry = custom_code_tags.build_spectrum_entry(target, spectrum, user=request.user)
+    return render(request, 'custom_code/partials/target/spectrum_row.html', {'entry': entry, 'target': target})
+
+
 def download_spectrum_view(request, pk, spectrum_id, file_format):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
-    product = spectrum.data_product
-    has_file = fits_is_current(spectrum) and os.path.exists(product.data.path)
+    file = version_file(spectrum)
     if file_format == 'fits':
-        if not has_file:
+        if not file:
             raise Http404('This spectrum has no file')
-        return FileResponse(open(product.data.path, 'rb'), as_attachment=True, filename=product.get_file_name())
+        return FileResponse(default_storage.open(file, 'rb'), as_attachment=True, filename=os.path.basename(file))
     content = spectrum_ascii(spectrum)
     if content is None:
         raise Http404('This spectrum has no data to write')
-    file_name = os.path.splitext(product.get_file_name())[0] + '.ascii' if has_file else spectrum_ascii_name(spectrum)
+    file_name = os.path.splitext(os.path.basename(file))[0] + '.ascii' if file else spectrum_ascii_name(spectrum)
     response = HttpResponse(content, content_type='text/plain')
     response['Content-Disposition'] = f'attachment; filename={file_name}'
     return response
@@ -1577,8 +1577,9 @@ def download_spectra_view(request):
             summaries.append(f'{base}: {product.get_type_display()}')
             continue
         current = default_version(versions)
-        if download_format != 'ascii' and fits_is_current(current):
-            items.append(reduced_file)
+        current_file = version_file(current)
+        if download_format != 'ascii' and current_file:
+            items.append(('file', f'reduced/{base}{os.path.splitext(current_file)[1]}', current_file))
         elif download_format != 'fits' and (content := spectrum_ascii(current)):
             items.append(('text', f'reduced/{base}.ascii', content))
         label = {version.pk: f'v{number}' for number, version in enumerate(versions, 1)}

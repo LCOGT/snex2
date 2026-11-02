@@ -80,6 +80,7 @@ urlpatterns = [
     path('targets/<int:pk>/plot/airmass/', load_airmass_plot_view, name='load-airmass-plot'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/', load_single_spectrum_view, name='load-single-spectrum'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/delete/', delete_spectrum_version_view, name='delete-spectrum-version'),
+    path('targets/<int:pk>/spectrum/<int:spectrum_id>/final/', mark_spectrum_final_view, name='mark-spectrum-final'),
     path('targets/<int:pk>/photometry/<int:datum_id>/delete/', delete_photometry_view, name='delete-photometry'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/download/<str:file_format>/', download_spectrum_view, name='download-spectrum'),
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/interactive/', load_spectrum_interactive_view, name='load-spectrum-interactive'),

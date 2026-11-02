@@ -37,7 +37,7 @@ from custom_code.models import *
 from custom_code.forms import CustomDataProductUploadForm, PapersForm, PhotSchedulingForm, SpecSchedulingForm, ReferenceStatusForm, ThumbnailForm
 from custom_code.scheduling import get_proposal_choices
 from custom_code.raw_spectra import is_floyds_frame, reduction_files
-from custom_code.utils import FILTER_TRANSLATE, get_color, default_version, fits_is_current, observed_spectra, standard_spectra, photometry_datums, spectrum_ascii, upload_extras, spectrum_ascii_name, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, standard_target_ids, viewable_dataproducts, viewable_datums
+from custom_code.utils import FILTER_TRANSLATE, get_color, default_version, fits_is_current, observed_spectra, standard_spectra, photometry_datums, spectrum_ascii, spectrum_ascii_name, version_file, GENERATED_ASCII_PREFIX, measured, bind_observation_form_htmx, dataproduct_view_groups, reduceddatum_view_groups, standard_target_ids, viewable_dataproducts, viewable_datums
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
@@ -566,16 +566,11 @@ def snex_dataproduct_list(context, target):
         product.spectrum = default_version(versions) if versions else None
         product.standards = standard_entries(product.spectrum) if product.spectrum else []
         product.raw_available = is_floyds_frame(product.product_id) or bool(reduction_files(product.spectrum))
-    telescopes, instruments = set(), set()
-    for p in dataproduct_context['products']:
-        rde = p.reduceddatumextra_set.first()
-        if rde and rde.value:
-            t = rde.value.get('telescope')
-            i = rde.value.get('instrument')
-            if t:
-                telescopes.add(t)
-            if i:
-                instruments.add(i)
+        source = product.spectrum or product.photometryreduceddatum_set.first()
+        product.telescope = source.telescope if source else ''
+        product.instrument = source.instrument if source else ''
+    telescopes = {p.telescope for p in dataproduct_context['products'] if p.telescope}
+    instruments = {p.instrument for p in dataproduct_context['products'] if p.instrument}
     dataproduct_context['is_admin'] = context['request'].user.is_superuser
     dataproduct_context['telescopes'] = sorted(telescopes)
     dataproduct_context['instruments'] = sorted(instruments)
@@ -649,12 +644,9 @@ def dash_lightcurve(context, target, height):
     reducer_groups = []
     user = User.objects.get(username=request.user)
 
-    for de in ReducedDatumExtra.objects.filter(
-            target=target, key='upload_extras', data_type='photometry',
-            data_product__in=viewable_dataproducts(user, DataProduct.objects.filter(target=target))):
-        de_value = de.value
-        inst = de_value.get('instrument', '')
-        group = de_value.get('reducer_group', '')
+    uploaded = photometry_datums(target, user).exclude(data_product=None).exclude(instrument='')
+    for inst, group in uploaded.values_list('instrument', 'value__reducer_group').distinct():
+        group = group or ''
 
         if inst and inst not in telescopes:
             telescopes.append(inst)
@@ -751,7 +743,7 @@ def photometry_data_list(context, target):
                      'brightness': measured(d.brightness),
                      'subtracted': (v.get('subtraction_algorithm') or 'Y') if v.get('background_subtracted') == True else '',
                      'wcs': v.get('wcs'),
-                     'exptime': v.get('exptime'),
+                     'exptime': d.exposure_time,
                      'fwhm': measured(v.get('fwhm')),
                      'uploaded_by': v.get('uploaded_by') or '',
                      'color': get_color(d.bandpass),
@@ -1384,20 +1376,13 @@ def spectra_list(context, target):
 
     spectra = observed_spectra(target, request.user)
 
-    extras = {
-        row.data_product_id: row.value or {}
-        for row in ReducedDatumExtra.objects.filter(data_type='spectroscopy', target=target)
-        if row.data_product_id
-    }
-
     spectra_metadata = []
     for spectrum in spectra:
-        value = extras.get(spectrum.data_product_id, {})
         spectra_metadata.append({
             'spectrum_id': spectrum.id,
             'time': str(spectrum.timestamp).split('+')[0],
-            'telescope': value.get('telescope', 'Unknown'),
-            'instrument': value.get('instrument', 'Unknown'),
+            'telescope': spectrum.telescope or 'Unknown',
+            'instrument': spectrum.instrument or 'Unknown',
         })
 
     return {
@@ -1443,9 +1428,8 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
     max_flux = max(flux) if flux else 0
     min_flux = min(flux) if flux else 0
 
-    spec_extras_row = ReducedDatumExtra.objects.filter(
-        data_type='spectroscopy', target=target, data_product=spectrum.data_product).first()
-    spec_extras = dict(spec_extras_row.value or {}) if spec_extras_row else {}
+    spec_extras = {'telescope': spectrum.telescope, 'instrument': spectrum.instrument, 'exptime': spectrum.exposure_time,
+                   'setup': spectrum.setup, 'airmass': spectrum.value.get('airmass')}
     if spec_extras.get('instrument', '') == 'en06':
         spec_extras['site'] = '(OGG 2m)'
         spec_extras['instrument'] += ' (FLOYDS)'
@@ -1454,9 +1438,8 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         spec_extras['instrument'] += ' (FLOYDS)'
 
     spec_extras['reducer'] = spectrum.value.get('reducer')
-    commented = spectrum.data_product or spectrum
     comments = Comment.objects.filter(
-        object_pk=commented.id, content_type=ContentType.objects.get_for_model(commented)).order_by('id').select_related('user')
+        object_pk=spectrum.id, content_type=ContentType.objects.get_for_model(spectrum)).order_by('id').select_related('user')
     spec_extras['comments'] = comments
     versions = SpectroscopyReducedDatum.objects.filter(data_product=spectrum.data_product).order_by('-pk') if spectrum.data_product else []
     spec_extras['comments_list'] = [
@@ -1473,14 +1456,16 @@ def build_spectrum_entry(target, spectrum, redshift=None, user=None, include_plo
         'time': str(spectrum.timestamp).split('+')[0],
         'spec_extras': spec_extras,
         'spectrum': spectrum,
-        'comment_table': 'spec' if spectrum.data_product else 'spectrum',
-        'comment_object_id': commented.id,
+        'comment_table': 'spectrum',
+        'comment_object_id': spectrum.id,
         'versions': [{'id': version.id, 'final': bool(version.value.get('final_reduction')),
                       'reducer': version.value.get('reducer') or 'Unknown reducer',
                       'uploaded': (version.value.get('uploaded') or '')[:10],
                       'hash': version.reduction_version[:7]} for version in versions],
         'can_delete': bool(user and user.is_superuser),
-        'has_fits': fits_is_current(spectrum),
+        'can_mark_final': bool(user and user.is_authenticated and targets_for_user(
+            user, Target.objects.filter(pk=target.pk), 'change_target').exists()),
+        'has_fits': bool(version_file(spectrum)),
         'static_plot': build_spectrum_plot(spectrum) if include_plot else '',
         'standards': standard_entries(spectrum) if include_plot else [],
         'raw_available': bool(spectrum.data_product_id and is_floyds_frame(spectrum.data_product.product_id)),
@@ -2142,7 +2127,6 @@ def tns_generated_ascii_choice(context, form):
     spectrum = viewable_datums(request.user, SpectroscopyReducedDatum.objects.filter(pk=kwargs.get('datum_pk'), target_id=kwargs['pk'])).first()
     if spectrum is None:
         return ''
-    facts = upload_extras(spectrum.data_product)
     choices = list(form.fields['ascii_file'].choices)
     if spectrum.data_product_id in [choice[0] for choice in choices if choice[0]] and fits_is_current(spectrum):
         form.initial['ascii_file'] = spectrum.data_product_id
@@ -2151,7 +2135,7 @@ def tns_generated_ascii_choice(context, form):
         form.fields['ascii_file'].choices = [(value, spectrum_ascii_name(spectrum))] + choices
         form.initial['ascii_file'] = value
     form.initial['reducer'] = spectrum.value.get('reducer') or ''
-    form.initial['observer'] = facts.get('observer') or ''
+    form.initial['observer'] = spectrum.value.get('observer') or ''
     return ''
 
 

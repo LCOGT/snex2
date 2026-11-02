@@ -105,7 +105,7 @@ def find_images(target, user, allimages=False):
             [rd.telescope[:3] for rd in datums],
             [rd.instrument or b.split('-')[1] for b, rd in zip(basenames, datums)],
             [rd.bandpass for rd in datums],
-            ['' if rd.value.get('exptime') is None else f"{rd.value['exptime']:.2f}s" for rd in datums],
+            ['' if rd.exposure_time is None else f"{rd.exposure_time:.2f}s" for rd in datums],
             [9999 if (x := measured(rd.value.get('psfx'))) is None else round(x) for rd in datums],
             [9999 if (y := measured(rd.value.get('psfy'))) is None else round(y) for rd in datums],
             ['' if (fwhm := measured(rd.value.get('fwhm'))) is None else f'{fwhm:.2f}"' for rd in datums],

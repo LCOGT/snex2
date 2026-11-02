@@ -1,7 +1,6 @@
 from django.db import models
 from tom_targets.models import Target
 from custom_code.target_models import SNExTarget
-from tom_dataproducts.models import DataProduct
 from django.contrib.auth.models import User
 
 STATUS_CHOICES = (
@@ -94,56 +93,6 @@ class TNSTarget(models.Model):
     class Meta:
         ordering = ('-id',)
         get_latest_by = ('-name',)
-
-
-class ReducedDatumExtra(models.Model):
-    
-    target = models.ForeignKey(
-        Target, on_delete=models.CASCADE
-    )
-    data_product = models.ForeignKey(
-        DataProduct, on_delete=models.CASCADE, verbose_name='DataProduct',
-        help_text='DataProduct this extra belongs to'
-    )
-    data_type = models.CharField(
-        max_length=100, default='', verbose_name='Data Type', 
-        help_text='Type of data (either photometry or spectroscopy)'
-    )
-    key = models.CharField(
-        max_length=200, default='', verbose_name='Key',
-        help_text='Keyword for information being stored'
-    )
-    value = models.JSONField(
-        blank=True, default=dict, verbose_name='Value',
-        help_text='String value of the information being stored'
-    )
-    float_value = models.FloatField(
-        null=True, blank=True, verbose_name='Float Value',
-        help_text='Float value of the information being stored, if applicable'
-    )
-    bool_value = models.BooleanField(
-        null=True, blank=True, verbose_name='Boolean Value',
-        help_text='Boolean value of the information being stored, if applicable'
-    )
-
-    class Meta:
-        get_latest_by = ('id,')
-        #unique_together = ['reduced_datum', 'key']
-
-    def __str__(self):
-        return f'{self.key}: {self.value}'
-
-    def save(self, *args, **kwargs):
-        try:
-            self.float_value = float(self.value)
-        except (TypeError, ValueError, OverflowError):
-            self.float_value = None
-        try:
-            self.bool_value = bool(self.value)
-        except (TypeError, ValueError, OverflowError):
-            self.bool_value = None
-
-        super().save(*args, **kwargs)
 
 
 class ScienceTags(models.Model):

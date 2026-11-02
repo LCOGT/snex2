@@ -5,11 +5,9 @@ import plotly.graph_objs as go
 from dash.dependencies import Input, Output
 import numpy as np
 from django_plotly_dash import DjangoDash
-from tom_dataproducts.models import DataProduct
 from django.contrib.auth.models import User
 from tom_targets.models import Target
-from custom_code.models import ReducedDatumExtra
-from custom_code.utils import FILTER_TRANSLATE, get_color, measured, observed_spectra, photometry_datums, viewable_dataproducts
+from custom_code.utils import FILTER_TRANSLATE, get_color, measured, observed_spectra, photometry_datums
 import logging
 from django.templatetags.static import static
 from datetime import datetime, timezone
@@ -215,64 +213,51 @@ def update_graph(selected_telescope, subtracted_value, selected_algorithm, selec
     subtracted_photometry_data = {}
     target = Target.objects.get(id=target_id)
     user = User.objects.get(id=user_id)
-    datumextras = ReducedDatumExtra.objects.filter(
-        target=target, key='upload_extras', data_type='photometry',
-        data_product__in=viewable_dataproducts(user, DataProduct.objects.filter(target=target)))
-    
-    datums = []
-    final_products = {de.data_product_id for de in datumextras if de.value.get('final_reduction')}
-    
-    ### Get the data for the selected telescope
     selected_telescope = selected_telescope or []
     selected_groups = selected_groups or []
-    for de in datumextras:
-        de_value = de.value
+    datums = []
+    for rd in photometry_datums(target, user):
+        if rd.data_product_id and rd.instrument:
+            if rd.instrument in selected_telescope and rd.value.get('reducer_group', '') in selected_groups:
+                datums.append(rd)
+        elif 'LCO' in selected_telescope and '' in selected_groups:
+            datums.append(rd)
 
-        if de_value.get('instrument', '') in selected_telescope and de_value.get('reducer_group', '') in selected_groups:
-            dp_id = de.data_product_id
-            datums.append(photometry_datums(target, user).filter(data_product_id=dp_id))
-
-    ### Finally, get the data that was uploaded by the pipeline
-    if 'LCO' in selected_telescope and '' in selected_groups:
-        uploaded_products = [de.data_product_id for de in datumextras if de.value.get('instrument')]
-        datums.append(photometry_datums(target, user).exclude(data_product_id__in=uploaded_products))
-    
     ### Plot the data
     spec = observed_spectra(target, user)
         
-    for data in datums:
-        for rd in data:
-            value = rd.value
-            if magnitude_keys:
-                magnitude, error = value.get(magnitude_keys[0]), value.get(magnitude_keys[1])
-            else:
-                magnitude, error = rd.brightness, rd.brightness_error
+    for rd in datums:
+        value = rd.value
+        if magnitude_keys:
+            magnitude, error = value.get(magnitude_keys[0]), value.get(magnitude_keys[1])
+        else:
+            magnitude, error = rd.brightness, rd.brightness_error
 
-            if measured(magnitude) is None:
-                continue
+        if measured(magnitude) is None:
+            continue
 
-            if final_only and not (value.get('final_reduction') or rd.data_product_id in final_products):
-                continue
+        if final_only and not value.get('final_reduction'):
+            continue
 
-            if value.get('background_subtracted', '') == True:
-                if value.get('subtraction_algorithm', '') in selected_algorithm and value.get('template_source', '') in selected_template:
-                    
-                    raw_filter = rd.bandpass
-                    subtracted_filt = FILTER_TRANSLATE.get(raw_filter, raw_filter or 'other')
-
-                    subtracted_photometry_data.setdefault(subtracted_filt, {})
-                    subtracted_photometry_data[subtracted_filt].setdefault('time', []).append(rd.timestamp)
-                    subtracted_photometry_data[subtracted_filt].setdefault('magnitude', []).append(magnitude)
-                    subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(measured(error) or 0)
-            else:
-
+        if value.get('background_subtracted', '') == True:
+            if value.get('subtraction_algorithm', '') in selected_algorithm and value.get('template_source', '') in selected_template:
+                
                 raw_filter = rd.bandpass
-                filt = FILTER_TRANSLATE.get(raw_filter, raw_filter or 'other')
+                subtracted_filt = FILTER_TRANSLATE.get(raw_filter, raw_filter or 'other')
 
-                photometry_data.setdefault(filt, {})
-                photometry_data[filt].setdefault('time', []).append(rd.timestamp)
-                photometry_data[filt].setdefault('magnitude', []).append(magnitude)
-                photometry_data[filt].setdefault('error', []).append(measured(error) or 0)
+                subtracted_photometry_data.setdefault(subtracted_filt, {})
+                subtracted_photometry_data[subtracted_filt].setdefault('time', []).append(rd.timestamp)
+                subtracted_photometry_data[subtracted_filt].setdefault('magnitude', []).append(magnitude)
+                subtracted_photometry_data[subtracted_filt].setdefault('error', []).append(measured(error) or 0)
+        else:
+
+            raw_filter = rd.bandpass
+            filt = FILTER_TRANSLATE.get(raw_filter, raw_filter or 'other')
+
+            photometry_data.setdefault(filt, {})
+            photometry_data[filt].setdefault('time', []).append(rd.timestamp)
+            photometry_data[filt].setdefault('magnitude', []).append(magnitude)
+            photometry_data[filt].setdefault('error', []).append(measured(error) or 0)
 
     if subtracted_value == 'Unsubtracted':
         selected_photometry = photometry_data

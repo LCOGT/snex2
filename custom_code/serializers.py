@@ -48,7 +48,7 @@ class SNExPhotometrySerializer(GroupsFieldMixin, serializers.ModelSerializer):
 
     class Meta:
         model = PhotometryReducedDatum
-        columns = ('brightness', 'brightness_error', 'bandpass', 'limit', 'telescope', 'instrument')
+        columns = ('brightness', 'brightness_error', 'bandpass', 'limit', 'unit', 'telescope', 'instrument', 'exposure_time')
         fields = ('id', 'target', 'timestamp', 'source_name', 'source_location') + columns + (
             'reduction_version', 'value', 'groups')
         read_only_fields = columns + ('reduction_version',)
@@ -56,7 +56,12 @@ class SNExPhotometrySerializer(GroupsFieldMixin, serializers.ModelSerializer):
     def validate_value(self, value):
         if not isinstance(value, dict):
             raise serializers.ValidationError('Expected a dictionary.')
-        return without_sentinels(value)
+        value = without_sentinels(value)
+        for key in ('exptime', 'exp_time'):
+            if key in value:
+                exposure_time = value.pop(key)
+                value.setdefault('exposure_time', exposure_time)
+        return value
 
     def create(self, validated_data):
         try:
