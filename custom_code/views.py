@@ -1255,7 +1255,7 @@ def load_single_spectrum_view(request, pk, spectrum_id):
 def spectrum_data_view(request, pk, spectrum_id):
     target, spectrum = _spectrum_for_user(request, pk, spectrum_id)
     wavelength, flux = custom_code_tags.bin_spectra(spectrum.wavelength, spectrum.flux, 5) if spectrum.wavelength else ([], [])
-    return JsonResponse({'label': f'{target.name} {spectrum.timestamp:%Y-%m-%d %H:%M}',
+    return JsonResponse({'label': f'{target.name} {spectrum.timestamp:%Y-%m-%d %H:%M}' if target.standard else f'{spectrum.timestamp:%Y-%m-%d %H:%M}',
                          'target_url': reverse('tom_targets:detail', args=(target.id,)),
                          'wavelength': wavelength, 'flux': flux})
 
@@ -1820,15 +1820,6 @@ def download_photometry_view(request, targetid):
     response = HttpResponse(newfile.getvalue(), content_type='text/plain')
     response['Content-Disposition'] = 'attachment; filename={}.txt'.format(target.name.replace(' ',''))
     return response
-
-
-def get_target_standards_view(request):
-    target = get_object_or_404(targets_for_user(request.user, Target.objects.all(), 'view_target'), id=request.GET.get('target_id'))
-    rows = custom_code_tags.photometric_standards_list({'request': request}, target)['rows']
-    standard_info = [{'objname': row['name'], 'filename': row['basename'], 'filter': row['filter'],
-                      'dateobs': row['datum'].timestamp.date(), 'telescope': row['telescope'], 'instrument': row['instrument']}
-                     for row in rows if row['same_telescope']]
-    return render(request, 'custom_code/partials/target/get_target_standards.html', {'standards': standard_info})
 
 
 class TargetFilterForm(forms.Form):

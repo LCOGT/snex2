@@ -13,18 +13,22 @@
     <input type="date" id="endDateFilter" class="form-control product-filter" value="{{ date_max }}" min="{{ date_min }}" max="{{ date_max }}">
   </div>
   <div class="col-md-2">
-    <label for="telescopeFilter" class="fw-bold">Telescope:</label>
-    <select id="telescopeFilter" class="form-control product-filter">
-      <option value="">-- All --</option>
-      {% for t in telescopes %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-    </select>
+    <label class="fw-bold d-block">Telescope:</label>
+    <div class="dropdown">
+      <button type="button" class="btn btn-outline-secondary dropdown-toggle w-100 text-start text-truncate" data-bs-toggle="dropdown" data-bs-auto-close="outside" id="telescopeFilterLabel">All</button>
+      <div class="dropdown-menu" id="telescopeFilter">
+        {% for t in telescopes %}<label class="dropdown-item"><input type="checkbox" class="form-check-input me-2 product-filter" value="{{ t }}">{{ t }}</label>{% endfor %}
+      </div>
+    </div>
   </div>
   <div class="col-md-2">
-    <label for="instrumentFilter" class="fw-bold">Instrument:</label>
-    <select id="instrumentFilter" class="form-control product-filter">
-      <option value="">-- All --</option>
-      {% for i in instruments %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
-    </select>
+    <label class="fw-bold d-block">Instrument:</label>
+    <div class="dropdown">
+      <button type="button" class="btn btn-outline-secondary dropdown-toggle w-100 text-start text-truncate" data-bs-toggle="dropdown" data-bs-auto-close="outside" id="instrumentFilterLabel">All</button>
+      <div class="dropdown-menu" id="instrumentFilter">
+        {% for i in instruments %}<label class="dropdown-item"><input type="checkbox" class="form-check-input me-2 product-filter" value="{{ i }}">{{ i }}</label>{% endfor %}
+      </div>
+    </div>
   </div>
   <div class="col-md-2 d-flex align-items-end">
     <button type="button" id="clearFilters" class="btn btn-secondary w-100">Clear Filters</button>
@@ -136,29 +140,36 @@
   function plotSelectedSpectra() {
     const div = document.getElementById('dp-spectra-plot');
     if (!div || !window.snexSpectra) { return; }
-    const urls = Array.from(document.querySelectorAll('.product-row')).filter(function (row) {
-      return row.style.display !== 'none' && row.dataset.spectrumUrl && row.querySelector('.product-checkbox').checked;
-    }).map(function (row) { return row.dataset.spectrumUrl; });
-    window.snexSpectra.overlay(div, urls);
+    const palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'];
+    const entries = Array.from(document.querySelectorAll('.product-row[data-spectrum-url]')).map(function (row, i) {
+      return { row: row, url: row.dataset.spectrumUrl, color: palette[i % palette.length] };
+    }).filter(function (entry) {
+      return entry.row.style.display !== 'none' && entry.row.querySelector('.product-checkbox').checked;
+    });
+    window.snexSpectra.overlay(div, entries);
   }
   window.plotSelectedSpectra = plotSelectedSpectra;
+
+  function checkedValues(id) {
+    const values = Array.from(document.querySelectorAll('#' + id + ' input:checked')).map(function (cb) { return cb.value; });
+    document.getElementById(id + 'Label').textContent = values.length === 0 ? 'All' : values.length === 1 ? values[0] : values.length + ' selected';
+    return values.map(function (value) { return value.toLowerCase(); });
+  }
 
   function filterTable() {
     const start = document.getElementById('startDateFilter');
     const end = document.getElementById('endDateFilter');
-    const tel = document.getElementById('telescopeFilter');
-    const ins = document.getElementById('instrumentFilter');
     if (!start) { return; }   // partial not present yet
     const startVal = start.value;
     const endVal = end.value;
-    const selTel = (tel.value || '').toLowerCase();
-    const selIns = (ins.value || '').toLowerCase();
+    const selTel = checkedValues('telescopeFilter');
+    const selIns = checkedValues('instrumentFilter');
     document.querySelectorAll('.product-row').forEach(function (row) {
       const d = row.getAttribute('data-observed') || '';
       const okStart = !startVal || d >= startVal;
       const okEnd = !endVal || d <= endVal;
-      const okTel = !selTel || (row.getAttribute('data-telescope') || '').toLowerCase() === selTel;
-      const okIns = !selIns || (row.getAttribute('data-instrument') || '').toLowerCase() === selIns;
+      const okTel = !selTel.length || selTel.includes((row.getAttribute('data-telescope') || '').toLowerCase());
+      const okIns = !selIns.length || selIns.includes((row.getAttribute('data-instrument') || '').toLowerCase());
       const show = okStart && okEnd && okTel && okIns;
       row.style.display = show ? '' : 'none';
       if (!show) {
@@ -204,10 +215,11 @@
       return;
     }
     if (ev.target.id === 'clearFilters') {
-      ['startDateFilter', 'endDateFilter', 'telescopeFilter', 'instrumentFilter'].forEach(function (id) {
+      ['startDateFilter', 'endDateFilter'].forEach(function (id) {
         const el = document.getElementById(id);
-        if (el) { el.value = el.type === 'date' ? el.defaultValue : ''; }
+        if (el) { el.value = el.defaultValue; }
       });
+      document.querySelectorAll('#telescopeFilter input, #instrumentFilter input').forEach(function (cb) { cb.checked = false; });
       filterTable();
       plotSelectedSpectra();
     }

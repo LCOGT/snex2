@@ -2,7 +2,7 @@
 <ul class="list-unstyled" style="max-height: 14rem; overflow-y: auto; margin-bottom: 0rem;">
   {% for comment in comment_list %}
    <li class="d-flex ms-2 mt-1">
-    <img class="me-3 rounded-circle img-fluid avatar" src="{% gravatar_url comment.user.email 50 %}" alt="{{ comment.user.email }}">
+    <img class="me-3 rounded-circle flex-shrink-0 avatar" style="width: 50px; height: 50px;" src="{% gravatar_url comment.user.email 50 %}" alt="{{ comment.user.email }}">
     <div class="flex-grow-1">
       <small class="mt-0 mb-1">
         {{ comment.user.first_name }} {{ comment.user.last_name }}
