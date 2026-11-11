@@ -1,6 +1,8 @@
 import datetime
+import logging
 import os
 import tempfile
+import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,6 +15,8 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from custom_code.utils import frame_night
+
+logger = logging.getLogger(__name__)
 
 STANDARDS_PROPOSAL = 'FLOYDS standards'
 NIGHT_WINDOW = datetime.timedelta(hours=16)
@@ -159,9 +163,19 @@ def stream_zip(items, include_standard=False, readme=None):
     yield buffer.take()
 
 
-def _frame_id(basename):
-    found = _archive({'basename_exact': basename})
-    return found[0]['id'] if found else None
+def _night_frame_ids(night):
+    instrument, day, rlevel = night
+    lco = settings.FACILITIES['LCO']
+    url = lco['archive_url']
+    params = {'INSTRUME': instrument, 'DAY_OBS': day, 'RLEVEL': rlevel, 'include_related_frames': False, 'limit': 1000}
+    frame_ids = {}
+    while url:
+        response = requests.get(url, params=params, headers={'Authorization': 'Token ' + lco['api_key']}, timeout=(10, 120))
+        response.raise_for_status()
+        data = response.json()
+        frame_ids.update({frame['basename']: frame['id'] for frame in data['results']})
+        url, params = data['next'], None
+    return frame_ids
 
 
 def _relay(response):
@@ -170,8 +184,18 @@ def _relay(response):
 
 
 def archive_zip(basenames):
-    with ThreadPoolExecutor(max_workers=32) as pool:
-        frame_ids = [frame_id for frame_id in pool.map(_frame_id, sorted(basenames)) if frame_id]
+    started = time.monotonic()
+    nights = {}
+    for basename in basenames:
+        parts = basename.split('-')
+        if len(parts) == 5 and len(parts[2]) == 8 and parts[4][1:].isdigit():
+            day = f'{parts[2][:4]}-{parts[2][4:6]}-{parts[2][6:]}'
+            nights.setdefault((parts[1], day, int(parts[4][1:])), set()).add(basename)
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        found = list(pool.map(_night_frame_ids, nights))
+    frame_ids = [ids[basename] for ids, wanted in zip(found, nights.values()) for basename in wanted if basename in ids]
+    logger.info(f'Found {len(frame_ids)} of {len(basenames)} frames in {len(nights)} archive queries '
+                f'in {time.monotonic() - started:.0f}s')
     if not frame_ids:
         return None
     lco = settings.FACILITIES['LCO']
@@ -181,4 +205,5 @@ def archive_zip(basenames):
     if not response.ok:
         response.close()
         response.raise_for_status()
+    logger.info(f'LCO archive started streaming the zip after {time.monotonic() - started:.0f}s')
     return _relay(response), response.headers.get('Content-Length')
