@@ -176,8 +176,9 @@ def archive_zip(basenames):
         return None
     lco = settings.FACILITIES['LCO']
     response = requests.post(lco['archive_url'] + 'zip/', json={'frame_ids': frame_ids},
-                             headers={'Authorization': 'Token ' + lco['api_key']}, stream=True, timeout=(10, 300))
+                             headers={'Authorization': 'Token ' + lco['api_key'], 'Accept-Encoding': 'identity'},
+                             stream=True, timeout=(10, 300))
     if not response.ok:
         response.close()
         response.raise_for_status()
-    return _relay(response)
+    return _relay(response), response.headers.get('Content-Length')

@@ -1648,12 +1648,15 @@ def download_photometry_frames_view(request, pk):
     if not basenames:
         raise Http404('None of these frames are visible to this user')
     try:
-        stream = archive_zip(basenames)
+        result = archive_zip(basenames)
     except requests.RequestException as e:
         return HttpResponse(f'The LCO archive could not build the zip: {e}', status=502)
-    if stream is None:
+    if result is None:
         raise Http404('None of these frames were found in the LCO archive')
+    stream, length = result
     response = StreamingHttpResponse(stream, content_type='application/zip')
+    if length:
+        response['Content-Length'] = length
     response['Content-Disposition'] = f'attachment; filename="{target.name.replace(" ", "")}_frames.zip"'
     response.set_cookie('download_token', request.POST.get('download_token', ''), max_age=300)
     return response
