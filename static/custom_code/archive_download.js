@@ -1,3 +1,11 @@
+function showProgress(status, text) {
+  status.innerHTML = '<span class="d-inline-flex align-items-center">' +
+    '<span class="progress flex-shrink-0 me-2" style="width: 10rem; height: 1rem;">' +
+    '<span class="progress-bar progress-bar-striped progress-bar-animated w-100" role="progressbar"></span></span>' +
+    '<span></span></span>';
+  status.querySelector('span > span:last-child').textContent = text;
+}
+
 function downloadFrames(url, basenames, csrfToken, button, status, label) {
   const token = String(Date.now());
   const frame = document.createElement('iframe');
@@ -15,8 +23,7 @@ function downloadFrames(url, basenames, csrfToken, button, status, label) {
     form.appendChild(input);
   });
   button.disabled = true;
-  status.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>';
-  status.append(label + ' Looking up frames in the LCO archive. This could take a few minutes.');
+  showProgress(status, label);
   let timer;
   function done(message) {
     clearInterval(timer);
@@ -26,7 +33,7 @@ function downloadFrames(url, basenames, csrfToken, button, status, label) {
   timer = setInterval(function () {
     if (document.cookie.split('; ').includes('download_token=' + token)) {
       document.cookie = 'download_token=; Max-Age=0; path=/';
-      done(label + ' Download started. See your browser\'s downloads.');
+      done('Download started. See your browser\'s downloads.');
     }
   }, 500);
   document.body.appendChild(frame);

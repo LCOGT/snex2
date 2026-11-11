@@ -119,7 +119,7 @@
     }
     const basenames = Array.from(new Set(sel.map((r) => r.dataset.basename)));
     downloadFrames('{% url "download-photometry-frames" target.id %}', basenames, csrf(), this, status,
-      'Downloading ' + basenames.length + ' frames.');
+      'Collecting ' + basenames.length + ' Standard Frames');
   });
 })();
 </script>

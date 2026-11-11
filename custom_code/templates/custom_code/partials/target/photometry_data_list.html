@@ -277,15 +277,15 @@
     let standards = [];
     if (document.getElementById('phot-standards').checked) {
       this.disabled = true;
-      status.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Finding matching standards...';
+      showProgress(status, 'Finding Matching Standards');
       const found = await post('{% url "photometry-standards" target.id %}',
                                { datum_ids: JSON.stringify(sel.map((r) => Number(r.dataset.id))) });
       if (!found.ok) { this.disabled = false; status.textContent = 'Could not look up standards (' + found.status + ').'; return; }
       standards = (await found.json()).basenames;
     }
     downloadFrames('{% url "download-photometry-frames" target.id %}', science.concat(standards), csrf(), this, status,
-      'Downloading ' + science.length + ' science frames' +
-      (document.getElementById('phot-standards').checked ? ' + ' + standards.length + ' standard frames.' : ''));
+      'Collecting ' + science.length + ' Science' +
+      (document.getElementById('phot-standards').checked ? ' + ' + standards.length + ' Standard' : '') + ' Frames');
   });
 
   const apply = document.getElementById('phot-apply-groups');
