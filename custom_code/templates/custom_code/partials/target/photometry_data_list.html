@@ -285,7 +285,7 @@
     }
     downloadFrames('{% url "download-photometry-frames" target.id %}', science.concat(standards), csrf(), this, status,
       'Collecting ' + science.length + ' Science' +
-      (document.getElementById('phot-standards').checked ? ' + ' + standards.length + ' Standard' : '') + ' Frames');
+      (document.getElementById('phot-standards').checked ? ' + ' + standards.length + ' Standard' : '') + ' Frames. Your download will start shortly.');
   });
 
   const apply = document.getElementById('phot-apply-groups');
