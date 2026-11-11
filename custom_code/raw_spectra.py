@@ -1,7 +1,11 @@
 import datetime
+import logging
 import os
 import tempfile
+import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 import requests
 from dateutil.parser import parse
@@ -10,8 +14,11 @@ from django.core.files import File
 from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.utils.text import slugify
+from tom_dataproducts.models import PhotometryReducedDatum
 
 from custom_code.utils import frame_night
+
+logger = logging.getLogger(__name__)
 
 STANDARDS_PROPOSAL = 'FLOYDS standards'
 NIGHT_WINDOW = datetime.timedelta(hours=16)
@@ -156,3 +163,36 @@ def stream_zip(items, include_standard=False, readme=None):
                                      for row in table) + '\n')
             archive.writestr('README.txt', readme)
     yield buffer.take()
+
+
+def archive_zip(frames):
+    started = time.monotonic()
+    lco = settings.FACILITIES['LCO']
+    headers = {'Authorization': 'Token ' + lco['api_key']}
+    lookup = partial(requests.get, lco['archive_url'], headers=headers, timeout=(10, 120))
+    frame_ids, missing = [], []
+    for basename, frame_id in frames.items():
+        if frame_id:
+            frame_ids.append(frame_id)
+        else:
+            missing.append(basename)
+    looked_up = {}
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        for response in pool.map(lookup, [{'basename_exact': basename, 'include_related_frames': False} for basename in missing]):
+            response.raise_for_status()
+            for frame in response.json()['results']:
+                frame_ids.append(frame['id'])
+                looked_up[frame['basename']] = frame['id']
+    datums = list(PhotometryReducedDatum.objects.filter(value__basename__in=list(looked_up)))
+    for datum in datums:
+        datum.value['frame_id'] = looked_up[datum.value['basename']]
+    PhotometryReducedDatum.objects.bulk_update(datums, ['value'], batch_size=500)
+    logger.info(f'Found {len(frame_ids)} of {len(frames)} frames ({len(frames) - len(missing)} stored, {len(missing)} looked up) '
+                f'in {time.monotonic() - started:.0f}s')
+    if not frame_ids:
+        return None
+    response = requests.post(lco['archive_url'] + 'zip/', json={'frame_ids': frame_ids},
+                             headers={**headers, 'Accept-Encoding': 'identity'}, stream=True, timeout=(10, 300))
+    response.raise_for_status()
+    logger.info(f'LCO archive started streaming the zip after {time.monotonic() - started:.0f}s')
+    return response.iter_content(1 << 20), response.headers.get('Content-Length')

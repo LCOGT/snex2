@@ -68,7 +68,7 @@
       <tr class="product-row"
           data-observed="{{ product.observed|date:'Y-m-d' }}"
           data-telescope="{{ product.telescope }}"
-          data-instrument="{{ product.instrument }}"
+          data-instrument="{{ product.instrument_type }}"
           data-dp="{{ product.id }}" data-raw="{% if product.raw_available %}1{% endif %}"{% if product.spectrum %}
           data-spectrum-url="{% url 'spectrum-data' target.id product.spectrum.id %}"{% endif %}>
         <td>

@@ -15,18 +15,33 @@
   .htmx-request.htmx-indicator {
       display: inline-block;
   }
-  @media (min-width: 1600px) {
-      .scheduling-split-plots {
-          order: -1;
-          flex: 0 0 auto;
-          width: auto;
-          max-width: none;
-      }
-      .scheduling-split-form {
-          flex: 1 1 0;
-          width: auto;
-          max-width: none;
-          min-width: 0;
+  .scheduling-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 21rem;
+      grid-template-areas: "fields side" "plots side" "meta meta";
+      column-gap: 1rem;
+      row-gap: 0.5rem;
+      align-items: start;
+  }
+  .scheduling-fields {
+      grid-area: fields;
+  }
+  .scheduling-side {
+      grid-area: side;
+  }
+  .scheduling-plots-area {
+      grid-area: plots;
+  }
+  .scheduling-meta {
+      grid-area: meta;
+      display: flex;
+      flex-wrap: wrap;
+      column-gap: 1.5rem;
+  }
+  @media (max-width: 991px) {
+      .scheduling-grid {
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-areas: "fields" "side" "plots" "meta";
       }
   }
   .scheduling-compact {
@@ -35,7 +50,7 @@
   .scheduling-proposal {
       max-width: min(30rem, 100%);
   }
-  .scheduling-split-form .form-group {
+  .scheduling-fields .form-group {
       margin-bottom: 0.5rem;
   }
   .scheduling-exposure {
@@ -47,14 +62,6 @@
   .scheduling-exposure-spec {
       max-width: 10rem;
   }
-  .scheduling-exposure-col {
-      text-align: left;
-      width: 21rem;
-      max-width: 100%;
-  }
-  .scheduling-fields-col {
-      min-width: 28rem;
-  }
   .scheduling-plots {
       margin-left: -4px;
       margin-right: -4px;
@@ -65,7 +72,8 @@
   }
   .scheduling-actions {
       display: flex;
-      flex-wrap: nowrap;
+      flex-wrap: wrap;
+      justify-content: flex-end;
       gap: 0.5rem;
   }
   .scheduling-muscat-row .input-group > input:nth-of-type(2) {
