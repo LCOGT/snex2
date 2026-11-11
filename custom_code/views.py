@@ -1648,7 +1648,7 @@ def download_photometry_frames_view(request, pk):
     if not basenames:
         raise Http404('None of these frames are visible to this user')
     try:
-        result = archive_zip(basenames)
+        result = archive_zip(basenames, request.POST.get('download_token', ''))
     except requests.RequestException as e:
         return HttpResponse(f'The LCO archive could not build the zip: {e}', status=502)
     if result is None:
@@ -1660,6 +1660,9 @@ def download_photometry_frames_view(request, pk):
     response['Content-Disposition'] = f'attachment; filename="{target.name.replace(" ", "")}_frames.zip"'
     response.set_cookie('download_token', request.POST.get('download_token', ''), max_age=300)
     return response
+
+def frames_download_progress_view(request):
+    return JsonResponse(cache.get(f"frames-download-{request.GET.get('token', '')}", {'done': 0, 'total': 0}))
 
 class InterestingTargetsView(ListView):
 

@@ -6,7 +6,7 @@ function showProgress(status, text) {
   status.querySelector('span > span:last-child').textContent = text;
 }
 
-function downloadFrames(url, basenames, csrfToken, button, status, label) {
+function downloadFrames(url, progressUrl, basenames, csrfToken, button, status, label) {
   const token = String(Date.now());
   const frame = document.createElement('iframe');
   frame.name = 'frames-download-' + token;
@@ -30,12 +30,25 @@ function downloadFrames(url, basenames, csrfToken, button, status, label) {
     button.disabled = false;
     status.textContent = message;
   }
+  let waiting = false;
   timer = setInterval(function () {
     if (document.cookie.split('; ').includes('download_token=' + token)) {
       document.cookie = 'download_token=; Max-Age=0; path=/';
       done('Download started. See your browser\'s downloads.');
+      return;
     }
-  }, 500);
+    fetch(progressUrl + '?token=' + token).then((response) => response.json()).then(function (progress) {
+      const bar = status.querySelector('.progress-bar');
+      if (!button.disabled || waiting || !bar || !progress.total) { return; }
+      if (progress.done < progress.total) {
+        bar.classList.remove('w-100', 'progress-bar-striped', 'progress-bar-animated');
+        bar.style.width = (100 * progress.done / progress.total) + '%';
+      } else {
+        waiting = true;
+        showProgress(status, 'Waiting for the LCO Archive to Start the Zip');
+      }
+    }).catch(() => {});
+  }, 1000);
   document.body.appendChild(frame);
   frame.addEventListener('load', function () {
     if (frame.contentWindow.location.href === 'about:blank') { return; }

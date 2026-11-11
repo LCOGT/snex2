@@ -283,7 +283,7 @@
       if (!found.ok) { this.disabled = false; status.textContent = 'Could not look up standards (' + found.status + ').'; return; }
       standards = (await found.json()).basenames;
     }
-    downloadFrames('{% url "download-photometry-frames" target.id %}', science.concat(standards), csrf(), this, status,
+    downloadFrames('{% url "download-photometry-frames" target.id %}', '{% url "frames-download-progress" %}', science.concat(standards), csrf(), this, status,
       'Collecting ' + science.length + ' Science' +
       (document.getElementById('phot-standards').checked ? ' + ' + standards.length + ' Standard' : '') + ' Frames');
   });

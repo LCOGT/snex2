@@ -10,6 +10,7 @@ from functools import partial
 import requests
 from dateutil.parser import parse
 from django.conf import settings
+from django.core.cache import cache
 from django.core.files import File
 from django.core.files.storage import default_storage
 from django.utils import timezone
@@ -164,18 +165,21 @@ def stream_zip(items, include_standard=False, readme=None):
     yield buffer.take()
 
 
-def archive_zip(basenames):
+def archive_zip(basenames, token):
     started = time.monotonic()
     lco = settings.FACILITIES['LCO']
     headers = {'Authorization': 'Token ' + lco['api_key']}
     lookup = partial(requests.get, lco['archive_url'], headers=headers, timeout=(10, 120))
-    with ThreadPoolExecutor(max_workers=32) as pool:
-        responses = list(pool.map(lookup, [{'basename_exact': basename, 'include_related_frames': False}
-                                           for basename in sorted(basenames)]))
+    progress_key, total = f'frames-download-{token}', len(basenames)
+    cache.set(progress_key, {'done': 0, 'total': total}, 3600)
     frame_ids = []
-    for response in responses:
-        response.raise_for_status()
-        frame_ids += [frame['id'] for frame in response.json()['results']]
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        for done, response in enumerate(pool.map(lookup, [{'basename_exact': basename, 'include_related_frames': False}
+                                                          for basename in sorted(basenames)]), 1):
+            response.raise_for_status()
+            frame_ids += [frame['id'] for frame in response.json()['results']]
+            if done % 25 == 0 or done == total:
+                cache.set(progress_key, {'done': done, 'total': total}, 3600)
     logger.info(f'Found {len(frame_ids)} of {len(basenames)} frames in the LCO archive in {time.monotonic() - started:.0f}s')
     if not frame_ids:
         return None
