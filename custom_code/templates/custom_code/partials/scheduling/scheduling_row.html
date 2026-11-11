@@ -18,42 +18,30 @@
     </div>
   </div>
   <div class="card-body">
-    <div class="row scheduling-split">
-      <div class="col-12 scheduling-split-form">
-        <form id="scheduling-form-{{ parameter.observation_id }}">
-          {% csrf_token %}
-          <div class="row">
-            <div class="col scheduling-fields-col">
-              {% crispy form %}
-            </div>
-            <div class="col-auto scheduling-exposure-col">
-              {% crispy form form.exposure_helper %}
-            </div>
-          </div>
-          <div class="row mt-2 align-items-center">
-            <div class="col-auto">
-              <div id="scheduling-actions-{{ parameter.observation_id }}">
-                {% include 'custom_code/partials/scheduling/scheduling_buttons.html' %}
-              </div>
-            </div>
-            <div class="col text-muted">
-              <div class="row">
-                <div class="col-auto">Started: {{ parameter.start }}</div>
-                <div class="col-auto">Next reminder: {{ parameter.reminder_date }}</div>
-                {% if parameter.comment %}<div class="col-auto">{{ parameter.comment }}</div>{% endif %}
-              </div>
-            </div>
-          </div>
-        </form>
+    <form id="scheduling-form-{{ parameter.observation_id }}" class="scheduling-grid">
+      {% csrf_token %}
+      <div class="scheduling-fields">
+        {% crispy form %}
       </div>
-      <div class="col-12 scheduling-split-plots">
+      <div class="scheduling-side">
+        <div id="scheduling-actions-{{ parameter.observation_id }}" class="mb-2">
+          {% include 'custom_code/partials/scheduling/scheduling_buttons.html' %}
+        </div>
+        {% crispy form form.exposure_helper %}
+      </div>
+      <div class="scheduling-plots-area">
         <div class="row scheduling-plots">
           <div class="col-auto">{% lightcurve_collapse parameter.target user %}</div>
           <div class="col-auto">{% spectra_collapse parameter.target user %}</div>
           <div class="col-auto">{% airmass_collapse parameter.target %}</div>
         </div>
       </div>
-    </div>
+      <div class="scheduling-meta text-muted">
+        <span>Started: {{ parameter.start }}</span>
+        <span>Next reminder: {{ parameter.reminder_date }}</span>
+        {% if parameter.comment %}<span>{{ parameter.comment }}</span>{% endif %}
+      </div>
+    </form>
   </div>
 </div>
 {% empty %}
