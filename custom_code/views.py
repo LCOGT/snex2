@@ -1,6 +1,4 @@
 import base64
-from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 import json
 import os
 import re
@@ -59,7 +57,7 @@ from custom_code.management.commands.ingest_ztf_data import get_ztf_data
 from custom_code.processors.data_processor import merge_into_observation, run_custom_data_processor
 from custom_code.scheduling import cancel_observation, change_obs_from_scheduling, get_proposal_choices, save_comments
 from django.core.files.storage import default_storage
-from custom_code.raw_spectra import is_floyds_frame, reduction_files, save_reduction_files, stream_zip
+from custom_code.raw_spectra import is_floyds_frame, reduction_files, save_reduction_files, archive_zip, stream_zip
 from custom_code.templatetags import custom_code_tags
 from custom_code.thumbnails import cached_frame, make_thumb
 from custom_code.match_managers import TNS_PREFIX_RE
@@ -1641,27 +1639,24 @@ def photometry_standards_view(request, pk):
 
 
 @require_http_methods(["POST"])
-def get_frame_ids_view(request):
-    basenames = set(json.loads(request.POST.get('basenames', '[]')))
-    lookup = partial(requests.get, settings.FACILITIES['LCO']['archive_url'], timeout=(10, 60),
-                     headers={'Authorization': f"Token {settings.FACILITIES['LCO']['api_key']}"})
-    params = [{'basename_exact': basename, 'include_related_frames': False} for basename in basenames]
+def download_photometry_frames_view(request, pk):
+    target = _target_for_user(request, pk)
+    requested = set(json.loads(request.POST.get('basenames', '[]')))
+    datums = viewable_datums(request.user, PhotometryReducedDatum.objects.filter(value__basename__in=requested)).filter(
+        Q(target=target) | Q(target_id__in=standard_target_ids()))
+    basenames = set(datums.values_list('value__basename', flat=True))
+    if not basenames:
+        raise Http404('None of these frames are visible to this user')
     try:
-        with ThreadPoolExecutor(max_workers=10) as pool:
-            responses = list(pool.map(lookup, params))
+        stream = archive_zip(basenames)
     except requests.RequestException as e:
-        logger.error(f'LCO archive frame lookup failed: {e}')
-        return JsonResponse({'error': f'Could not reach the LCO archive: {e}'}, status=502)
-
-    frame_ids = set()
-    for response in responses:
-        if not response.ok:
-            logger.error(f'LCO archive frame lookup failed: {response.status_code} {response.text[:200]}')
-            return JsonResponse({'error': f'LCO archive returned {response.status_code}: {response.text[:200]}'}, status=502)
-        frame_ids.update(r['id'] for r in response.json()['results'])
-
-    logger.info(f'Found {len(frame_ids)} of {len(basenames)} frames in the LCO archive')
-    return JsonResponse({'frame_ids': list(frame_ids), 'count': len(frame_ids)})
+        return HttpResponse(f'The LCO archive could not build the zip: {e}', status=502)
+    if stream is None:
+        raise Http404('None of these frames were found in the LCO archive')
+    response = StreamingHttpResponse(stream, content_type='application/zip')
+    response['Content-Disposition'] = f'attachment; filename="{target.name.replace(" ", "")}_frames.zip"'
+    response.set_cookie('download_token', request.POST.get('download_token', ''), max_age=300)
+    return response
 
 class InterestingTargetsView(ListView):
 

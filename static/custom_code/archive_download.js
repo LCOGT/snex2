@@ -1,40 +1,55 @@
-async function findFrameIds(basenames, url, csrfToken, status) {
-  const CHUNK_SIZE = 500;
-  const unique = Array.from(new Set(basenames));
-  const frameIds = [];
-  for (let i = 0; i < unique.length; i += CHUNK_SIZE) {
-    status.textContent = 'Finding frames in the LCO archive: ' + i + ' of ' + unique.length + ' looked up...';
-    const body = new FormData();
-    body.append('basenames', JSON.stringify(unique.slice(i, i + CHUNK_SIZE)));
-    const resp = await fetch(url, { method: 'POST', body: body, headers: { 'X-CSRFToken': csrfToken } });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      throw new Error((data.error || resp.status) + ' (after ' + i + ' of ' + unique.length + ' frames)');
-    }
-    frameIds.push(...data.frame_ids);
+function downloadFrames(url, basenames, csrfToken, button, status, label) {
+  const token = String(Date.now());
+  const frame = document.createElement('iframe');
+  frame.name = 'frames-download-' + token;
+  frame.hidden = true;
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = url;
+  form.target = frame.name;
+  [['csrfmiddlewaretoken', csrfToken], ['basenames', JSON.stringify(Array.from(new Set(basenames)))], ['download_token', token]].forEach(function (field) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = field[0];
+    input.value = field[1];
+    form.appendChild(input);
+  });
+  button.disabled = true;
+  status.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>';
+  status.append(label + ' Looking up frames in the LCO archive; this could take a few minutes.');
+  let timer;
+  function done(message) {
+    clearInterval(timer);
+    button.disabled = false;
+    status.textContent = message;
   }
-  return frameIds;
-}
-
-async function downloadZip(frameIds, uncompress, archiveRoot, archiveToken) {
-  const CHUNK_SIZE = 500;
-  for (let i = 0; i < frameIds.length; i += CHUNK_SIZE) {
-    const chunk = frameIds.slice(i, i + CHUNK_SIZE);
-    const form = $('<form>', {
-      method: 'POST',
-      action: `${archiveRoot}zip/`,
-      target: '_blank'
-    });
-    chunk.forEach(function(value, j) {
-      form.append($('<input>', { type: 'hidden', name: `frame_ids[${j}]`, value: value }));
-    });
-    form.append($('<input>', { type: 'hidden', name: 'auth_token', value: archiveToken }));
-    form.append($('<input>', { type: 'hidden', name: 'uncompress', value: uncompress }));
-    $('body').append(form);
-    form.submit();
-    form.remove();
-    if (i + CHUNK_SIZE < frameIds.length) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+  timer = setInterval(function () {
+    if (document.cookie.split('; ').includes('download_token=' + token)) {
+      document.cookie = 'download_token=; Max-Age=0; path=/';
+      done(label + ' Download started; see your browser\'s downloads.');
     }
-  }
+  }, 500);
+  document.body.appendChild(frame);
+  frame.addEventListener('load', function () {
+    if (frame.contentWindow.location.href === 'about:blank') { return; }
+    const message = 'Download failed: ' + (frame.contentDocument.body.textContent.trim().slice(0, 200) || 'unknown error');
+    done(message);
+    frame.remove();
+    const banner = document.createElement('div');
+    banner.className = 'alert alert-danger alert-dismissible';
+    banner.setAttribute('role', 'alert');
+    banner.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn-close';
+    close.setAttribute('data-bs-dismiss', 'alert');
+    close.setAttribute('aria-label', 'close');
+    banner.appendChild(close);
+    const main = document.querySelector('main') || document.body;
+    main.prepend(banner);
+    banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
 }

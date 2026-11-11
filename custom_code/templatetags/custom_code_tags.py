@@ -757,9 +757,7 @@ def photometry_data_list(context, target):
             'filters': sorted({r['datum'].bandpass for r in rows if r['datum'].bandpass}),
             'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
             'groups': list(Group.objects.values_list('name', flat=True)),
-            'is_admin': user.is_superuser,
-            'archive_root': settings.FACILITIES['LCO']['archive_url'],
-            'archive_token': settings.FACILITIES['LCO']['api_key']}
+            'is_admin': user.is_superuser}
 
 
 @register.inclusion_tag('tom_targets/partials/recent_targets.html', takes_context=True)
@@ -819,9 +817,7 @@ def photometric_standards_list(context, target):
             'date_max': (max(dates) + one_day).isoformat() if dates else '',
             'filters': sorted({r['datum'].bandpass for r in rows if r['datum'].bandpass}),
             'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
-            'is_admin': user.is_superuser,
-            'archive_root': settings.FACILITIES['LCO']['archive_url'],
-            'archive_token': settings.FACILITIES['LCO']['api_key']}
+            'is_admin': user.is_superuser}
 
 
 @register.inclusion_tag('custom_code/dataproduct_update.html')

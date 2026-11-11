@@ -118,14 +118,8 @@
       return;
     }
     const basenames = Array.from(new Set(sel.map((r) => r.dataset.basename)));
-    let frameIds;
-    try {
-      frameIds = await findFrameIds(basenames, '{% url "get-frame-ids" %}', csrf(), status);
-    } catch (e) {
-      status.textContent = 'Could not look up frames: ' + e.message; return;
-    }
-    status.textContent = 'Found ' + frameIds.length + ' of ' + basenames.length + ' frames. Downloads open in new tab(s); enable pop-ups.';
-    if (frameIds.length) { await downloadZip(frameIds, false, '{{ archive_root }}', '{{ archive_token }}'); }
+    downloadFrames('{% url "download-photometry-frames" target.id %}', basenames, csrf(), this, status,
+      'Downloading ' + basenames.length + ' frames as one zip.');
   });
 })();
 </script>

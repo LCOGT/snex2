@@ -282,17 +282,9 @@
       if (!found.ok) { status.textContent = 'Could not look up standards (' + found.status + ').'; return; }
       standards = (await found.json()).basenames;
     }
-    const basenames = science.concat(standards);
-    status.textContent = 'Finding ' + science.length + ' science frames' +
-      (document.getElementById('phot-standards').checked ? ' + ' + standards.length + ' standard frames' : '') + ' in the LCO archive...';
-    let frameIds;
-    try {
-      frameIds = await findFrameIds(basenames, '{% url "get-frame-ids" %}', csrf(), status);
-    } catch (e) {
-      status.textContent = 'Could not look up frames: ' + e.message; return;
-    }
-    status.textContent = 'Found ' + frameIds.length + ' of ' + basenames.length + ' frames. Downloads open in new tab(s); enable pop-ups.';
-    if (frameIds.length) { await downloadZip(frameIds, false, '{{ archive_root }}', '{{ archive_token }}'); }
+    downloadFrames('{% url "download-photometry-frames" target.id %}', science.concat(standards), csrf(), this, status,
+      'Downloading ' + science.length + ' science frames' +
+      (document.getElementById('phot-standards').checked ? ' + ' + standards.length + ' standard frames' : '') + ' as one zip.');
   });
 
   const apply = document.getElementById('phot-apply-groups');

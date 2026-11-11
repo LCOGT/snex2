@@ -2,6 +2,7 @@ import datetime
 import os
 import tempfile
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from dateutil.parser import parse
@@ -156,3 +157,27 @@ def stream_zip(items, include_standard=False, readme=None):
                                      for row in table) + '\n')
             archive.writestr('README.txt', readme)
     yield buffer.take()
+
+
+def _frame_id(basename):
+    found = _archive({'basename_exact': basename})
+    return found[0]['id'] if found else None
+
+
+def _relay(response):
+    with response:
+        yield from response.iter_content(1 << 20)
+
+
+def archive_zip(basenames):
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        frame_ids = [frame_id for frame_id in pool.map(_frame_id, sorted(basenames)) if frame_id]
+    if not frame_ids:
+        return None
+    lco = settings.FACILITIES['LCO']
+    response = requests.post(lco['archive_url'] + 'zip/', json={'frame_ids': frame_ids},
+                             headers={'Authorization': 'Token ' + lco['api_key']}, stream=True, timeout=(10, 300))
+    if not response.ok:
+        response.close()
+        response.raise_for_status()
+    return _relay(response)
