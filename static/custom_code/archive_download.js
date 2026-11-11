@@ -41,8 +41,9 @@ function downloadFrames(url, progressUrl, basenames, csrfToken, button, status, 
       const bar = status.querySelector('.progress-bar');
       if (!button.disabled || waiting || !bar || !progress.total) { return; }
       if (progress.done < progress.total) {
-        bar.classList.remove('w-100', 'progress-bar-striped', 'progress-bar-animated');
-        bar.style.width = (100 * progress.done / progress.total) + '%';
+        bar.classList.remove('w-100');
+        bar.style.width = Math.max(3, 100 * progress.done / progress.total) + '%';
+        status.querySelector('span > span:last-child').textContent = label + ' (' + progress.done + ' of ' + progress.total + ')';
       } else {
         waiting = true;
         showProgress(status, 'Waiting for the LCO Archive to Start the Zip');
