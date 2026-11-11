@@ -58,7 +58,7 @@
   <tbody>
   {% for row in rows %}
     <tr class="std-row" data-date="{{ row.datum.timestamp|date:'Y-m-d' }}" data-band="{{ row.datum.bandpass }}"
-        data-instrument="{{ row.instrument }}" data-basename="{{ row.basename }}" data-same-telescope="{{ row.same_telescope|yesno:'1,0' }}">
+        data-instrument="{{ row.instrument_type }}" data-basename="{{ row.basename }}" data-same-telescope="{{ row.same_telescope|yesno:'1,0' }}">
       <td><input type="checkbox" class="std-check" checked></td>
       <td>{{ row.datum.timestamp|date:'Y-m-d H:i' }}</td>
       <td>{% if is_admin %}<a href="{% url 'targets:detail' row.datum.target_id %}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
@@ -118,7 +118,7 @@
       return;
     }
     const basenames = Array.from(new Set(sel.map((r) => r.dataset.basename)));
-    downloadFrames('{% url "download-photometry-frames" target.id %}', '{% url "frames-download-progress" %}', basenames, csrf(), this, status,
+    downloadFrames('{% url "download-photometry-frames" target.id %}', basenames, csrf(), this, status,
       'Collecting ' + basenames.length + ' Standard Frames');
   });
 })();

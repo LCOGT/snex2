@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED',
                              'FAILURE_LIMIT_REACHED', 'NOT_ATTEMPTED'}
 LIGHTCURVE_CONTROLS_HEIGHT = 580
+INSTRUMENT_TYPES = {'fa': 'Sinistro', 'ep': 'MuSCAT', 'sq': 'QHY', 'en': 'FLOYDS'}
 
 register = template.Library()
 
@@ -553,6 +554,9 @@ def registration_who_you_are(user):
     except (AttributeError, UserRegistrationInfo.DoesNotExist):
         return ''
 
+def instrument_type(code):
+    return INSTRUMENT_TYPES.get(re.match(r'[a-z]*', (code or '').lower()).group(), code or '')
+
 @register.inclusion_tag('tom_dataproducts/partials/dataproduct_list_for_target.html', takes_context=True)
 def snex_dataproduct_list(context, target):
     dataproduct_context = dataproduct_list_for_target(context, target)
@@ -569,8 +573,9 @@ def snex_dataproduct_list(context, target):
         source = product.spectrum or product.photometryreduceddatum_set.first()
         product.telescope = source.telescope if source else ''
         product.instrument = source.instrument if source else ''
+        product.instrument_type = instrument_type(product.instrument)
     telescopes = {p.telescope for p in dataproduct_context['products'] if p.telescope}
-    instruments = {p.instrument for p in dataproduct_context['products'] if p.instrument}
+    instruments = {p.instrument_type for p in dataproduct_context['products'] if p.instrument_type}
     dataproduct_context['is_admin'] = context['request'].user.is_superuser
     dataproduct_context['telescopes'] = sorted(telescopes)
     dataproduct_context['instruments'] = sorted(instruments)
@@ -748,6 +753,7 @@ def photometry_data_list(context, target):
                      'uploaded_by': v.get('uploaded_by') or '',
                      'color': get_color(d.bandpass),
                      'instrument': d.instrument or (basename.split('-')[1] if basename.count('-') >= 2 else '')})
+        rows[-1]['instrument_type'] = instrument_type(rows[-1]['instrument'])
     dates = [timezone.localtime(d.timestamp).date() for d in datums if d.timestamp]
     one_day = datetime.timedelta(days=1)
     return {'target': target,
@@ -755,7 +761,7 @@ def photometry_data_list(context, target):
             'date_min': (min(dates) - one_day).isoformat() if dates else '',
             'date_max': (max(dates) + one_day).isoformat() if dates else '',
             'filters': sorted({r['datum'].bandpass for r in rows if r['datum'].bandpass}),
-            'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
+            'instruments': sorted({r['instrument_type'] for r in rows if r['instrument_type']}),
             'groups': list(Group.objects.values_list('name', flat=True)),
             'is_admin': user.is_superuser}
 
@@ -810,13 +816,14 @@ def photometric_standards_list(context, target):
                 rows.append({'datum': rd, 'name': rd.target.name, 'basename': basename,
                              'same_telescope': exact in exact_setups,
                              'instrument': rd.instrument or basename.split('-')[1]})
+                rows[-1]['instrument_type'] = instrument_type(rows[-1]['instrument'])
     dates = [timezone.localtime(r['datum'].timestamp).date() for r in rows]
     return {'target': target,
             'rows': rows,
             'date_min': (min(dates) - one_day).isoformat() if dates else '',
             'date_max': (max(dates) + one_day).isoformat() if dates else '',
             'filters': sorted({r['datum'].bandpass for r in rows if r['datum'].bandpass}),
-            'instruments': sorted({r['instrument'] for r in rows if r['instrument']}),
+            'instruments': sorted({r['instrument_type'] for r in rows if r['instrument_type']}),
             'is_admin': user.is_superuser}
 
 

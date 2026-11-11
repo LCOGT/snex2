@@ -1,12 +1,9 @@
 function showProgress(status, text) {
-  status.innerHTML = '<span class="d-inline-flex align-items-center">' +
-    '<span class="progress flex-shrink-0 me-2" style="width: 10rem; height: 1rem;">' +
-    '<span class="progress-bar progress-bar-striped progress-bar-animated w-100" role="progressbar"></span></span>' +
-    '<span></span></span>';
-  status.querySelector('span > span:last-child').textContent = text;
+  status.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span><span></span>';
+  status.querySelectorAll('span')[1].textContent = text;
 }
 
-function downloadFrames(url, progressUrl, basenames, csrfToken, button, status, label) {
+function downloadFrames(url, basenames, csrfToken, button, status, label) {
   const token = String(Date.now());
   const frame = document.createElement('iframe');
   frame.name = 'frames-download-' + token;
@@ -30,26 +27,12 @@ function downloadFrames(url, progressUrl, basenames, csrfToken, button, status, 
     button.disabled = false;
     status.textContent = message;
   }
-  let waiting = false;
   timer = setInterval(function () {
     if (document.cookie.split('; ').includes('download_token=' + token)) {
       document.cookie = 'download_token=; Max-Age=0; path=/';
       done('Download started. See your browser\'s downloads.');
-      return;
     }
-    fetch(progressUrl + '?token=' + token).then((response) => response.json()).then(function (progress) {
-      const bar = status.querySelector('.progress-bar');
-      if (!button.disabled || waiting || !bar || !progress.total) { return; }
-      if (progress.done < progress.total) {
-        bar.classList.remove('w-100');
-        bar.style.width = Math.max(3, 100 * progress.done / progress.total) + '%';
-        status.querySelector('span > span:last-child').textContent = label + ' (' + progress.done + ' of ' + progress.total + ')';
-      } else {
-        waiting = true;
-        showProgress(status, 'Waiting for the LCO Archive to Start the Zip');
-      }
-    }).catch(() => {});
-  }, 1000);
+  }, 500);
   document.body.appendChild(frame);
   frame.addEventListener('load', function () {
     if (frame.contentWindow.location.href === 'about:blank') { return; }

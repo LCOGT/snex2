@@ -89,7 +89,6 @@ urlpatterns = [
     path('download-fits/', download_fits_view, name='download-fits'),
     path('cache-frame/', cache_frame_view, name='cache-frame'),
     path('targets/<int:pk>/photometry/frames/', download_photometry_frames_view, name='download-photometry-frames'),
-    path('frames-download-progress/', frames_download_progress_view, name='frames-download-progress'),
     path('spectra/raw-download/', download_raw_spectra_view, name='download-raw-spectra'),
     path('spectra/download/', download_spectra_view, name='download-spectra'),
     path('targets/<int:pk>/photometry/standards/', photometry_standards_view, name='photometry-standards'),

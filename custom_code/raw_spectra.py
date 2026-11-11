@@ -10,11 +10,11 @@ from functools import partial
 import requests
 from dateutil.parser import parse
 from django.conf import settings
-from django.core.cache import cache
 from django.core.files import File
 from django.core.files.storage import default_storage
 from django.utils import timezone
 from django.utils.text import slugify
+from tom_dataproducts.models import PhotometryReducedDatum
 
 from custom_code.utils import frame_night
 
@@ -165,22 +165,30 @@ def stream_zip(items, include_standard=False, readme=None):
     yield buffer.take()
 
 
-def archive_zip(basenames, token):
+def archive_zip(frames):
     started = time.monotonic()
     lco = settings.FACILITIES['LCO']
     headers = {'Authorization': 'Token ' + lco['api_key']}
     lookup = partial(requests.get, lco['archive_url'], headers=headers, timeout=(10, 120))
-    progress_key, total = f'frames-download-{token}', len(basenames)
-    cache.set(progress_key, {'done': 0, 'total': total}, 3600)
-    frame_ids = []
+    frame_ids, missing = [], []
+    for basename, frame_id in frames.items():
+        if frame_id:
+            frame_ids.append(frame_id)
+        else:
+            missing.append(basename)
+    looked_up = {}
     with ThreadPoolExecutor(max_workers=32) as pool:
-        for done, response in enumerate(pool.map(lookup, [{'basename_exact': basename, 'include_related_frames': False}
-                                                          for basename in sorted(basenames)]), 1):
+        for response in pool.map(lookup, [{'basename_exact': basename, 'include_related_frames': False} for basename in missing]):
             response.raise_for_status()
-            frame_ids += [frame['id'] for frame in response.json()['results']]
-            if done % 25 == 0 or done == total:
-                cache.set(progress_key, {'done': done, 'total': total}, 3600)
-    logger.info(f'Found {len(frame_ids)} of {len(basenames)} frames in the LCO archive in {time.monotonic() - started:.0f}s')
+            for frame in response.json()['results']:
+                frame_ids.append(frame['id'])
+                looked_up[frame['basename']] = frame['id']
+    datums = list(PhotometryReducedDatum.objects.filter(value__basename__in=list(looked_up)))
+    for datum in datums:
+        datum.value['frame_id'] = looked_up[datum.value['basename']]
+    PhotometryReducedDatum.objects.bulk_update(datums, ['value'], batch_size=500)
+    logger.info(f'Found {len(frame_ids)} of {len(frames)} frames ({len(frames) - len(missing)} stored, {len(missing)} looked up) '
+                f'in {time.monotonic() - started:.0f}s')
     if not frame_ids:
         return None
     response = requests.post(lco['archive_url'] + 'zip/', json={'frame_ids': frame_ids},

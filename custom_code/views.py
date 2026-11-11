@@ -1644,11 +1644,11 @@ def download_photometry_frames_view(request, pk):
     requested = set(json.loads(request.POST.get('basenames', '[]')))
     datums = viewable_datums(request.user, PhotometryReducedDatum.objects.filter(value__basename__in=requested)).filter(
         Q(target=target) | Q(target_id__in=standard_target_ids()))
-    basenames = set(datums.values_list('value__basename', flat=True))
-    if not basenames:
+    frames = dict(datums.values_list('value__basename', 'value__frame_id'))
+    if not frames:
         raise Http404('None of these frames are visible to this user')
     try:
-        result = archive_zip(basenames, request.POST.get('download_token', ''))
+        result = archive_zip(frames)
     except requests.RequestException as e:
         return HttpResponse(f'The LCO archive could not build the zip: {e}', status=502)
     if result is None:
@@ -1660,9 +1660,6 @@ def download_photometry_frames_view(request, pk):
     response['Content-Disposition'] = f'attachment; filename="{target.name.replace(" ", "")}_frames.zip"'
     response.set_cookie('download_token', request.POST.get('download_token', ''), max_age=300)
     return response
-
-def frames_download_progress_view(request):
-    return JsonResponse(cache.get(f"frames-download-{request.GET.get('token', '')}", {'done': 0, 'total': 0}))
 
 class InterestingTargetsView(ListView):
 
