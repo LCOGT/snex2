@@ -5,6 +5,7 @@ import tempfile
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 import requests
 from dateutil.parser import parse
@@ -163,47 +164,23 @@ def stream_zip(items, include_standard=False, readme=None):
     yield buffer.take()
 
 
-def _night_frame_ids(night):
-    instrument, day, rlevel = night
-    lco = settings.FACILITIES['LCO']
-    url = lco['archive_url']
-    params = {'INSTRUME': instrument, 'DAY_OBS': day, 'RLEVEL': rlevel, 'include_related_frames': False, 'limit': 1000}
-    frame_ids = {}
-    while url:
-        response = requests.get(url, params=params, headers={'Authorization': 'Token ' + lco['api_key']}, timeout=(10, 120))
-        response.raise_for_status()
-        data = response.json()
-        frame_ids.update({frame['basename']: frame['id'] for frame in data['results']})
-        url, params = data['next'], None
-    return frame_ids
-
-
-def _relay(response):
-    with response:
-        yield from response.iter_content(1 << 20)
-
-
 def archive_zip(basenames):
     started = time.monotonic()
-    nights = {}
-    for basename in basenames:
-        parts = basename.split('-')
-        if len(parts) == 5 and len(parts[2]) == 8 and parts[4][1:].isdigit():
-            day = f'{parts[2][:4]}-{parts[2][4:6]}-{parts[2][6:]}'
-            nights.setdefault((parts[1], day, int(parts[4][1:])), set()).add(basename)
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        found = list(pool.map(_night_frame_ids, nights))
-    frame_ids = [ids[basename] for ids, wanted in zip(found, nights.values()) for basename in wanted if basename in ids]
-    logger.info(f'Found {len(frame_ids)} of {len(basenames)} frames in {len(nights)} archive queries '
-                f'in {time.monotonic() - started:.0f}s')
+    lco = settings.FACILITIES['LCO']
+    headers = {'Authorization': 'Token ' + lco['api_key']}
+    lookup = partial(requests.get, lco['archive_url'], headers=headers, timeout=(10, 120))
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        responses = list(pool.map(lookup, [{'basename_exact': basename, 'include_related_frames': False}
+                                           for basename in sorted(basenames)]))
+    frame_ids = []
+    for response in responses:
+        response.raise_for_status()
+        frame_ids += [frame['id'] for frame in response.json()['results']]
+    logger.info(f'Found {len(frame_ids)} of {len(basenames)} frames in the LCO archive in {time.monotonic() - started:.0f}s')
     if not frame_ids:
         return None
-    lco = settings.FACILITIES['LCO']
     response = requests.post(lco['archive_url'] + 'zip/', json={'frame_ids': frame_ids},
-                             headers={'Authorization': 'Token ' + lco['api_key'], 'Accept-Encoding': 'identity'},
-                             stream=True, timeout=(10, 300))
-    if not response.ok:
-        response.close()
-        response.raise_for_status()
+                             headers={**headers, 'Accept-Encoding': 'identity'}, stream=True, timeout=(10, 300))
+    response.raise_for_status()
     logger.info(f'LCO archive started streaming the zip after {time.monotonic() - started:.0f}s')
-    return _relay(response), response.headers.get('Content-Length')
+    return response.iter_content(1 << 20), response.headers.get('Content-Length')
