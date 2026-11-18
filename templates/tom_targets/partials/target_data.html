@@ -14,6 +14,8 @@
   {% for target_name in target|smart_name_list %}
     {% if 'AT ' in target_name or 'SN ' in target_name %}
     <li><a href="https://www.wis-tns.org/object/{{ target_name|slice:"3:" }}" style="color: black;" target="_blank">{{ target_name }}</a><br></li>
+    {% elif 'TDE ' in target_name %}
+    <li><a href="https://www.wis-tns.org/object/{{ target_name|slice:"4:" }}" style="color: black;" target="_blank">{{ target_name }}</a><br></li>
     {% elif 'ZTF' in target_name %}
     <li><a href="https://alerce.online/object/{{ target_name }}" style="color: black;" target="_blank">{{ target_name }}</a><br></li>
     {% else %}
@@ -54,6 +56,9 @@
       var newLi = document.createElement('li');
       if (newname.startsWith('AT ') || newname.startsWith('SN ')) {
         var slug = newname.slice(3);
+        newLi.innerHTML = '<a href="https://www.wis-tns.org/object/' + slug + '" style="color: black;" target="_blank">' + newname + '</a><br>';
+      } else if (newname.startsWith('TDE ')) {
+        var slug = newname.slice(4);
         newLi.innerHTML = '<a href="https://www.wis-tns.org/object/' + slug + '" style="color: black;" target="_blank">' + newname + '</a><br>';
       } else if (newname.startsWith('ZTF')) {
         newLi.innerHTML = '<a href="https://alerce.online/object/' + newname + '" style="color: black;" target="_blank">' + newname + '</a><br>';

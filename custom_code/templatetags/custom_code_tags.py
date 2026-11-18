@@ -13,7 +13,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from django.core.paginator import Paginator
 
-from tom_targets.models import Target, TargetList
+from tom_targets.models import Target, TargetList, TargetName
 from tom_targets.permissions import targets_for_user
 from tom_observations import facility
 from tom_dataproducts.models import DataProduct, PhotometryReducedDatum, SpectroscopyReducedDatum
@@ -1112,6 +1112,10 @@ def smart_name_list(target):
             new_name = name[:2].upper() + ' ' + name[2:]
             if new_name not in good_names:
                 good_names.append(new_name)
+        elif name[:3].upper() == 'TDE':
+            new_name = 'TDE ' + name[3:].strip()
+            if new_name not in good_names:
+                good_names.append(new_name)
         elif ('atlas' in name[:5] or 'ATLAS' in name[:5]):
             new_name = name.replace(name[:5], name[:5].upper())
             if new_name not in good_names:
@@ -1491,20 +1495,21 @@ def strip_trailing_zeros(value):
     
 def find_name(namelist, n):
     for name in namelist:
-        if n in name[:2].upper() and 'LAS' not in name[:5].upper():
-            return name[:2].upper() + ' ' + name[2:].replace(' ', '')
+        if name.upper().startswith(n) and 'LAS' not in name[:5].upper():
+            return n + ' ' + name[len(n):].replace(' ', '')
     return False
 
 @register.filter
 def get_best_name(target):
     namelist = [target.name] + [alias.name for alias in target.aliases.all()]
-    bestname = find_name(namelist, 'SN')
-    if not bestname:
-        bestname = find_name(namelist, 'AT')
+    bestname = find_name(namelist, 'SN') or find_name(namelist, 'TDE') or find_name(namelist, 'AT')
     
     if bestname:
         normalizedname = bestname.replace(' ', '')
         if target.name != normalizedname:
+            target.aliases.filter(name=normalizedname).delete()
+            if target.name.replace(' ', '').lower() != normalizedname.lower():
+                TargetName.objects.get_or_create(target=target, name=target.name)
             target.name = normalizedname
             target.save()
     else:
