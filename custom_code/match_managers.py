@@ -9,7 +9,7 @@ from tom_targets.base_models import TargetMatchManager
 
 MATCH_RADIUS_ARCSEC = 1.0
 
-TNS_PREFIX_RE = re.compile(r'^(SN|AT)(?=\d)', re.IGNORECASE)
+TNS_PREFIX_RE = re.compile(r'^(SN|AT|TDE)(?=\d)', re.IGNORECASE)
 
 
 def ra_ranges(ra, dec, radius):

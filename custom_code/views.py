@@ -194,7 +194,7 @@ def target_redirect_view(request):
     if exact:
         return redirect('/targets/?name=' + quote_plus(','.join(t.name for t in exact)))
 
-    if not re.fullmatch(r'(AT|SN)\d{4}[A-Za-z]{1,4}', canonical):
+    if not re.fullmatch(r'(AT|SN|TDE)\d{4}[A-Za-z]{1,4}', canonical):
         core = TNS_PREFIX_RE.sub('', canonical)
         candidates = {c.lower() for c in (search_entry, search_entry.replace(' ', ''), canonical, core) if c}
         q = Q()

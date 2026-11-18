@@ -327,9 +327,10 @@ def _normalize_view_object_name(name: str) -> str:
     if not s_clean:
         return s_clean
 
-    if TNS_PREFIX_RE.match(s_clean):
-        prefix = s_clean[:2].upper()
-        tail = s_clean[2:]
+    match = TNS_PREFIX_RE.match(s_clean)
+    if match:
+        prefix = match.group(1).upper()
+        tail = s_clean[match.end():]
     elif s_clean[0].isdigit():
         prefix = 'AT'
         tail = s_clean
@@ -382,8 +383,9 @@ def _format_prefixed_name_for_create(canonical_name: str) -> str:
       - `AT2024GGI` -> `AT 2024GGI`
     """
     s = (canonical_name or '').strip()
-    if TNS_PREFIX_RE.match(s):
-        return s[:2].upper() + ' ' + s[2:]
+    match = TNS_PREFIX_RE.match(s)
+    if match:
+        return match.group(1).upper() + ' ' + s[match.end():]
     return s
 
 
@@ -478,8 +480,8 @@ def update_target_from_tns(target):
     if Target.objects.filter(name__iexact=tns_name).exclude(pk=target.pk).exists():
         raise ValueError(f'another target is already named {tns_name}')
     changes = []
-    other_names = [name for name in target.names if tns_object(name) != objname]
-    target.aliases.exclude(name__in=other_names).delete()
+    old_name = target.name
+    target.aliases.filter(name__iexact=tns_name).delete()
     if target.name != tns_name:
         changes.append(f'name {target.name} to {tns_name}')
         target.name = tns_name
@@ -495,7 +497,7 @@ def update_target_from_tns(target):
     known = {name.lower() for name in target.names}
     internal_names = [name.strip() for name in (tns.get('internal_names') or '').split(',')
                       if name.strip() and tns_object(name) != objname]
-    for name in other_names + internal_names:
+    for name in [old_name, 'AT' + tns['objname']] + internal_names:
         taken = Target.objects.filter(name__iexact=name).exists() or TargetName.objects.filter(name__iexact=name).exists()
         if name.lower() not in known and not taken:
             TargetName.objects.create(target=target, name=name)
