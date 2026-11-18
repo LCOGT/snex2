@@ -5315,7 +5315,7 @@ requires-dist = [
     { name = "sep" },
     { name = "slack-sdk" },
     { name = "tess-point" },
-    { name = "tom-alertstreams", specifier = ">=1.3.0" },
+    { name = "tom-alertstreams", specifier = ">=1.3.0,<2" },
     { name = "tom-nonlocalizedevents", specifier = ">=1.0.0" },
     { name = "tom-tns", specifier = ">=0.5.0" },
     { name = "tomtoolkit", specifier = ">=3.1,<4" },

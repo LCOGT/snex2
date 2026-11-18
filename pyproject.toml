@@ -22,7 +22,7 @@ dependencies = [
     "lcogt_logging",
     "django_plotly_dash",
     "tom_nonlocalizedevents>=1.0.0",
-    "tom_alertstreams>=1.3.0",
+    "tom_alertstreams>=1.3.0,<2",
     "tom_tns>=0.5.0",
     "sep",
     "requests_oauthlib",
