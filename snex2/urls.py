@@ -87,7 +87,6 @@ urlpatterns = [
     path('targets/<int:pk>/spectrum/<int:spectrum_id>/data/', spectrum_data_view, name='spectrum-data'),
     path('make-thumbnail/', make_thumbnail_view, name='make-thumbnail'),
     path('download-fits/', download_fits_view, name='download-fits'),
-    path('cache-frame/', cache_frame_view, name='cache-frame'),
     path('targets/<int:pk>/photometry/frames/', download_photometry_frames_view, name='download-photometry-frames'),
     path('spectra/raw-download/', download_raw_spectra_view, name='download-raw-spectra'),
     path('spectra/download/', download_spectra_view, name='download-spectra'),
