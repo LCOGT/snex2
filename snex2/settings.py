@@ -252,6 +252,7 @@ FACILITIES = {
     'LCO': {
         'portal_url': 'https://observe.lco.global',
         'archive_url': 'https://archive-api.lco.global/frames/',
+        'cutout_url': 'https://thumbnails.lco.global/cutout/',
         'api_key': os.environ.get('LCO_API_KEY', 'setyourapikey!'),
     },
     'SOAR': {

@@ -41,10 +41,8 @@ from custom_code.utils import FILTER_TRANSLATE, get_color, default_version, fits
 from tom_observations.utils import get_sidereal_visibility
 from custom_code.facilities.lco_facility import SnexPhotometricSequenceForm, SnexSpectroscopicSequenceForm
 from custom_code.facilities.soar_facility import SOARObservationForm, user_can_access_soar
-from custom_code.thumbnails import make_thumb
-import base64
+from custom_code.thumbnails import cutout_url
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 TERMINAL_OBSERVING_STATES = {'COMPLETED', 'CANCELED', 'WINDOW_EXPIRED',
@@ -1748,19 +1746,14 @@ def image_slideshow(context, target):
 
     ### Make the initial thumbnail
     try:
-        if psfxs[0] < 9999 and psfys[0] < 9999:
-            f = make_thumb([filenames[0]], grow=1.0, x=psfxs[0], y=psfys[0], ticks=True)
-        else:
-            f = make_thumb([filenames[0]], grow=1.0, x=1024, y=1024, ticks=False)
-        with open(os.path.join(settings.THUMB_DIR,f[0]), 'rb') as imagefile:
-            thumb = base64.b64encode(imagefile.read())
+        thumb = cutout_url(filenames[0], psfxs[0], psfys[0])
     except OSError as e:
         logger.warning(f'Could not make thumbnail for {filenames[0]}: {e}')
-        thumb = b''
+        thumb = ''
 
     return {'target': target,
             'form': thumbnailform,
-            'thumb': thumb.decode('utf-8'),
+            'thumb': thumb,
             'telescope': teles[0],
             'instrument': instr[0],
             'filter': filters[0],
@@ -1995,14 +1988,10 @@ def display_thumbnails(context, target):
     for i in range(len(filenames)):
         currentfile = filenames[i]
         try:
-            if psfxs[i] < 9999 and psfys[i] < 9999:
-                f = make_thumb([currentfile], grow=1.0, x=psfxs[i], y=psfys[i], ticks=True)
-            else:
-                f = make_thumb([currentfile], grow=1.0, x=1024, y=1024, ticks=False)
+            thumbfiles.append(cutout_url(currentfile, psfxs[i], psfys[i]))
         except OSError as e:
             logger.warning(f'Could not make thumbnail for {currentfile}: {e}')
             continue
-        thumbfiles.append(f[0])
         
         thumbdates.append(dates[i])
         thumbteles.append(teles[i])
@@ -2013,17 +2002,15 @@ def display_thumbnails(context, target):
     halfway = round(len(thumbfiles)/2)
     
     for i in range(len(thumbfiles)):
-        with open(os.path.join(settings.THUMB_DIR,thumbfiles[i]), 'rb') as imagefile:        
-            b64_image = base64.b64encode(imagefile.read())
-            label = '{} {} {} {} {}'.format(thumbdates[i], thumbsites[i], thumbteles[i], thumbfilters[i], thumbexptimes[i])
-            if i < halfway:
-                top_images.append({'image': b64_image.decode('utf-8'),
-                                   'label': label,
-                                })
-            else:
-                bottom_images.append({'image': b64_image.decode('utf-8'),
-                                      'label': label
-                                      })
+        label = '{} {} {} {} {}'.format(thumbdates[i], thumbsites[i], thumbteles[i], thumbfilters[i], thumbexptimes[i])
+        if i < halfway:
+            top_images.append({'image': thumbfiles[i],
+                               'label': label,
+                            })
+        else:
+            bottom_images.append({'image': thumbfiles[i],
+                                  'label': label
+                                  })
 
     return {'top_images': top_images,
             'bottom_images': bottom_images,
