@@ -28,9 +28,9 @@
   </div>
   <div class="col-md-8">
     <div class="row" id="form-thumbnail">
-      <button class="btn" id="previous-img" style="font-size: 20px;" onclick="prevImg()">&laquo; Previous</button>
-      <img id="form-img" style="width: 70%; height: 70%; margin-left: 5px; margin-top: 5px;" src="data:image/png;base64,{{ thumb }}" alt="img">
-      <button class="btn" id="next-img" style="font-size: 20px; display: none;" onclick="nextImg()">Next &raquo;</button>
+      <button class="btn" id="previous-img" style="font-size: 20px;" onclick="prevImg()">&laquo; Previous <span class="thumb-spinner spinner-border spinner-border-sm d-none" role="status"></span></button>
+      <img id="form-img" style="width: 70%; height: 70%; margin-left: 5px; margin-top: 5px;" src="{{ thumb }}" alt="img">
+      <button class="btn" id="next-img" style="font-size: 20px; display: none;" onclick="nextImg()"><span class="thumb-spinner spinner-border spinner-border-sm d-none" role="status"></span> Next &raquo;</button>
     </div>
     <div class="row justify-content-center mt-3">
       <input type="hidden" id="download-filename" name="filename">
@@ -41,19 +41,20 @@
     <form>
       {% bootstrap_form form %}
     </form>
+    <div id="form-loading"><span class="thumb-spinner spinner-border spinner-border-sm d-none" role="status"></span></div>
   </div>
 </div>
 <script>
   var zoom = document.getElementById("id_zoom");
   zoom.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
-      makeThumbnail();
+      makeThumbnail("form-loading");
     }
   });
   var sigma = document.getElementById("id_sigma");
   sigma.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
-      makeThumbnail();
+      makeThumbnail("form-loading");
     }
   });
   var filename = document.getElementById("id_filenames");
@@ -68,9 +69,18 @@
       document.getElementById("previous-img").style.display = "block";
       document.getElementById("next-img").style.display = "block";
     }
-    makeThumbnail();
+    makeThumbnail("form-loading");
   });
-  function makeThumbnail() {
+  var formImg = document.getElementById("form-img");
+  function setThumbLoading(loading, buttonId) {
+    document.querySelectorAll(".thumb-spinner").forEach(function (spinner) { spinner.classList.toggle("d-none", !loading || spinner.parentElement.id !== buttonId); });
+    document.getElementById("previous-img").disabled = loading;
+    document.getElementById("next-img").disabled = loading;
+  };
+  formImg.addEventListener("load", function () { setThumbLoading(false); });
+  formImg.addEventListener("error", function () { setThumbLoading(false); });
+  function makeThumbnail(buttonId) {
+    setThumbLoading(true, buttonId);
     var zoomVal = document.getElementById("id_zoom").value;
     var sigmaVal = document.getElementById("id_sigma").value;
     var filenameVal = document.getElementById("id_filenames").value;
@@ -83,30 +93,22 @@
       },
       dataType: 'json',
       success: function(response) {
-        var thumb = response.thumb;
-        document.getElementById("form-img").src = thumb;
+        if (formImg.src === response.thumb) {
+          setThumbLoading(false);
+        } else {
+          formImg.src = response.thumb;
+        }
         $('#thumb-telescope').html(response.telescope);
         $('#thumb-instrument').html(response.instrument);
         $('#thumb-filter').html(response.filter);
         $('#thumb-exptime').html(response.exptime);
         $('#thumb-fwhm').html(response.fwhm);
         $('#thumb-wcs').html(response.wcs);
-        prefetchFrames();
+      },
+      error: function() {
+        setThumbLoading(false);
       }
     });
-  };
-  var prefetchedFrames = new Set();
-  async function prefetchFrames() {
-    var select = document.getElementById("id_filenames");
-    var current = select.selectedIndex;
-    prefetchedFrames.add(JSON.parse(select.options[current].value).filename);
-    for (const index of [current + 1, current - 1, current + 2, current + 3]) {
-      if (index < 0 || index >= select.options.length || select.selectedIndex !== current) { continue; }
-      const basename = JSON.parse(select.options[index].value).filename;
-      if (prefetchedFrames.has(basename)) { continue; }
-      prefetchedFrames.add(basename);
-      await fetch(`{% url 'cache-frame' %}?basename=${encodeURIComponent(basename)}`);
-    }
   };
   function prevImg() {
     var select = document.getElementById("id_filenames");
@@ -119,7 +121,7 @@
       select.selectedIndex++;
       document.getElementById("next-img").style.display = "block";
     }
-    makeThumbnail();
+    makeThumbnail("previous-img");
   };
   function nextImg() {
     var select = document.getElementById("id_filenames");
@@ -132,7 +134,7 @@
       select.selectedIndex--;
       document.getElementById("previous-img").style.display = "block";
     }
-    makeThumbnail();
+    makeThumbnail("next-img");
   };
   async function downloadFile(event) {
     event.preventDefault();
@@ -162,5 +164,4 @@
     downloadButton.disabled = false;
   }
   document.getElementById("download-filename").value = document.getElementById("id_filenames").value;
-  if (document.getElementById("id_filenames").value) { prefetchFrames(); }
 </script>
